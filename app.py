@@ -6,6 +6,8 @@ import pandas as pd
 import logging
 import os
 
+
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
@@ -25,7 +27,7 @@ try:
         raise FileNotFoundError(f"模型文件 {MODEL_PATH} 不存在")
     if not os.path.exists(LABEL_PATH):
         raise FileNotFoundError(f"標籤文件 {LABEL_PATH} 不存在")
-    model = tf.keras.models.load_model(MODEL_PATH)
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     labels_df = pd.read_csv(LABEL_PATH)
     labels = {str(row['index']): row['label'] for _, row in labels_df.iterrows()}
     logger.info("模型和標籤載入成功")
