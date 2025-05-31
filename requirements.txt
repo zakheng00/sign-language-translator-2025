@@ -4,4 +4,4 @@ numpy==1.26.4
 tensorflow==2.15.0
 pandas==2.2.2
 gunicorn==22.0.0
-ml-dtypes==0.5.1
+ml-dtypes~=0.2.0
