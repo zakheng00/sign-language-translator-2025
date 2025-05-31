@@ -1,134 +1,222 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手語翻譯系統</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <style>
-        body { padding: 20px; }
-        #video { width: 100%; max-width: 640px; height: auto; }
-        #result { margin-top: 20px; }
-        .preview-frame { width: 100px; height: 100px; object-fit: cover; margin: 5px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手語翻譯系統</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    #video { border: 2px solid #000; transform: scaleX(-1); } /* 鏡像翻轉 */
+    #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); } /* 同步翻轉 */
+    #output { margin-top: 20px; font-size: 24px; }
+    #probabilities { margin-top: 10px; font-size: 16px; }
+    button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center">手語翻譯系統</h1>
-        <div class="text-center">
-            <video id="video" autoplay playsinline></video>
-            <div class="mt-3">
-                <button id="startBtn" class="btn btn-primary">開始捕捉</button>
-                <button id="stopBtn" class="btn btn-danger" disabled>停止捕捉</button>
-            </div>
-            <div id="framePreview" class="d-flex flex-wrap"></div>
-            <div id="result" class="alert alert-info" style="display: none;"></div>
-        </div>
-    </div>
+  <h1>手語翻譯系統</h1>
+  <video id="video" width="640" height="480" autoplay></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <br>
+  <button id="startBtn">Start</button>
+  <button id="stopBtn" disabled>End</button>
+  <button id="submitBtn" disabled>Translate</button>
+  <div id="output">Result： </div>
+  <div id="probabilities">Pro： </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let stream, frames = [];
-        const video = document.getElementById('video');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const framePreview = document.getElementById('framePreview');
-        const resultDiv = document.getElementById('result');
+  <script>
+    console.log('JavaScript 開始執行');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const output = document.getElementById('output');
+    const probabilitiesDiv = document.getElementById('probabilities');
+    let frames = [];
+    let capturing = false;
+    const NUM_FRAMES = 100;
 
-        const pose = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    // 後端 URL（根據部署環境調整）
+    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
+
+    // 初始化 MediaPipe Holistic
+    const holistic = new Holistic({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    });
+    holistic.setOptions({
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    // 繪製關鍵點
+    function drawLandmarks(results) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (results.poseLandmarks) {
+        for (const landmark of results.poseLandmarks) {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, 2 * Math.PI);
+          ctx.fillStyle = 'blue';
+          ctx.fill();
+        }
+      }
+      if (results.leftHandLandmarks) {
+        for (const landmark of results.leftHandLandmarks) {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, 2 * Math.PI);
+          ctx.fillStyle = 'red';
+          ctx.fill();
+        }
+      }
+      if (results.rightHandLandmarks) {
+        for (const landmark of results.rightHandLandmarks) {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, 2 * Math.PI);
+          ctx.fillStyle = 'green';
+          ctx.fill();
+        }
+      }
+    }
+
+    // 提取關鍵點
+    function extractKeypoints(results) {
+      const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
+      const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+      const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+
+      if (results.poseLandmarks) {
+        results.poseLandmarks.forEach((landmark, i) => {
+          pose[i] = [landmark.x, landmark.y, landmark.z];
         });
-        pose.setOptions({
-            modelComplexity: 1,
-            smoothLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
+      } else {
+        console.warn('未檢測到姿勢關鍵點');
+      }
+      if (results.leftHandLandmarks) {
+        results.leftHandLandmarks.forEach((landmark, i) => {
+          leftHand[i] = [landmark.x, landmark.y, landmark.z];
         });
-        pose.onResults(onPoseResults);
+      } else {
+        console.warn('未檢測到左手關鍵點');
+      }
+      if (results.rightHandLandmarks) {
+        results.rightHandLandmarks.forEach((landmark, i) => {
+          rightHand[i] = [landmark.x, landmark.y, landmark.z];
+        });
+      } else {
+        console.warn('未檢測到右手關鍵點');
+      }
+      return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
+    }
 
-        function onPoseResults(results) {
-            if (results.poseLandmarks) {
-                const keypoints = [];
-                for (let i = 0; i < Math.min(74, results.poseLandmarks.length); i++) {
-                    const landmark = results.poseLandmarks[i];
-                    keypoints.push(landmark.x, landmark.y, landmark.z);
-                }
-                while (keypoints.length < 74 * 3) {
-                    keypoints.push(0);
-                }
-                frames.push(keypoints.slice(0, 74 * 3));
-                const img = document.createElement('img');
-                img.src = '#';
-                img.classList.add('preview-frame');
-                framePreview.appendChild(img);
-            }
+    // 啟動攝像頭
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        const camera = new Camera(video, {
+          onFrame: async () => {
+            await holistic.send({ image: video });
+          },
+          width: 640,
+          height: 480
+        });
+        await camera.start();
+        console.log('MediaPipe 相機啟動');
+      } catch (err) {
+        console.error('攝像頭啟動失敗:', err);
+        output.textContent = '錯誤：無法啟動攝像頭 - ' + err.message;
+        alert('請允許攝像頭權限以繼續使用！');
+      }
+    }
+
+    // 捕獲幀
+    function captureFrame(results) {
+      if (frames.length < NUM_FRAMES && capturing) {
+        const keypoints = extractKeypoints(results);
+        frames.push(keypoints);
+        console.log(`捕獲第 ${frames.length} 幀，關鍵點數: ${keypoints.length}`);
+        if (frames.length < NUM_FRAMES) {
+          setTimeout(() => holistic.send({ image: video }), 100);
+        } else {
+          stopRecording();
         }
+      }
+    }
 
-        async function startCamera() {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                const camera = new Camera(video, {
-                    onFrame: async () => {
-                        await pose.send({ image: video });
-                    },
-                    width: 640,
-                    height: 480
-                });
-                camera.start();
-            } catch (err) {
-                resultDiv.style.display = 'block';
-                resultDiv.textContent = '無法訪問攝影機: ' + err;
-            }
+    // 停止錄製
+    function stopRecording() {
+      if (capturing) {
+        capturing = false;
+        startBtn.textContent = 'Start';
+        stopBtn.disabled = true;
+        submitBtn.disabled = frames.length === 0;
+        console.log(`錄製結束，捕獲 ${frames.length} 幀`);
+      }
+    }
+
+    // 提交到後端
+    async function predict() {
+      try {
+        console.log('提交到後端，幀數:', frames.length);
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ frames })
+        });
+        if (!response.ok) {
+          throw new Error(`後端錯誤，狀態碼: ${response.status}`);
         }
-
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                video.srcObject = null;
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-                sendFrames();
-            }
+        const result = await response.json();
+        if (result.error) {
+          output.textContent = `錯誤：${result.error}`;
+        } else {
+          output.textContent = `Result：${result.gesture}`;
+          probabilitiesDiv.textContent = `Pro：${result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
         }
+        frames = [];
+        submitBtn.disabled = true;
+      } catch (err) {
+        console.error('Fail:', err);
+        output.textContent = `錯誤：預測失敗 - ${err.message}`;
+      }
+    }
 
-        function captureFrames() {
-            if (frames.length >= 100) {
-                stopCamera();
-                return;
-            }
-            setTimeout(captureFrames, 100);
-        }
+    // 處理 MediaPipe 結果
+    holistic.onResults((results) => {
+      drawLandmarks(results);
+      if (capturing) {
+        captureFrame(results);
+      }
+    });
 
-        async function sendFrames() {
-            try {
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ frames })
-                });
-                const data = await response.json();
-                if (data.error) {
-                    resultDiv.style.display = 'block';
-                    resultDiv.textContent = '錯誤: ' + data.error;
-                } else {
-                    resultDiv.style.display = 'block';
-                    resultDiv.textContent = `手勢: ${data.gesture} (機率: ${data.probabilities.map(p => p.toFixed(4)).join(', ')})`;
-                }
-                frames = [];
-                framePreview.innerHTML = '';
-            } catch (err) {
-                resultDiv.style.display = 'block';
-                resultDiv.textContent = '發送幀失敗: ' + err;
-            }
-        }
+    // 事件監聽
+    startBtn.addEventListener('click', () => {
+      if (!capturing) {
+        capturing = true;
+        frames = [];
+        startBtn.textContent = 'Recording...';
+        stopBtn.disabled = false;
+        submitBtn.disabled = true;
+        console.log('Start record');
+        holistic.send({ image: video });
+      }
+    });
 
-        startBtn.addEventListener('click', startCamera);
-        stopBtn.addEventListener('click', stopCamera);
-    </script>
+    stopBtn.addEventListener('click', stopRecording);
+    submitBtn.addEventListener('click', predict);
+
+    // 初始化
+    startWebcam();
+  </script>
 </body>
 </html>
