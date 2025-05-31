@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # 動態生成路徑
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model(1).keras')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model (1).keras')
 LABEL_PATH = os.path.join(BASE_DIR, 'models', 'label.csv')
 
 try:
