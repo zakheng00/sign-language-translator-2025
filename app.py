@@ -6,8 +6,6 @@ import pandas as pd
 import logging
 import os
 
-
-
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
@@ -27,9 +25,21 @@ try:
         raise FileNotFoundError(f"模型文件 {MODEL_PATH} 不存在")
     if not os.path.exists(LABEL_PATH):
         raise FileNotFoundError(f"標籤文件 {LABEL_PATH} 不存在")
-    model = tf.keras.models.load_model(MODEL_PATH)
+    
+    # 載入模型（假設已修復 batch_shape 問題）
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    
+    # 載入標籤文件，移除 index_col 假設
     labels_df = pd.read_csv(LABEL_PATH)
-    labels = {str(row['index']): row['label'] for _, row in labels_df.iterrows()}
+    # 打印前幾行以檢查數據結構
+    logger.info(f"標籤文件內容:\n{labels_df.head()}")
+    
+    # 確認列名並生成標籤字典
+    if 'video_id' not in labels_df.columns or 'gesture_label' not in labels_df.columns:
+        raise ValueError("label.csv 必須包含 'video_id' 和 'gesture_label' 列")
+    
+    # 使用自動索引（0, 1, 2, ...）對應 gesture_label
+    labels = {str(idx): row['gesture_label'] for idx, row in labels_df.iterrows()}
     logger.info("模型和標籤載入成功")
 except Exception as e:
     logger.error(f"載入模型或標籤失敗: {e}")
@@ -89,7 +99,7 @@ def predict():
 if __name__ == '__main__':
     try:
         logger.info("啟動 Flask 伺服器")
-        port = int(os.environ.get('PORT', 5000))  # Heroku 動態分配端口
-        app.run(debug=True, host='0.0.0.0', port=port)
+        port = int(os.environ.get('PORT', 5000))  # 動態端口，適配 Render/Fly.io
+        app.run(debug=False, host='0.0.0.0', port=port)  # 部署時禁用 debug
     except Exception as e:
         logger.error(f"伺服器啟動失敗: {e}")
