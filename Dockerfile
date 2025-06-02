@@ -2,13 +2,14 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY . .
 
-# 安裝系統依賴
+# 安裝系統依賴，並檢查是否成功
 RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     ffmpeg \
     build-essential \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pkg-config --exists --print-errors portaudio-2.0
 
 # 安裝 Python 依賴
 RUN pip install --upgrade pip
