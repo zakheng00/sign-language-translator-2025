@@ -1,222 +1,51 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SL</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; }
-    #video { border: 2px solid #000; transform: scaleX(-1); } /* 鏡像翻轉 */
-    #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); } /* 同步翻轉 */
-    #output { margin-top: 20px; font-size: 24px; }
-    #probabilities { margin-top: 10px; font-size: 16px; }
-    button { padding: 10px 20px; margin: 10px; font-size: 16px; }
-  </style>
-</head>
-<body>
-  <h1>Sign Language Real time Translate</h1>
-  <video id="video" width="640" height="480" autoplay></video>
-  <canvas id="canvas" width="640" height="480"></canvas>
-  <br>
-  <button id="startBtn">Start</button>
-  <button id="stopBtn" disabled>End</button>
-  <button id="submitBtn" disabled>Translate</button>
-  <div id="output">Result： </div>
-  <div id="probabilities">Pro： </div>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Sign Language Translation System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    console.log('JavaScript 開始執行');
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const submitBtn = document.getElementById('submitBtn');
-    const output = document.getElementById('output');
-    const probabilitiesDiv = document.getElementById('probabilities');
-    let frames = [];
-    let capturing = false;
-    const NUM_FRAMES = 100;
-
-    // 後端 URL（根據部署環境調整）
-    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
-
-    // 初始化 MediaPipe Holistic
-    const holistic = new Holistic({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
-    });
-    holistic.setOptions({
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    // 繪製關鍵點
-    function drawLandmarks(results) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (results.poseLandmarks) {
-        for (const landmark of results.poseLandmarks) {
-          const x = landmark.x * canvas.width;
-          const y = landmark.y * canvas.height;
-          ctx.beginPath();
-          ctx.arc(x, y, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'blue';
-          ctx.fill();
-        }
-      }
-      if (results.leftHandLandmarks) {
-        for (const landmark of results.leftHandLandmarks) {
-          const x = landmark.x * canvas.width;
-          const y = landmark.y * canvas.height;
-          ctx.beginPath();
-          ctx.arc(x, y, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'red';
-          ctx.fill();
-        }
-      }
-      if (results.rightHandLandmarks) {
-        for (const landmark of results.rightHandLandmarks) {
-          const x = landmark.x * canvas.width;
-          const y = landmark.y * canvas.height;
-          ctx.beginPath();
-          ctx.arc(x, y, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'green';
-          ctx.fill();
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#60A5FA'
+          }
         }
       }
     }
-
-    // 提取關鍵點
-    function extractKeypoints(results) {
-      const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
-      const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-      const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-
-      if (results.poseLandmarks) {
-        results.poseLandmarks.forEach((landmark, i) => {
-          pose[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('未檢測到姿勢關鍵點');
-      }
-      if (results.leftHandLandmarks) {
-        results.leftHandLandmarks.forEach((landmark, i) => {
-          leftHand[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('未檢測到左手關鍵點');
-      }
-      if (results.rightHandLandmarks) {
-        results.rightHandLandmarks.forEach((landmark, i) => {
-          rightHand[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('未檢測到右手關鍵點');
-      }
-      return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
-    }
-
-    // 啟動攝像頭
-    async function startWebcam() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        const camera = new Camera(video, {
-          onFrame: async () => {
-            await holistic.send({ image: video });
-          },
-          width: 640,
-          height: 480
-        });
-        await camera.start();
-        console.log('MediaPipe 相機啟動');
-      } catch (err) {
-        console.error('攝像頭啟動失敗:', err);
-        output.textContent = '錯誤：無法啟動攝像頭 - ' + err.message;
-        alert('請允許攝像頭權限以繼續使用！');
-      }
-    }
-
-    // 捕獲幀
-    function captureFrame(results) {
-      if (frames.length < NUM_FRAMES && capturing) {
-        const keypoints = extractKeypoints(results);
-        frames.push(keypoints);
-        console.log(`捕獲第 ${frames.length} 幀，關鍵點數: ${keypoints.length}`);
-        if (frames.length < NUM_FRAMES) {
-          setTimeout(() => holistic.send({ image: video }), 100);
-        } else {
-          stopRecording();
-        }
-      }
-    }
-
-    // 停止錄製
-    function stopRecording() {
-      if (capturing) {
-        capturing = false;
-        startBtn.textContent = 'Start';
-        stopBtn.disabled = true;
-        submitBtn.disabled = frames.length === 0;
-        console.log(`錄製結束，捕獲 ${frames.length} 幀`);
-      }
-    }
-
-    // 提交到後端
-    async function predict() {
-      try {
-        console.log('提交到後端，幀數:', frames.length);
-        const response = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ frames })
-        });
-        if (!response.ok) {
-          throw new Error(`後端錯誤，狀態碼: ${response.status}`);
-        }
-        const result = await response.json();
-        if (result.error) {
-          output.textContent = `錯誤：${result.error}`;
-        } else {
-          output.textContent = `Result：${result.gesture}`;
-          probabilitiesDiv.textContent = `Pro：${result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
-        }
-        frames = [];
-        submitBtn.disabled = true;
-      } catch (err) {
-        console.error('Fail:', err);
-        output.textContent = `錯誤：預測失敗 - ${err.message}`;
-      }
-    }
-
-    // 處理 MediaPipe 結果
-    holistic.onResults((results) => {
-      drawLandmarks(results);
-      if (capturing) {
-        captureFrame(results);
-      }
-    });
-
-    // 事件監聽
-    startBtn.addEventListener('click', () => {
-      if (!capturing) {
-        capturing = true;
-        frames = [];
-        startBtn.textContent = 'Recording...';
-        stopBtn.disabled = false;
-        submitBtn.disabled = true;
-        console.log('Start record');
-        holistic.send({ image: video });
-      }
-    });
-
-    stopBtn.addEventListener('click', stopRecording);
-    submitBtn.addEventListener('click', predict);
-
-    // 初始化
-    startWebcam();
   </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <div class="max-w-4xl mx-auto p-6 space-y-8">
+    <header class="text-center">
+      <h1 class="text-4xl font-bold text-primary">Sign Language Translator</h1>
+      <p class="text-gray-500 mt-2">Choose a feature to begin</p>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <a href="/live-translation" class="block bg-white hover:bg-blue-50 p-6 rounded-2xl shadow-xl transition">
+        <h2 class="text-xl font-semibold text-primary mb-2">🎥 Live Sign Translation</h2>
+        <p class="text-sm text-gray-600">Translate sign language in real-time using your webcam</p>
+      </a>
+
+      <a href="#speech-to-text" class="block bg-white hover:bg-blue-50 p-6 rounded-2xl shadow-xl transition">
+        <h2 class="text-xl font-semibold text-primary mb-2">🎤 Speech to Text</h2>
+        <p class="text-sm text-gray-600">Convert spoken words into text</p>
+      </a>
+
+      <a href="#history" class="block bg-white hover:bg-blue-50 p-6 rounded-2xl shadow-xl transition">
+        <h2 class="text-xl font-semibold text-primary mb-2">📜 Translation History</h2>
+        <p class="text-sm text-gray-600">View your past translation records</p>
+      </a>
+
+      <a href="#settings" class="block bg-white hover:bg-blue-50 p-6 rounded-2xl shadow-xl transition">
+        <h2 class="text-xl font-semibold text-primary mb-2">⚙️ Settings</h2>
+        <p class="text-sm text-gray-600">Adjust language and model preferences</p>
+      </a>
+    </div>
+  </div>
 </body>
 </html>

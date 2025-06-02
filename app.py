@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import tensorflow as tf
-import pandas as pd
 import json
 import logging
 import os
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 # 動態生成路徑
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
-LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')  # 改用 JSON 格式
+LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 
 # 載入模型和標籤
 try:
@@ -43,8 +42,13 @@ except Exception as e:
 
 @app.route('/')
 def index():
-    logger.info("訪問首頁")
+    logger.info("訪問主頁")
     return send_from_directory('templates', 'index.html')
+
+@app.route('/live-translation')
+def live_translation():
+    logger.info("訪問實時手語翻譯頁面")
+    return send_from_directory('templates', 'live-translation.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
