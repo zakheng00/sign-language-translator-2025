@@ -7,10 +7,8 @@ import logging
 import os
 import pyaudio
 import wave
-import whisper
+import whisper as openai_whisper  # 修正為 openai-whisper
 from threading import Thread
-import time
-import asyncio
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -52,7 +50,7 @@ try:
     logger.info("手語模型和標籤加載成功")
     
     # 載入 Whisper 模型
-    whisper_model = whisper.load_model("base")
+    whisper_model = openai_whisper.load_model("base")
     logger.info("Whisper 模型加載成功")
 except Exception as e:
     logger.error(f"加載模型或標籤失敗: {e}")
@@ -112,7 +110,6 @@ def speech_to_text():
 def transcribe():
     logger.info("接收到 /transcribe 請求")
     try:
-        # 啟動錄音執行緒
         audio_file = record_audio()
         transcription = transcribe_audio(audio_file)
         logger.info(f"轉錄結果: {transcription}")
