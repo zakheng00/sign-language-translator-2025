@@ -7,25 +7,20 @@ import logging
 import os
 import pyaudio
 import wave
-import whisper as openai_whisper  # 修正為 openai-whisper
-from threading import Thread
+import whisper as openai_whisper
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# 設置環境變量
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# 設置日誌
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 動態生成路徑
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 
-# 錄音參數
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -33,7 +28,6 @@ RATE = 16000
 RECORD_SECONDS = 5
 OUTPUT_FILENAME = "temp_audio.wav"
 
-# 載入模型和標籤
 try:
     logger.info("正在加載模型和標籤...")
     if not os.path.exists(MODEL_PATH):
@@ -41,15 +35,11 @@ try:
     if not os.path.exists(LABELS_PATH):
         raise FileNotFoundError(f"標籤文件 {LABELS_PATH} 不存在")
     
-    # 載入手語模型
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    
-    # 載入標籤
     with open(LABELS_PATH, 'r', encoding='utf-8') as f:
         labels = json.load(f)
     logger.info("手語模型和標籤加載成功")
     
-    # 載入 Whisper 模型
     whisper_model = openai_whisper.load_model("base")
     logger.info("Whisper 模型加載成功")
 except Exception as e:
@@ -57,7 +47,6 @@ except Exception as e:
     exit(1)
 
 def record_audio():
-    """錄製音訊並保存到 WAV 檔案"""
     audio = pyaudio.PyAudio()
     stream = audio.open(format=FORMAT, channels=CHANNELS,
                        rate=RATE, input=True,
@@ -86,9 +75,8 @@ def record_audio():
     return OUTPUT_FILENAME
 
 def transcribe_audio(audio_file):
-    """使用 Whisper 轉錄音訊檔案"""
     result = whisper_model.transcribe(audio_file, language="en")
-    os.remove(audio_file)  # 清理臨時檔案
+    os.remove(audio_file)
     return result["text"]
 
 @app.route('/')
