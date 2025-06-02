@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>語音轉文字</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    #output { margin-top: 20px; font-size: 24px; }
+    button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>語音轉文字系統</h1>
+  <button id="startBtn">開始錄音</button>
+  <button id="stopBtn" disabled>停止錄音</button>
+  <div id="output">結果： </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const output = document.getElementById('output');
+    let recording = false;
+
+    // 後端 URL
+    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/transcribe' : '/transcribe';
+
+    startBtn.addEventListener('click', () => {
+      if (!recording) {
+        recording = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        output.textContent = '正在錄音...';
+        fetch(API_URL, { method: 'POST' })
+          .then(response => response.json())
+          .then(data => {
+            if (data.error) {
+              output.textContent = `錯誤：${data.error}`;
+            } else {
+              output.textContent = `結果：${data.transcription}`;
+            }
+            recording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          })
+          .catch(err => {
+            console.error('錯誤:', err);
+            output.textContent = `錯誤：${err.message}`;
+            recording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          });
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (recording) {
+        recording = false;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        output.textContent = '錄音已停止，等待轉錄...';
+      }
+    });
+  </script>
+</body>
+</html>
