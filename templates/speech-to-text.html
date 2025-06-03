@@ -20,46 +20,75 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const output = document.getElementById('output');
+    let mediaRecorder;
+    let audioChunks = [];
     let recording = false;
 
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/transcribe' : '/transcribe';
 
-    startBtn.addEventListener('click', () => {
+    async function startRecording() {
       if (!recording) {
-        recording = true;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        output.textContent = '正在錄音...';
-        fetch(API_URL, { method: 'POST' })
-          .then(response => response.json())
-          .then(data => {
-            if (data.error) {
-              output.textContent = `錯誤：${data.error}`;
-            } else {
-              output.textContent = `結果：${data.transcription}`;
-            }
-            recording = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-          })
-          .catch(err => {
-            console.error('錯誤:', err);
-            output.textContent = `錯誤：${err.message}`;
-            recording = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-          });
-      }
-    });
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          
+          mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+          };
 
-    stopBtn.addEventListener('click', () => {
-      if (recording) {
-        recording = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+
+            output.textContent = '正在轉錄...';
+            try {
+              const response = await fetch(API_URL, {
+                method: 'POST',
+                body: formData
+              });
+              const data = await response.json();
+              if (data.error) {
+                output.textContent = `錯誤：${data.error}`;
+              } else {
+                output.textContent = `結果：${data.transcription}`;
+              }
+            } catch (err) {
+              console.error('錯誤:', err);
+              output.textContent = `錯誤：${err.message}`;
+            }
+
+            audioChunks = [];
+            recording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          };
+
+          mediaRecorder.start();
+          recording = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          output.textContent = '正在錄音...';
+        } catch (err) {
+          console.error('錯誤:', err);
+          output.textContent = `錯誤：無法啟動錄音 - ${err.message}`;
+          alert('請允許麥克風權限以繼續使用！');
+          recording = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+    }
+
+    function stopRecording() {
+      if (recording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
         output.textContent = '錄音已停止，等待轉錄...';
       }
-    });
+    }
+
+    startBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', stopRecording);
   </script>
 </body>
 </html>
