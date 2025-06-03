@@ -5,9 +5,7 @@ import tensorflow as tf
 import json
 import logging
 import os
-import pyaudio
-import wave
-import whisper as openai_whisper
+from google.cloud import speech
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -21,12 +19,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 
-CHUNK = 1024
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 16000
-RECORD_SECONDS = 5
-OUTPUT_FILENAME = "temp_audio.wav"
+# 設置 Google Cloud 憑證
+if os.getenv('GOOGLE_APPLICATION_CREDENTIALS_CONTENT'):
+    with open('google_credentials.json', 'w') as f:
+        f.write(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_CONTENT'))
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'google_credentials.json'
+else:
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.join(BASE_DIR, 'credentials.json')
 
 try:
     logger.info("正在加載模型和標籤...")
@@ -40,44 +39,23 @@ try:
         labels = json.load(f)
     logger.info("手語模型和標籤加載成功")
     
-    whisper_model = openai_whisper.load_model("base")
-    logger.info("Whisper 模型加載成功")
+    client = speech.SpeechClient()
+    logger.info("Google Speech-to-Text 客戶端加載成功")
 except Exception as e:
-    logger.error(f"加載模型或標籤失敗: {e}")
+    logger.error(f"加載失敗: {e}")
     exit(1)
 
-def record_audio():
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=FORMAT, channels=CHANNELS,
-                       rate=RATE, input=True,
-                       frames_per_buffer=CHUNK)
-    
-    logger.info("開始錄音...")
-    frames = []
-    
-    for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        frames.append(data)
-    
-    logger.info("錄音結束，保存檔案...")
-    
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-    
-    wf = wave.open(OUTPUT_FILENAME, 'wb')
-    wf.setnchannels(CHANNELS)
-    wf.setsampwidth(audio.get_sample_size(FORMAT))
-    wf.setframerate(RATE)
-    wf.writeframes(b''.join(frames))
-    wf.close()
-    
-    return OUTPUT_FILENAME
-
-def transcribe_audio(audio_file):
-    result = whisper_model.transcribe(audio_file, language="en")
-    os.remove(audio_file)
-    return result["text"]
+def transcribe_audio(audio_data):
+    audio = speech.RecognitionAudio(content=audio_data)
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        language_code="en-US"
+    )
+    response = client.recognize(config=config, audio=audio)
+    if response.results:
+        return response.results[0].alternatives[0].transcript
+    return "無法識別語音"
 
 @app.route('/')
 def index():
@@ -98,8 +76,14 @@ def speech_to_text():
 def transcribe():
     logger.info("接收到 /transcribe 請求")
     try:
-        audio_file = record_audio()
-        transcription = transcribe_audio(audio_file)
+        if 'audio' not in request.files:
+            logger.error("缺少 audio 文件")
+            return jsonify({'error': "缺少 audio 文件"}), 400
+        
+        audio_file = request.files['audio']
+        audio_data = audio_file.read()
+        
+        transcription = transcribe_audio(audio_data)
         logger.info(f"轉錄結果: {transcription}")
         return jsonify({'transcription': transcription})
     except Exception as e:
