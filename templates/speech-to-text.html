@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>語音轉文字</title>
+  <title>Speech to Text</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; }
     #output { margin-top: 20px; font-size: 24px; }
@@ -11,10 +11,10 @@
   </style>
 </head>
 <body>
-  <h1>語音轉文字系統</h1>
-  <button id="startBtn">開始錄音</button>
-  <button id="stopBtn" disabled>停止錄音</button>
-  <div id="output">結果： </div>
+  <h1>Speech to Text System</h1>
+  <button id="startBtn">Start Recording</button>
+  <button id="stopBtn" disabled>Stop Recording</button>
+  <div id="output">Result: </div>
 
   <script>
     const startBtn = document.getElementById('startBtn');
@@ -41,7 +41,7 @@
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.wav');
 
-            output.textContent = '正在轉錄...';
+            output.textContent = 'Transcribing...';
             try {
               const response = await fetch(API_URL, {
                 method: 'POST',
@@ -49,13 +49,13 @@
               });
               const data = await response.json();
               if (data.error) {
-                output.textContent = `錯誤：${data.error}`;
+                output.textContent = `Error: ${data.error}`;
               } else {
-                output.textContent = `結果：${data.transcription}`;
+                output.textContent = `Result: ${data.transcription}`;
               }
             } catch (err) {
-              console.error('錯誤:', err);
-              output.textContent = `錯誤：${err.message}`;
+              console.error('Error:', err);
+              output.textContent = `Error: ${err.message}`;
             }
 
             audioChunks = [];
@@ -69,11 +69,11 @@
           recording = true;
           startBtn.disabled = true;
           stopBtn.disabled = false;
-          output.textContent = '正在錄音...';
+          output.textContent = 'Recording...';
         } catch (err) {
-          console.error('錯誤:', err);
-          output.textContent = `錯誤：無法啟動錄音 - ${err.message}`;
-          alert('請允許麥克風權限以繼續使用！');
+          console.error('Error:', err);
+          output.textContent = `Error: Unable to start recording - ${err.message}`;
+          alert('Please allow microphone permission to continue!');
           recording = false;
           startBtn.disabled = false;
           stopBtn.disabled = true;
@@ -84,7 +84,7 @@
     function stopRecording() {
       if (recording && mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
-        output.textContent = '錄音已停止，等待轉錄...';
+        output.textContent = 'Recording stopped. Awaiting transcription...';
       }
     }
 

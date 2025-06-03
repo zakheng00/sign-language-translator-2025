@@ -7,7 +7,7 @@ import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
-import ffmpeg  # ✅ 新增：用於格式轉換
+import ffmpeg  # ✅ Added: for format conversion
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -23,39 +23,39 @@ LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 try:
-    logger.info("正在加載模型和標籤...")
+    logger.info("Loading model and labels...")
     if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"模型文件 {MODEL_PATH} 不存在")
+        raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
     if not os.path.exists(LABELS_PATH):
-        raise FileNotFoundError(f"標籤文件 {LABELS_PATH} 不存在")
+        raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
 
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     with open(LABELS_PATH, 'r', encoding='utf-8') as f:
         labels = json.load(f)
-    logger.info("手語模型和標籤加載成功")
+    logger.info("Sign language model and labels loaded successfully")
 
     if not os.path.exists(VOSK_MODEL_PATH):
-        raise FileNotFoundError(f"Vosk 模型文件 {VOSK_MODEL_PATH} 不存在")
+        raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
     vosk_model = Model(VOSK_MODEL_PATH)
     recognizer = KaldiRecognizer(vosk_model, 16000)
-    logger.info("Vosk 模型加載成功")
+    logger.info("Vosk model loaded successfully")
 except Exception as e:
-    logger.error(f"加載失敗: {e}")
+    logger.error(f"Loading failed: {e}")
     exit(1)
 
 def transcribe_audio(audio_data):
     try:
-        # ✅ Step 1: 保存原始音訊為 input.webm
+        # ✅ Step 1: Save raw audio as input.webm
         with open("input.webm", "wb") as f:
             f.write(audio_data)
 
-        # ✅ Step 2: 使用 ffmpeg 轉檔為 temp.wav（16kHz, mono）
+        # ✅ Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
         ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
 
-        # ✅ Step 3: 用 Vosk 做語音識別
+        # ✅ Step 3: Use Vosk for speech recognition
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
-                raise ValueError("音訊採樣率必須為 16000 Hz")
+                raise ValueError("Audio sample rate must be 16000 Hz")
             result_text = ""
             while True:
                 data = wf.readframes(4000)
@@ -64,68 +64,68 @@ def transcribe_audio(audio_data):
                 recognizer.AcceptWaveform(data)
             result = recognizer.FinalResult()
             result_text = json.loads(result).get("text", "")
-            return result_text if result_text.strip() else "無法識別語音"
+            return result_text if result_text.strip() else "Unable to recognize speech"
     except Exception as e:
-        logger.error(f"轉錄失敗: {e}")
-        return "轉錄錯誤"
+        logger.error(f"Transcription failed: {e}")
+        return "Transcription error"
     finally:
-        # ✅ Step 4: 清理暫存檔
+        # ✅ Step 4: Clean up temporary files
         for fname in ['input.webm', 'temp.wav']:
             if os.path.exists(fname):
                 os.remove(fname)
 
 @app.route('/')
 def index():
-    logger.info("訪問主頁")
+    logger.info("Accessed homepage")
     return send_from_directory('templates', 'index.html')
 
 @app.route('/live-translation')
 def live_translation():
-    logger.info("訪問實時手語翻譯頁面")
+    logger.info("Accessed live sign language translation page")
     return send_from_directory('templates', 'live-translation.html')
 
 @app.route('/speech-to-text')
 def speech_to_text():
-    logger.info("訪問語音轉文字頁面")
+    logger.info("Accessed speech-to-text page")
     return send_from_directory('templates', 'speech-to-text.html')
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    logger.info("接收到 /transcribe 請求")
+    logger.info("Received /transcribe request")
     try:
         if 'audio' not in request.files:
-            logger.error("缺少 audio 文件")
-            return jsonify({'error': "缺少 audio 文件"}), 400
+            logger.error("Missing audio file")
+            return jsonify({'error': "Missing audio file"}), 400
 
         audio_file = request.files['audio']
         audio_data = audio_file.read()
 
         transcription = transcribe_audio(audio_data)
-        logger.info(f"轉錄結果: {transcription}")
+        logger.info(f"Transcription result: {transcription}")
         return jsonify({'transcription': transcription})
     except Exception as e:
-        logger.error(f"轉錄失敗: {e}")
+        logger.error(f"Transcription failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    logger.info("接收到 /predict 請求")
+    logger.info("Received /predict request")
     try:
         if not request.is_json:
-            logger.error("請求不是 JSON 格式")
-            return jsonify({'error': '請求必須是 JSON 格式'}), 400
+            logger.error("Request is not JSON format")
+            return jsonify({'error': 'Request must be in JSON format'}), 400
 
         data = request.get_json()
         if 'frames' not in data:
-            logger.error("缺少 'frames' 字段")
-            return jsonify({'error': "請求中缺少 'frames' 字段"}), 400
+            logger.error("Missing 'frames' field")
+            return jsonify({'error': "Request missing 'frames' field"}), 400
 
         frames = data['frames']
-        logger.info(f"收到 {len(frames)} 幀")
+        logger.info(f"Received {len(frames)} frames")
         frames = np.array(frames, dtype=np.float32)
 
         if len(frames) != 100:
-            logger.warning(f"幀數不正確，預期 100，實際 {len(frames)}")
+            logger.warning(f"Incorrect number of frames: expected 100, got {len(frames)}")
             if len(frames) < 100:
                 padding = np.zeros((100 - len(frames), 74 * 3), dtype=np.float32)
                 frames = np.concatenate([frames, padding], axis=0)
@@ -133,30 +133,30 @@ def predict():
                 frames = frames[:100]
 
         if frames.shape[1] != 74 * 3:
-            logger.error(f"關鍵點形狀錯誤，預期 {74 * 3}，實際 {frames.shape[1]}")
-            return jsonify({'error': f"關鍵點形狀錯誤，預期 {74 * 3}，實際 {frames.shape[1]}"}), 400
+            logger.error(f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}")
+            return jsonify({'error': f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}"}), 400
 
         keypoints_sequence = frames.reshape(1, 100, 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
         keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
-        logger.info(f"關鍵點序列形狀: {keypoints_sequence.shape}")
+        logger.info(f"Keypoints sequence shape: {keypoints_sequence.shape}")
 
-        logger.info("開始模型推斷")
+        logger.info("Starting model inference")
         prediction = model.predict(keypoints_sequence, verbose=0)
         pred_probs = prediction[0].tolist()
         pred_index = np.argmax(prediction, axis=-1)[0]
         gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
-        logger.info(f"機率: {pred_probs}")
-        logger.info(f"結果: {gesture} (索引: {pred_index})")
+        logger.info(f"Probabilities: {pred_probs}")
+        logger.info(f"Result: {gesture} (Index: {pred_index})")
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
-        logger.error(f"推斷失敗: {e}")
+        logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     try:
-        logger.info("啟動 Flask 伺服器")
+        logger.info("Starting Flask server")
         port = int(os.environ.get('PORT', 5000))
         app.run(debug=False, host='0.0.0.0', port=port)
     except Exception as e:
-        logger.error(f"伺服器啟動失敗: {e}")
+        logger.error(f"Server failed to start: {e}")
