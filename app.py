@@ -7,6 +7,7 @@ import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
+import ffmpeg  # ✅ 新增：用於格式轉換
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
-VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')  # 根據下載的模型調整
+VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 try:
     logger.info("正在加載模型和標籤...")
@@ -27,16 +28,16 @@ try:
         raise FileNotFoundError(f"模型文件 {MODEL_PATH} 不存在")
     if not os.path.exists(LABELS_PATH):
         raise FileNotFoundError(f"標籤文件 {LABELS_PATH} 不存在")
-    
+
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     with open(LABELS_PATH, 'r', encoding='utf-8') as f:
         labels = json.load(f)
     logger.info("手語模型和標籤加載成功")
-    
+
     if not os.path.exists(VOSK_MODEL_PATH):
         raise FileNotFoundError(f"Vosk 模型文件 {VOSK_MODEL_PATH} 不存在")
     vosk_model = Model(VOSK_MODEL_PATH)
-    recognizer = KaldiRecognizer(vosk_model, 16000)  # 16000 Hz 採樣率
+    recognizer = KaldiRecognizer(vosk_model, 16000)
     logger.info("Vosk 模型加載成功")
 except Exception as e:
     logger.error(f"加載失敗: {e}")
@@ -44,31 +45,34 @@ except Exception as e:
 
 def transcribe_audio(audio_data):
     try:
-        # 將音訊數據保存為 WAV 文件（16kHz，單聲道）
-        with wave.open("temp.wav", "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(16000)
-            wf.writeframes(audio_data)
-        
-        # 重新讀取 WAV 文件並轉錄
+        # ✅ Step 1: 保存原始音訊為 input.webm
+        with open("input.webm", "wb") as f:
+            f.write(audio_data)
+
+        # ✅ Step 2: 使用 ffmpeg 轉檔為 temp.wav（16kHz, mono）
+        ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
+
+        # ✅ Step 3: 用 Vosk 做語音識別
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError("音訊採樣率必須為 16000 Hz")
+            result_text = ""
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
-                if recognizer.AcceptWaveform(data):
-                    continue
+                recognizer.AcceptWaveform(data)
             result = recognizer.FinalResult()
-            return json.loads(result).get("text", "無法識別語音")
+            result_text = json.loads(result).get("text", "")
+            return result_text if result_text.strip() else "無法識別語音"
     except Exception as e:
         logger.error(f"轉錄失敗: {e}")
         return "轉錄錯誤"
     finally:
-        if os.path.exists("temp.wav"):
-            os.remove("temp.wav")
+        # ✅ Step 4: 清理暫存檔
+        for fname in ['input.webm', 'temp.wav']:
+            if os.path.exists(fname):
+                os.remove(fname)
 
 @app.route('/')
 def index():
@@ -92,10 +96,10 @@ def transcribe():
         if 'audio' not in request.files:
             logger.error("缺少 audio 文件")
             return jsonify({'error': "缺少 audio 文件"}), 400
-        
+
         audio_file = request.files['audio']
         audio_data = audio_file.read()
-        
+
         transcription = transcribe_audio(audio_data)
         logger.info(f"轉錄結果: {transcription}")
         return jsonify({'transcription': transcription})
@@ -110,16 +114,16 @@ def predict():
         if not request.is_json:
             logger.error("請求不是 JSON 格式")
             return jsonify({'error': '請求必須是 JSON 格式'}), 400
-        
+
         data = request.get_json()
         if 'frames' not in data:
             logger.error("缺少 'frames' 字段")
             return jsonify({'error': "請求中缺少 'frames' 字段"}), 400
-        
+
         frames = data['frames']
         logger.info(f"收到 {len(frames)} 幀")
         frames = np.array(frames, dtype=np.float32)
-        
+
         if len(frames) != 100:
             logger.warning(f"幀數不正確，預期 100，實際 {len(frames)}")
             if len(frames) < 100:
@@ -127,16 +131,16 @@ def predict():
                 frames = np.concatenate([frames, padding], axis=0)
             else:
                 frames = frames[:100]
-        
+
         if frames.shape[1] != 74 * 3:
             logger.error(f"關鍵點形狀錯誤，預期 {74 * 3}，實際 {frames.shape[1]}")
             return jsonify({'error': f"關鍵點形狀錯誤，預期 {74 * 3}，實際 {frames.shape[1]}"}), 400
-        
+
         keypoints_sequence = frames.reshape(1, 100, 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
         keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
         logger.info(f"關鍵點序列形狀: {keypoints_sequence.shape}")
-        
+
         logger.info("開始模型推斷")
         prediction = model.predict(keypoints_sequence, verbose=0)
         pred_probs = prediction[0].tolist()
