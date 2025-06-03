@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>實時手語翻譯</title>
+  <title>Real-Time Sign Language Translation</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <style>
@@ -16,18 +16,18 @@
   </style>
 </head>
 <body>
-  <h1>實時手語翻譯系統</h1>
+  <h1>Real-Time Sign Language Translator</h1>
   <video id="video" width="640" height="480" autoplay></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <br>
   <button id="startBtn">Start</button>
-  <button id="stopBtn" disabled>End</button>
+  <button id="stopBtn" disabled>Stop</button>
   <button id="submitBtn" disabled>Translate</button>
-  <div id="output">Result： </div>
-  <div id="probabilities">Pro： </div>
+  <div id="output">Result: </div>
+  <div id="probabilities">Probs: </div>
 
   <script>
-    console.log('JavaScript 開始執行');
+    console.log('JavaScript running');
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -40,10 +40,10 @@
     let capturing = false;
     const NUM_FRAMES = 100;
 
-    // 後端 URL（根據部署環境調整）
+    // Backend URL (adjust based on environment)
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
 
-    // 初始化 MediaPipe Holistic
+    // Initialize MediaPipe Holistic
     const holistic = new Holistic({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
     });
@@ -53,7 +53,7 @@
       minTrackingConfidence: 0.5
     });
 
-    // 繪製關鍵點
+    // Draw keypoints
     function drawLandmarks(results) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (results.poseLandmarks) {
@@ -88,7 +88,7 @@
       }
     }
 
-    // 提取關鍵點
+    // Extract keypoints
     function extractKeypoints(results) {
       const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
       const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
@@ -99,26 +99,26 @@
           pose[i] = [landmark.x, landmark.y, landmark.z];
         });
       } else {
-        console.warn('未檢測到姿勢關鍵點');
+        console.warn('No pose landmarks detected');
       }
       if (results.leftHandLandmarks) {
         results.leftHandLandmarks.forEach((landmark, i) => {
           leftHand[i] = [landmark.x, landmark.y, landmark.z];
         });
       } else {
-        console.warn('未檢測到左手關鍵點');
+        console.warn('No left hand landmarks detected');
       }
       if (results.rightHandLandmarks) {
         results.rightHandLandmarks.forEach((landmark, i) => {
           rightHand[i] = [landmark.x, landmark.y, landmark.z];
         });
       } else {
-        console.warn('未檢測到右手關鍵點');
+        console.warn('No right hand landmarks detected');
       }
       return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
     }
 
-    // 啟動攝像頭
+    // Start webcam
     async function startWebcam() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -131,20 +131,20 @@
           height: 480
         });
         await camera.start();
-        console.log('MediaPipe 相機啟動');
+        console.log('MediaPipe camera started');
       } catch (err) {
-        console.error('攝像頭啟動失敗:', err);
-        output.textContent = '錯誤：無法啟動攝像頭 - ' + err.message;
-        alert('請允許攝像頭權限以繼續使用！');
+        console.error('Failed to start webcam:', err);
+        output.textContent = 'Error: Unable to access camera - ' + err.message;
+        alert('Please allow camera access to continue!');
       }
     }
 
-    // 捕獲幀
+    // Capture frames
     function captureFrame(results) {
       if (frames.length < NUM_FRAMES && capturing) {
         const keypoints = extractKeypoints(results);
         frames.push(keypoints);
-        console.log(`捕獲第 ${frames.length} 幀，關鍵點數: ${keypoints.length}`);
+        console.log(`Captured frame ${frames.length}, keypoints: ${keypoints.length}`);
         if (frames.length < NUM_FRAMES) {
           setTimeout(() => holistic.send({ image: video }), 100);
         } else {
@@ -153,45 +153,45 @@
       }
     }
 
-    // 停止錄製
+    // Stop recording
     function stopRecording() {
       if (capturing) {
         capturing = false;
         startBtn.textContent = 'Start';
         stopBtn.disabled = true;
         submitBtn.disabled = frames.length === 0;
-        console.log(`錄製結束，捕獲 ${frames.length} 幀`);
+        console.log(`Recording stopped, captured ${frames.length} frames`);
       }
     }
 
-    // 提交到後端
+    // Submit to backend
     async function predict() {
       try {
-        console.log('提交到後端，幀數:', frames.length);
+        console.log('Sending to backend, frames:', frames.length);
         const response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ frames })
         });
         if (!response.ok) {
-          throw new Error(`後端錯誤，狀態碼: ${response.status}`);
+          throw new Error(`Backend error, status: ${response.status}`);
         }
         const result = await response.json();
         if (result.error) {
-          output.textContent = `錯誤：${result.error}`;
+          output.textContent = `Error: ${result.error}`;
         } else {
-          output.textContent = `Result：${result.gesture}`;
-          probabilitiesDiv.textContent = `Pro：${result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
+          output.textContent = `Result: ${result.gesture}`;
+          probabilitiesDiv.textContent = `Probs: ${result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
         }
         frames = [];
         submitBtn.disabled = true;
       } catch (err) {
-        console.error('Fail:', err);
-        output.textContent = `錯誤：預測失敗 - ${err.message}`;
+        console.error('Prediction failed:', err);
+        output.textContent = `Error: Prediction failed - ${err.message}`;
       }
     }
 
-    // 處理 MediaPipe 結果
+    // Handle MediaPipe results
     holistic.onResults((results) => {
       drawLandmarks(results);
       if (capturing) {
@@ -199,7 +199,7 @@
       }
     });
 
-    // 事件監聽
+    // Button events
     startBtn.addEventListener('click', () => {
       if (!capturing) {
         capturing = true;
@@ -207,7 +207,7 @@
         startBtn.textContent = 'Recording...';
         stopBtn.disabled = false;
         submitBtn.disabled = true;
-        console.log('Start record');
+        console.log('Recording started');
         holistic.send({ image: video });
       }
     });
@@ -215,7 +215,7 @@
     stopBtn.addEventListener('click', stopRecording);
     submitBtn.addEventListener('click', predict);
 
-    // 初始化
+    // Initialize
     startWebcam();
   </script>
 </body>
