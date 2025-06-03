@@ -30,7 +30,7 @@
       if (!recording) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
           
           mediaRecorder.ondataavailable = (event) => {
             audioChunks.push(event.data);
@@ -62,6 +62,7 @@
             recording = false;
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            stream.getTracks().forEach(track => track.stop());
           };
 
           mediaRecorder.start();

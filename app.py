@@ -5,7 +5,8 @@ import tensorflow as tf
 import json
 import logging
 import os
-from google.cloud import speech
+import wave
+from vosk import Model, KaldiRecognizer
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -18,14 +19,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
-
-# 設置 Google Cloud 憑證
-if os.getenv('GOOGLE_APPLICATION_CREDENTIALS_CONTENT'):
-    with open('google_credentials.json', 'w') as f:
-        f.write(os.getenv('GOOGLE_APPLICATION_CREDENTIALS_CONTENT'))
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'google_credentials.json'
-else:
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.join(BASE_DIR, 'credentials.json')
+VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')  # 根據下載的模型調整
 
 try:
     logger.info("正在加載模型和標籤...")
@@ -39,23 +33,42 @@ try:
         labels = json.load(f)
     logger.info("手語模型和標籤加載成功")
     
-    client = speech.SpeechClient()
-    logger.info("Google Speech-to-Text 客戶端加載成功")
+    if not os.path.exists(VOSK_MODEL_PATH):
+        raise FileNotFoundError(f"Vosk 模型文件 {VOSK_MODEL_PATH} 不存在")
+    vosk_model = Model(VOSK_MODEL_PATH)
+    recognizer = KaldiRecognizer(vosk_model, 16000)  # 16000 Hz 採樣率
+    logger.info("Vosk 模型加載成功")
 except Exception as e:
     logger.error(f"加載失敗: {e}")
     exit(1)
 
 def transcribe_audio(audio_data):
-    audio = speech.RecognitionAudio(content=audio_data)
-    config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=16000,
-        language_code="en-US"
-    )
-    response = client.recognize(config=config, audio=audio)
-    if response.results:
-        return response.results[0].alternatives[0].transcript
-    return "無法識別語音"
+    try:
+        # 將音訊數據保存為 WAV 文件（16kHz，單聲道）
+        with wave.open("temp.wav", "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(16000)
+            wf.writeframes(audio_data)
+        
+        # 重新讀取 WAV 文件並轉錄
+        with wave.open("temp.wav", "rb") as wf:
+            if wf.getframerate() != 16000:
+                raise ValueError("音訊採樣率必須為 16000 Hz")
+            while True:
+                data = wf.readframes(4000)
+                if len(data) == 0:
+                    break
+                if recognizer.AcceptWaveform(data):
+                    continue
+            result = recognizer.FinalResult()
+            return json.loads(result).get("text", "無法識別語音")
+    except Exception as e:
+        logger.error(f"轉錄失敗: {e}")
+        return "轉錄錯誤"
+    finally:
+        if os.path.exists("temp.wav"):
+            os.remove("temp.wav")
 
 @app.route('/')
 def index():
