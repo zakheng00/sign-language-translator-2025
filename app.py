@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
-import tensorflow as tf
+import tensorflow.lite as tflite
 import json
 import logging
 import os
@@ -24,17 +24,19 @@ logger = logging.getLogger(__name__)
 
 # Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')  # Update to your TFLite file name
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 # Global variables for model and recognizer
-model = None
+interpreter = None
+input_details = None
+output_details = None
 labels = None
 recognizer = None
 
 def load_models():
-    global model, labels, recognizer
+    global interpreter, input_details, output_details, labels, recognizer
     try:
         logger.info("Loading model and labels...")
         if not os.path.exists(MODEL_PATH):
@@ -42,10 +44,16 @@ def load_models():
         if not os.path.exists(LABELS_PATH):
             raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
 
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        # Load TFLite model with Flex support
+        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+        interpreter.allocate_tensors()
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        logger.info("TensorFlow Lite model with Flex support loaded successfully")
+
         with open(LABELS_PATH, 'r', encoding='utf-8') as f:
             labels = json.load(f)
-        logger.info("Sign language model and labels loaded successfully")
+        logger.info("Labels loaded successfully")
 
         if not os.path.exists(VOSK_MODEL_PATH):
             raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
@@ -132,7 +140,6 @@ def predict():
         logger.info(f"Received {len(frames)} frames")
         frames = np.array(frames, dtype=np.float32)
 
-        # Limit to maximum 100 frames, no padding
         frames = frames[:100] if len(frames) >= 100 else frames
         if len(frames) == 0:
             return jsonify({'gesture': 'No frames received', 'probabilities': []})
@@ -141,33 +148,23 @@ def predict():
             logger.error(f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}")
             return jsonify({'error': f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}"}), 400
 
-        # Dynamic reshaping based on actual frame count
+        # Prepare input for TFLite model
         keypoints_sequence = frames.reshape(1, len(frames), 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
-        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
+        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1).astype(np.float32)
         logger.info(f"Keypoints sequence shape: {keypoints_sequence.shape}")
 
-        # Set timeout for model inference
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Model inference timed out")
-
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(60)  # 60 seconds timeout
-        try:
-            logger.info("Starting model inference")
-            prediction = model.predict(keypoints_sequence, verbose=0)
-        finally:
-            signal.alarm(0)  # Cancel alarm
-
+        # Set input tensor and run inference
+        logger.info("Starting model inference")
+        interpreter.set_tensor(input_details[0]['index'], keypoints_sequence)
+        interpreter.invoke()
+        prediction = interpreter.get_tensor(output_details[0]['index'])
         pred_probs = prediction[0].tolist()
-        pred_index = np.argmax(prediction, axis=-1)[0]
+        pred_index = np.argmax(prediction[0])  # Adjust for batch dimension
         gesture = labels.get(str(pred_index), 'Unknown')
         logger.info(f"Probabilities: {pred_probs}")
         logger.info(f"Result: {gesture} (Index: {pred_index})")
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
-    except TimeoutError as e:
-        logger.error(f"Inference timed out: {e}")
-        return jsonify({'error': 'Inference timed out'}), 500
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
