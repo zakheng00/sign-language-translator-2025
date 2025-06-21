@@ -12,7 +12,9 @@
     #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); }
     #output { margin-top: 20px; font-size: 24px; }
     #probabilities { margin-top: 10px; font-size: 16px; }
+    #progress { margin-top: 10px; font-size: 18px; color: #555; }
     button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+    .disabled { opacity: 0.5; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -21,8 +23,9 @@
   <canvas id="canvas" width="640" height="480"></canvas>
   <br>
   <button id="startBtn">Start</button>
-  <button id="stopBtn" disabled>Stop</button>
-  <button id="submitBtn" disabled>Translate</button>
+  <button id="stopBtn" class="disabled">Stop</button>
+  <button id="submitBtn" class="disabled">Translate</button>
+  <div id="progress">Progress: 0%</div>
   <div id="output">Result: </div>
   <div id="probabilities">Probs: </div>
 
@@ -34,11 +37,13 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const submitBtn = document.getElementById('submitBtn');
+    const progressDiv = document.getElementById('progress');
     const output = document.getElementById('output');
     const probabilitiesDiv = document.getElementById('probabilities');
     let frames = [];
     let capturing = false;
     const NUM_FRAMES = 100;
+    let frameCount = 0;
 
     // Backend URL (adjust based on environment)
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
@@ -139,14 +144,19 @@
       }
     }
 
-    // Capture frames
+    // Capture frames with dynamic interval
     function captureFrame(results) {
-      if (frames.length < NUM_FRAMES && capturing) {
+      if (capturing && frames.length < NUM_FRAMES) {
         const keypoints = extractKeypoints(results);
         frames.push(keypoints);
+        frameCount++;
+        const progress = Math.round((frameCount / NUM_FRAMES) * 100);
+        progressDiv.textContent = `Progress: ${progress}%`;
         console.log(`Captured frame ${frames.length}, keypoints: ${keypoints.length}`);
+
+        // Adjust interval based on frame rate (e.g., ~10ms for 100 fps)
         if (frames.length < NUM_FRAMES) {
-          setTimeout(() => holistic.send({ image: video }), 100);
+          requestAnimationFrame(() => holistic.send({ image: video }));
         } else {
           stopRecording();
         }
@@ -157,9 +167,11 @@
     function stopRecording() {
       if (capturing) {
         capturing = false;
+        frameCount = 0;
         startBtn.textContent = 'Start';
-        stopBtn.disabled = true;
-        submitBtn.disabled = frames.length === 0;
+        stopBtn.classList.add('disabled');
+        submitBtn.classList.remove('disabled');
+        progressDiv.textContent = `Progress: 100%`;
         console.log(`Recording stopped, captured ${frames.length} frames`);
       }
     }
@@ -167,6 +179,7 @@
     // Submit to backend
     async function predict() {
       try {
+        submitBtn.disabled = true;
         console.log('Sending to backend, frames:', frames.length);
         const response = await fetch(API_URL, {
           method: 'POST',
@@ -180,14 +193,18 @@
         if (result.error) {
           output.textContent = `Error: ${result.error}`;
         } else {
-          output.textContent = `Result: ${result.gesture}`;
-          probabilitiesDiv.textContent = `Probs: ${result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
+          output.textContent = `Result: ${result.gesture || 'Unknown'}`;
+          probabilitiesDiv.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
         }
         frames = [];
-        submitBtn.disabled = true;
+        progressDiv.textContent = 'Progress: 0%';
       } catch (err) {
         console.error('Prediction failed:', err);
         output.textContent = `Error: Prediction failed - ${err.message}`;
+        alert('Prediction failed, please try again.');
+      } finally {
+        submitBtn.classList.add('disabled');
+        stopBtn.classList.add('disabled');
       }
     }
 
@@ -205,8 +222,9 @@
         capturing = true;
         frames = [];
         startBtn.textContent = 'Recording...';
-        stopBtn.disabled = false;
-        submitBtn.disabled = true;
+        stopBtn.classList.remove('disabled');
+        submitBtn.classList.add('disabled');
+        progressDiv.textContent = 'Progress: 0%';
         console.log('Recording started');
         holistic.send({ image: video });
       }
