@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Room Mode - Sign Language & Speech Translator</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
     tailwind.config = {
@@ -19,6 +21,11 @@
     }
   </script>
   <style>
+    .hidden { display: none; }
+    #video { border: 2px solid #000; transform: scaleX(-1); }
+    #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); }
+    .disabled { opacity: 0.5; pointer-events: none; }
+    #chatBox { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; }
     .error { color: #dc2626; font-size: 0.875rem; }
   </style>
 </head>
@@ -39,6 +46,24 @@
         <div id="currentRoom" class="mt-2 text-lg text-gray-700"></div>
         <div id="roomError" class="error hidden"></div>
       </div>
+
+      <div id="signSection">
+        <h2 class="text-2xl font-semibold text-primary mb-4">Sign Language Translation</h2>
+        <video id="video" width="480" height="360" autoplay></video>
+        <canvas id="canvas" width="480" height="360"></canvas>
+        <br>
+        <button id="startSignBtn" class="bg-primary text-white px-6 py-3 rounded-lg hover:bg-secondary mt-2">Start</button>
+        <button id="stopSignBtn" class="bg-gray-300 px-6 py-3 rounded-lg mt-2 disabled">Stop</button>
+        <button id="submitSignBtn" class="bg-gray-300 px-6 py-3 rounded-lg mt-2 disabled">Translate</button>
+        <div id="progress-sign" class="mt-2 text-gray-600">Progress: 0%</div>
+        <div id="output-sign" class="mt-2 text-xl"></div>
+        <div id="probabilities-sign" class="mt-2 text-gray-600"></div>
+      </div>
+
+      <div class="mt-6">
+        <h2 class="text-2xl font-semibold text-primary mb-4">Chat History</h2>
+        <div id="chatBox" class="bg-white rounded-lg shadow-md p-4"></div>
+      </div>
     </div>
   </div>
 
@@ -46,12 +71,26 @@
     console.log('JavaScript running');
 
     document.addEventListener('DOMContentLoaded', () => {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const startSignBtn = document.getElementById('startSignBtn');
+      const stopSignBtn = document.getElementById('stopSignBtn');
+      const submitSignBtn = document.getElementById('submitSignBtn');
+      const progressSignDiv = document.getElementById('progress-sign');
+      const outputSign = document.getElementById('output-sign');
+      const probabilitiesSign = document.getElementById('probabilities-sign');
       const createRoomBtn = document.getElementById('createRoomBtn');
       const joinRoomInput = document.getElementById('joinRoomInput');
       const joinRoomBtn = document.getElementById('joinRoomBtn');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
+      const chatBox = document.getElementById('chatBox');
+      let signFrames = [];
+      let capturingSign = false;
       let currentRoom = null;
+      const NUM_SIGN_FRAMES = 100;
+      let signFrameCount = 0;
       let socket = io();
       const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
@@ -70,6 +109,182 @@
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
+
+      // 添加消息到聊天框
+      function addChatMessage(message, isSelf) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
+        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
+        chatBox.appendChild(messageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+
+      // 初始化 MediaPipe Holistic
+      const holistic = new Holistic({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+      });
+      holistic.setOptions({
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      // 绘制关键点
+      function drawLandmarks(results) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (results.poseLandmarks) {
+          for (const landmark of results.poseLandmarks) {
+            const x = landmark.x * canvas.width;
+            const y = landmark.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'blue';
+            ctx.fill();
+          }
+        }
+        if (results.leftHandLandmarks) {
+          for (const landmark of results.leftHandLandmarks) {
+            const x = landmark.x * canvas.width;
+            const y = landmark.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+          }
+        }
+        if (results.rightHandLandmarks) {
+          for (const landmark of results.rightHandLandmarks) {
+            const x = landmark.x * canvas.width;
+            const y = landmark.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'green';
+            ctx.fill();
+          }
+        }
+      }
+
+      // 提取关键点
+      function extractKeypoints(results) {
+        const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
+        const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+        const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+
+        if (results.poseLandmarks) {
+          results.poseLandmarks.forEach((landmark, i) => {
+            pose[i] = [landmark.x, landmark.y, landmark.z];
+          });
+        }
+        if (results.leftHandLandmarks) {
+          results.leftHandLandmarks.forEach((landmark, i) => {
+            leftHand[i] = [landmark.x, landmark.y, landmark.z];
+          });
+        }
+        if (results.rightHandLandmarks) {
+          results.rightHandLandmarks.forEach((landmark, i) => {
+            rightHand[i] = [landmark.x, landmark.y, landmark.z];
+          });
+        }
+        return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
+      }
+
+      // 启动摄像头
+      async function startWebcam() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          video.srcObject = stream;
+          const camera = new Camera(video, {
+            onFrame: async () => {
+              await holistic.send({ image: video });
+            },
+            width: 480,
+            height: 360
+          });
+          await camera.start();
+          console.log('MediaPipe camera started');
+        } catch (err) {
+          console.error('Failed to start webcam:', err);
+          outputSign.textContent = 'Error: Unable to access camera - ' + err.message;
+          alert('Please allow camera access to continue!');
+        }
+      }
+
+      // 捕获手语帧
+      function captureSignFrame(results) {
+        if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
+          const keypoints = extractKeypoints(results);
+          signFrames.push(keypoints);
+          signFrameCount++;
+          const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
+          progressSignDiv.textContent = `Progress: ${progress}%`;
+          console.log(`Captured sign frame ${signFrames.length}, keypoints: ${keypoints.length}`);
+
+          if (signFrames.length < NUM_SIGN_FRAMES) {
+            requestAnimationFrame(() => holistic.send({ image: video }));
+          } else {
+            stopSignRecording();
+          }
+        }
+      }
+
+      // 停止手语录制
+      function stopSignRecording() {
+        if (capturingSign) {
+          capturingSign = false;
+          signFrameCount = 0;
+          startSignBtn.textContent = 'Start';
+          stopSignBtn.classList.add('disabled');
+          submitSignBtn.classList.remove('disabled');
+          progressSignDiv.textContent = `Progress: 100%`;
+          console.log(`Sign recording stopped, captured ${signFrames.length} frames`);
+        }
+      }
+
+      // 提交手语翻译
+      async function predictSign() {
+        if (!currentRoom) {
+          outputSign.textContent = 'Error: Please join or create a room first';
+          return;
+        }
+        try {
+          submitSignBtn.classList.add('disabled');
+          console.log('Sending sign to backend, frames:', signFrames.length, 'Room:', currentRoom);
+          const response = await fetch(`${API_URL}/predict?room=${currentRoom}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames: signFrames })
+          });
+          if (!response.ok) {
+            throw new Error(`Backend error, status: ${response.status}`);
+          }
+          const result = await response.json();
+          if (result.error) {
+            outputSign.textContent = `Error: ${result.error}`;
+          } else {
+            const message = result.gesture || 'Unknown';
+            outputSign.textContent = `Your Sign Result: ${message}`;
+            probabilitiesSign.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
+            addChatMessage(message, true);
+            socket.emit('translation_result', { gesture: message, probabilities: result.probabilities, type: 'sign' }, { room: currentRoom });
+          }
+          signFrames = [];
+        } catch (err) {
+          console.error('Sign prediction failed:', err);
+          outputSign.textContent = `Error: Prediction failed - ${err.message}`;
+          alert('Sign prediction failed, please try again.');
+        } finally {
+          submitSignBtn.classList.add('disabled');
+          stopSignBtn.classList.add('disabled');
+        }
+      }
+
+      // 处理 MediaPipe 结果
+      holistic.onResults((results) => {
+        drawLandmarks(results);
+        if (capturingSign) {
+          captureSignFrame(results);
+        }
+      });
 
       // 创建房间
       createRoomBtn.addEventListener('click', () => {
@@ -99,6 +314,37 @@
         console.log(`Joined room acknowledgment: ${data.room}`);
         currentRoomDiv.textContent = `Current Room: ${data.room} (Connected)`;
       });
+
+      // 接收翻译结果
+      socket.on('translation_result', (data) => {
+        if (data.type === 'sign') {
+          outputSign.textContent = `Other's Sign Result: ${data.gesture || 'Unknown'}`;
+          probabilitiesSign.textContent = `Other's Probs: ${data.probabilities ? data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
+          addChatMessage(data.gesture || 'Unknown', false);
+        }
+      });
+
+      // 按钮事件
+      startSignBtn.addEventListener('click', () => {
+        if (!capturingSign && currentRoom) {
+          capturingSign = true;
+          signFrames = [];
+          startSignBtn.textContent = 'Recording...';
+          stopSignBtn.classList.remove('disabled');
+          submitSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: 0%';
+          console.log('Sign recording started');
+          holistic.send({ image: video });
+        } else if (!currentRoom) {
+          outputSign.textContent = 'Error: Please join or create a room first';
+        }
+      });
+
+      stopSignBtn.addEventListener('click', stopSignRecording);
+      submitSignBtn.addEventListener('click', predictSign);
+
+      // 初始化
+      startWebcam();
     });
   </script>
 </body>
