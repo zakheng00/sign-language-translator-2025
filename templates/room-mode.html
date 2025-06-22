@@ -125,8 +125,10 @@
       speechSection.classList.add('hidden');
       if (section === 'sign') {
         signSection.classList.remove('hidden');
+        console.log('Switched to Sign Translation');
       } else if (section === 'speech') {
         speechSection.classList.remove('hidden');
+        console.log('Switched to Speech Translation');
       }
     }
 
@@ -392,13 +394,14 @@
 
     // Join room
     joinRoomBtn.addEventListener('click', () => {
-      currentRoom = joinRoomInput.value || 'default_room';
-      if (currentRoom) {
+      const roomId = joinRoomInput.value.trim();
+      if (roomId) {
+        currentRoom = roomId;
         socket.emit('join_room', { room: currentRoom });
         currentRoomDiv.textContent = `Current Room: ${currentRoom}`;
         console.log(`Joined room: ${currentRoom}`);
       } else {
-        alert('Please enter a room ID');
+        alert('Please enter a valid room ID');
       }
     });
 
