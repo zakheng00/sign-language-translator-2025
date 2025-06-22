@@ -13,6 +13,12 @@ import signal
 import sys
 import eventlet
 
+app = Flask(__name__)
+socketio = SocketIO(app)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -195,3 +201,13 @@ if __name__ == '__main__':
         socketio.run(app, debug=False, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
+
+@socketio.on('join_room')
+def on_join(data):
+    room = data['room']
+    join_room(room)
+    emit('join_ack', {'room': room}, room=room)
+    logger.info(f'User joined room: {room}')
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
