@@ -105,6 +105,11 @@ def speech_to_text():
     logger.info("Accessed speech-to-text page")
     return send_from_directory('templates', 'speech-to-text.html')
 
+@app.route('/room-mode')
+def room_mode():
+    logger.info("Accessed room mode page")
+    return send_from_directory('templates', 'room-mode.html')
+
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     logger.info("Received /transcribe request")
