@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Room Mode - Sign Language & Speech Translator </title>
+  <title>Room Mode - Sign Language & Speech Translator</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -26,6 +26,7 @@
     #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); }
     #audioCanvas { display: none; }
     .disabled { opacity: 0.5; pointer-events: none; }
+    #chatBox { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -73,6 +74,11 @@
         <div id="progress-speech" class="mt-2 text-gray-600">Progress: Recording...</div>
         <div id="output-speech" class="mt-2 text-xl"></div>
       </div>
+
+      <div class="mt-6">
+        <h2 class="text-2xl font-semibold text-primary mb-4">Chat History</h2>
+        <div id="chatBox" class="bg-white rounded-lg shadow-md"></div>
+      </div>
     </div>
   </div>
 
@@ -102,6 +108,7 @@
     const speechSection = document.getElementById('speechSection');
     const selectSignBtn = document.getElementById('selectSignBtn');
     const selectSpeechBtn = document.getElementById('selectSpeechBtn');
+    const chatBox = document.getElementById('chatBox');
     let signFrames = [];
     let speechAudioData = [];
     let capturingSign = false;
@@ -111,16 +118,6 @@
     let signFrameCount = 0;
     let socket = io();
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-
-    // Initialize MediaPipe Holistic
-    const holistic = new Holistic({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
-    });
-    holistic.setOptions({
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
 
     // Toggle sections
     function showSection(section) {
@@ -132,6 +129,25 @@
         speechSection.classList.remove('hidden');
       }
     }
+
+    // Add message to chat
+    function addChatMessage(message, isSelf) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
+      messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Initialize MediaPipe Holistic
+    const holistic = new Holistic({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    });
+    holistic.setOptions({
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
 
     // Draw keypoints
     function drawLandmarks(results) {
@@ -265,9 +281,11 @@
         if (result.error) {
           outputSign.textContent = `Error: ${result.error}`;
         } else {
-          outputSign.textContent = `Your Sign Result: ${result.gesture || 'Unknown'}`;
+          const message = result.gesture || 'Unknown';
+          outputSign.textContent = `Your Sign Result: ${message}`;
           probabilitiesSign.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-          socket.emit('translation_result', { gesture: result.gesture, probabilities: result.probabilities, type: 'sign' }, { room: currentRoom });
+          addChatMessage(message, true);
+          socket.emit('translation_result', { gesture: message, probabilities: result.probabilities, type: 'sign' }, { room: currentRoom });
         }
         signFrames = [];
       } catch (err) {
@@ -348,8 +366,10 @@
         if (result.error) {
           outputSpeech.textContent = `Error: ${result.error}`;
         } else {
-          outputSpeech.textContent = `Your Speech Result: ${result.transcription || 'Unable to recognize speech'}`;
-          socket.emit('translation_result', { gesture: result.transcription, probabilities: [], type: 'speech' }, { room: currentRoom });
+          const message = result.transcription || 'Unable to recognize speech';
+          outputSpeech.textContent = `Your Speech Result: ${message}`;
+          addChatMessage(message, true);
+          socket.emit('translation_result', { gesture: message, probabilities: [], type: 'speech' }, { room: currentRoom });
         }
         speechAudioData = [];
       } catch (err) {
@@ -396,8 +416,10 @@
       if (data.type === 'sign') {
         outputSign.textContent = `Other's Sign Result: ${data.gesture || 'Unknown'}`;
         probabilitiesSign.textContent = `Other's Probs: ${data.probabilities ? data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
+        addChatMessage(data.gesture || 'Unknown', false);
       } else if (data.type === 'speech') {
         outputSpeech.textContent = `Other's Speech Result: ${data.gesture || 'Unknown'}`;
+        addChatMessage(data.gesture || 'Unknown', false);
       }
     });
 
