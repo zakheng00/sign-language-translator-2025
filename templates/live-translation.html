@@ -6,6 +6,7 @@
   <title>Real-Time Sign Language Translation</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script> <!-- Add Socket.IO client -->
   <style>
     body { font-family: Arial, sans-serif; text-align: center; }
     #video { border: 2px solid #000; transform: scaleX(-1); }
@@ -15,10 +16,13 @@
     #progress { margin-top: 10px; font-size: 18px; color: #555; }
     button { padding: 10px 20px; margin: 10px; font-size: 16px; }
     .disabled { opacity: 0.5; pointer-events: none; }
+    #roomInput { margin: 10px; padding: 5px; }
   </style>
 </head>
 <body>
   <h1>Real-Time Sign Language Translator</h1>
+  <input type="text" id="roomInput" placeholder="Enter Room ID (e.g., room1)">
+  <button id="joinRoomBtn">Join Room</button>
   <video id="video" width="640" height="480" autoplay></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <br>
@@ -40,10 +44,13 @@
     const progressDiv = document.getElementById('progress');
     const output = document.getElementById('output');
     const probabilitiesDiv = document.getElementById('probabilities');
+    const roomInput = document.getElementById('roomInput');
+    const joinRoomBtn = document.getElementById('joinRoomBtn');
     let frames = [];
     let capturing = false;
     const NUM_FRAMES = 100;
     let frameCount = 0;
+    let socket = io(); // Connect to Socket.IO server
 
     // Backend URL (adjust based on environment)
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
@@ -154,7 +161,6 @@
         progressDiv.textContent = `Progress: ${progress}%`;
         console.log(`Captured frame ${frames.length}, keypoints: ${keypoints.length}`);
 
-        // Adjust interval based on frame rate (e.g., ~10ms for 100 fps)
         if (frames.length < NUM_FRAMES) {
           requestAnimationFrame(() => holistic.send({ image: video }));
         } else {
@@ -179,9 +185,10 @@
     // Submit to backend
     async function predict() {
       try {
-        submitBtn.disabled = true;
-        console.log('Sending to backend, frames:', frames.length);
-        const response = await fetch(API_URL, {
+        submitBtn.classList.add('disabled');
+        const room = roomInput.value || 'default_room';
+        console.log('Sending to backend, frames:', frames.length, 'Room:', room);
+        const response = await fetch(`${API_URL}?room=${room}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ frames })
@@ -197,7 +204,6 @@
           probabilitiesDiv.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
         }
         frames = [];
-        progressDiv.textContent = 'Progress: 0%';
       } catch (err) {
         console.error('Prediction failed:', err);
         output.textContent = `Error: Prediction failed - ${err.message}`;
@@ -214,6 +220,19 @@
       if (capturing) {
         captureFrame(results);
       }
+    });
+
+    // Join room
+    joinRoomBtn.addEventListener('click', () => {
+      const room = roomInput.value || 'default_room';
+      socket.emit('join_room', { room: room });
+      console.log(`Joined room: ${room}`);
+    });
+
+    // Receive translation result
+    socket.on('translation_result', (data) => {
+      output.textContent = `Other's Result: ${data.gesture || 'Unknown'}`;
+      probabilitiesDiv.textContent = `Other's Probs: ${data.probabilities ? data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
     });
 
     // Button events

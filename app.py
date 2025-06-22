@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_socketio import SocketIO, join_room, emit
 import numpy as np
 import tensorflow.lite as tflite
 import json
@@ -10,10 +11,12 @@ from vosk import Model, KaldiRecognizer
 import ffmpeg
 import signal
 import sys
+import eventlet
 
-# Initialize Flask app
+# Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Disable ONEDNN for better TensorFlow compatibility on Render
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -24,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')  # Update to your TFLite file name
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
@@ -44,7 +47,6 @@ def load_models():
         if not os.path.exists(LABELS_PATH):
             raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
 
-        # Load TFLite model with Flex support
         interpreter = tflite.Interpreter(model_path=MODEL_PATH)
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
@@ -63,9 +65,6 @@ def load_models():
     except Exception as e:
         logger.error(f"Loading failed: {e}")
         sys.exit(1)
-
-# Load models on startup
-load_models()
 
 def transcribe_audio(audio_data):
     try:
@@ -148,31 +147,46 @@ def predict():
             logger.error(f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}")
             return jsonify({'error': f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}"}), 400
 
-        # Prepare input for TFLite model
         keypoints_sequence = frames.reshape(1, len(frames), 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
         keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1).astype(np.float32)
         logger.info(f"Keypoints sequence shape: {keypoints_sequence.shape}")
 
-        # Set input tensor and run inference
         logger.info("Starting model inference")
         interpreter.set_tensor(input_details[0]['index'], keypoints_sequence)
         interpreter.invoke()
         prediction = interpreter.get_tensor(output_details[0]['index'])
         pred_probs = prediction[0].tolist()
-        pred_index = np.argmax(prediction[0])  # Adjust for batch dimension
+        pred_index = np.argmax(prediction[0])
         gesture = labels.get(str(pred_index), 'Unknown')
         logger.info(f"Probabilities: {pred_probs}")
         logger.info(f"Result: {gesture} (Index: {pred_index})")
+
+        # Emit result to connected clients in the same room
+        room = request.args.get('room', 'default_room')
+        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs}, room=room)
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
 
+@socketio.on('join_room')
+def on_join(data):
+    room = data.get('room', 'default_room')
+    join_room(room)
+    logger.info(f"User joined room: {room}")
+
+@socketio.on('translation_result')
+def on_translation_result(data):
+    room = request.args.get('room', 'default_room')
+    emit('translation_result', data, room=room)
+    logger.info(f"Broadcasted translation to room: {room}")
+
 if __name__ == '__main__':
     try:
-        logger.info("Starting Flask server")
+        logger.info("Starting Flask server with SocketIO")
+        load_models()
         port = int(os.environ.get('PORT', 5000))
-        app.run(debug=False, host='0.0.0.0', port=port)
+        socketio.run(app, debug=False, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
