@@ -7,17 +7,9 @@ import json
 import logging
 import os
 import wave
-from vosk import Model, KaldiRecognizer
 import ffmpeg
-import signal
 import sys
 import eventlet
-
-app = Flask(__name__)
-socketio = SocketIO(app)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -72,7 +64,18 @@ def load_models():
         logger.error(f"Loading failed: {e}")
         sys.exit(1)
 
+def cleanup_files():
+    """Clean up temporary files."""
+    for fname in ['input.webm', 'temp.wav']:
+        if os.path.exists(fname):
+            try:
+                os.remove(fname)
+                logger.info(f"Cleaned up temporary file: {fname}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up {fname}: {e}")
+
 def transcribe_audio(audio_data):
+    """Transcribe audio data using Vosk."""
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
@@ -84,7 +87,8 @@ def transcribe_audio(audio_data):
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
-                recognizer.AcceptWaveform(data)
+                if not recognizer.AcceptWaveform(data):
+                    logger.warning("Partial recognition failed")
             result = recognizer.FinalResult()
             result_text = json.loads(result).get("text", "")
             return result_text if result_text.strip() else "Unable to recognize speech"
@@ -92,9 +96,7 @@ def transcribe_audio(audio_data):
         logger.error(f"Transcription failed: {e}")
         return "Transcription error"
     finally:
-        for fname in ['input.webm', 'temp.wav']:
-            if os.path.exists(fname):
-                os.remove(fname)
+        cleanup_files()
 
 @app.route('/')
 def index():
@@ -132,6 +134,8 @@ def transcribe():
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cleanup_files()
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -175,7 +179,7 @@ def predict():
 
         # Emit result to connected clients in the same room
         room = request.args.get('room', 'default_room')
-        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs}, room=room)
+        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs, 'type': 'sign'}, room=room)
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
@@ -183,13 +187,16 @@ def predict():
 
 @socketio.on('join_room')
 def on_join(data):
+    """Handle room join event."""
     room = data.get('room', 'default_room')
     join_room(room)
+    emit('join_ack', {'room': room}, room=room)
     logger.info(f"User joined room: {room}")
 
 @socketio.on('translation_result')
 def on_translation_result(data):
-    room = request.args.get('room', 'default_room')
+    """Broadcast translation result to room."""
+    room = data.get('room', 'default_room')
     emit('translation_result', data, room=room)
     logger.info(f"Broadcasted translation to room: {room}")
 
@@ -201,13 +208,4 @@ if __name__ == '__main__':
         socketio.run(app, debug=False, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
-
-@socketio.on('join_room')
-def on_join(data):
-    room = data['room']
-    join_room(room)
-    emit('join_ack', {'room': room}, room=room)
-    logger.info(f'User joined room: {room}')
-
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+        sys.exit(1)
