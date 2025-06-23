@@ -22,13 +22,14 @@
   </script>
   <style>
     .hidden { display: none; }
-    #video { border: 2px solid #000; }
-    #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); }
+    #video { border: 2px solid #000; transform: scaleX(-1); } /* 鏡像效果 */
+    #canvas { position: absolute; top: 100px; left: 50%; transform: translateX(-50%) scaleX(-1); } /* 同步鏡像 */
     .disabled { opacity: 0.5; pointer-events: none; }
     #chatBox { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; }
     .error { color: #dc2626; font-size: 0.875rem; }
-    #signSection { position: relative; z-index: 0; } /* 确保按鈕層級高於視頻 */
-    .controls { position: relative; z-index: 10; } /* 按鈕層級高於視頻 */
+    #signSection { position: relative; z-index: 0; }
+    .controls { position: relative; z-index: 10; }
+    .calibration-tip { color: #64748b; font-size: 0.875rem; margin-top: 5px; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -36,7 +37,7 @@
     <header class="text-center">
       <h1 class="text-4xl font-bold text-primary">Room Mode</h1>
       <p class="text-gray-500 mt-2">Create or join a room for real-time translation</p>
-      <p class="text-gray-600 text-sm">Please adjust your camera to capture your hands and body clearly.</p>
+      <p class="calibration-tip">Please adjust your camera and place your hands in the center of the frame.</p>
     </header>
 
     <div class="space-y-4">
@@ -132,8 +133,8 @@
       });
       holistic.setOptions({
         modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        minDetectionConfidence: 0.7, // 提高检测置信度
+        minTrackingConfidence: 0.7  // 提高跟踪置信度
       });
 
       // 绘制关键点
