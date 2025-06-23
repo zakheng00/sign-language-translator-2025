@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, emit
 import numpy as np
 import tensorflow.lite as tflite
 import json
@@ -9,12 +8,10 @@ import os
 import wave
 import ffmpeg
 import sys
-import eventlet
 
-# Initialize Flask app and SocketIO
+# Initialize Flask app
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Disable ONEDNN for better TensorFlow compatibility on Render
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -199,36 +196,17 @@ def predict():
         logger.info(f"Probabilities: {pred_probs}")
         logger.info(f"Result: {gesture} (Index: {pred_index})")
 
-        # Emit result to connected clients in the same room
-        room = request.args.get('room', 'default_room')
-        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs, 'type': 'sign'}, room=room)
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
 
-@socketio.on('join_room')
-def on_join(data):
-    """Handle room join event."""
-    room = data.get('room', 'default_room')
-    join_room(room)
-    emit('join_ack', {'room': room}, room=room)
-    logger.info(f"User joined room: {room}")
-
-@socketio.on('translation_result')
-def on_translation_result(data):
-    """Broadcast translation result to room."""
-    room = data.get('room', 'default_room')
-    emit('translation_result', data, room=room)
-    logger.info(f"Broadcasted translation to room: {room}")
-
 if __name__ == '__main__':
     try:
-        logger.info("Starting Flask server with SocketIO")
+        logger.info("Starting Flask server")
         if not load_models():
             logger.error("Model loading failed, server will not start properly")
         port = int(os.environ.get('PORT', 5000))
-        socketio.run(app, debug=False, host='0.0.0.0', port=port)
+        app.run(debug=False, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
-        sys.exit(1)
