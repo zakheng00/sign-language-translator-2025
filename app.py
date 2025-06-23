@@ -57,10 +57,11 @@ def load_models():
 
         if not os.path.exists(VOSK_MODEL_PATH):
             raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
+        logger.info(f"Attempting to load Vosk model from {VOSK_MODEL_PATH}")
         vosk_model = Model(VOSK_MODEL_PATH)
         recognizer = KaldiRecognizer(vosk_model, 16000)
         if recognizer is None:
-            raise RuntimeError("Failed to initialize Vosk recognizer")
+            raise RuntimeError(f"Failed to initialize Vosk recognizer with model at {VOSK_MODEL_PATH}")
         logger.info("Vosk model loaded successfully")
     except Exception as e:
         logger.error(f"Loading failed: {e}")
