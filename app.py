@@ -10,36 +10,40 @@ import wave
 import ffmpeg
 import sys
 import traceback
-import eventlet
-
-# ✅ FIX: Import Vosk
 from vosk import Model, KaldiRecognizer
+import eventlet
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
+# Disable ONEDNN for better TensorFlow compatibility on Render
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
+# Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
-VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
+VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-ms-0.3')  # <- MALAY MODEL
 
+# Global variables
 interpreter = None
 input_details = None
 output_details = None
 labels = None
 recognizer = None
 
+
 def load_models():
     global interpreter, input_details, output_details, labels, recognizer
     try:
-        logger.info(f"Loading model from {MODEL_PATH} and labels from {LABELS_PATH}...")
+        logger.info(f"Loading TFLite model from {MODEL_PATH} and labels from {LABELS_PATH}...")
+
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
         if not os.path.exists(LABELS_PATH):
@@ -49,175 +53,154 @@ def load_models():
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
-        logger.info("TensorFlow Lite model with Flex support loaded successfully")
+        logger.info("TensorFlow Lite model loaded successfully")
 
         with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-            labels = json.load(f)
+            labels.update(json.load(f)) if labels else labels := json.load(f)
         logger.info("Labels loaded successfully")
 
+        logger.info(f"Checking if Vosk model path exists: {VOSK_MODEL_PATH}")
         if not os.path.exists(VOSK_MODEL_PATH):
-            raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
+            raise FileNotFoundError(f"Vosk model folder does not exist: {VOSK_MODEL_PATH}")
+
         vosk_model = Model(VOSK_MODEL_PATH)
         recognizer = KaldiRecognizer(vosk_model, 16000)
         if recognizer is None:
-            raise RuntimeError("Failed to initialize Vosk recognizer")
-        logger.info("Vosk model loaded successfully")
+            raise RuntimeError("Recognizer is None after initialization")
+
+        logger.info("Vosk recognizer initialized successfully")
     except Exception as e:
-        logger.error(f"Loading failed: {type(e).__name__} - {str(e)}")
-        logger.debug(traceback.format_exc())  # ✅ Added traceback for debug
+        logger.error(f"Model loading failed: {type(e).__name__} - {e}")
+        logger.debug(traceback.format_exc())
         return False
     return True
+
 
 def cleanup_files():
     for fname in ['input.webm', 'temp.wav']:
         if os.path.exists(fname):
             try:
                 os.remove(fname)
-                logger.info(f"Cleaned up temporary file: {fname}")
+                logger.info(f"Deleted temporary file: {fname}")
             except Exception as e:
-                logger.warning(f"Failed to clean up {fname}: {e}")
+                logger.warning(f"Failed to delete {fname}: {e}")
+
 
 def transcribe_audio(audio_data):
     global recognizer
     if recognizer is None:
         logger.error("Recognizer is not initialized. Check Vosk model loading.")
         return "Recognizer not available"
-
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
-        logger.info("Audio data written to input.webm")
+        logger.info("Audio saved to input.webm")
 
-        try:
-            ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
-        except ffmpeg.Error as e:
-            logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
-            raise Exception("Audio conversion failed")
+        ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
+        logger.info("Audio converted to temp.wav")
 
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
-                raise ValueError(f"Invalid sample rate: {wf.getframerate()} Hz, expected 16000 Hz")
-            logger.info(f"Processing WAV file with sample rate: {wf.getframerate()} Hz")
+                raise ValueError("Sample rate must be 16000 Hz")
+
             result_text = ""
             while True:
                 data = wf.readframes(4000)
-                if len(data) == 0:
+                if not data:
                     break
                 recognizer.AcceptWaveform(data)
+
             result = recognizer.FinalResult()
-            result_text = json.loads(result).get("text", "")
-            transcription = result_text if result_text.strip() else "Unable to recognize speech"
-            logger.info(f"Transcription result: {transcription}")
-            return transcription
+            text = json.loads(result).get("text", "")
+            return text if text.strip() else "Unable to recognize speech"
     except Exception as e:
-        logger.error(f"Transcription failed: {type(e).__name__} - {str(e)}")
-        logger.debug(traceback.format_exc())
+        logger.error(f"Transcription error: {e}")
         return "Transcription error"
     finally:
         cleanup_files()
 
+
 @app.route('/')
 def index():
-    logger.info("Accessed homepage")
     return send_from_directory('templates', 'index.html')
+
 
 @app.route('/live-translation')
 def live_translation():
-    logger.info("Accessed live sign language translation page")
     return send_from_directory('templates', 'live-translation.html')
+
 
 @app.route('/speech-to-text')
 def speech_to_text():
-    logger.info("Accessed speech-to-text page")
     return send_from_directory('templates', 'speech-to-text.html')
 
-@app.route('/room-mode')
-def room_mode():
-    logger.info("Accessed room mode page")
-    return send_from_directory('templates', 'room-mode.html')
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    logger.info("Received /transcribe request")
     try:
         if 'audio' not in request.files:
-            logger.error("Missing audio file")
             return jsonify({'error': "Missing audio file"}), 400
-
-        audio_file = request.files['audio']
-        audio_data = audio_file.read()
-        transcription = transcribe_audio(audio_data)
-        logger.info(f"Transcription result: {transcription}")
-        return jsonify({'transcription': transcription})
+        audio_data = request.files['audio'].read()
+        text = transcribe_audio(audio_data)
+        return jsonify({'transcription': text})
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
         return jsonify({'error': str(e)}), 500
-    finally:
-        cleanup_files()
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    logger.info("Received /predict request")
     try:
         if not request.is_json:
-            logger.error("Request is not JSON format")
-            return jsonify({'error': 'Request must be in JSON format'}), 400
+            return jsonify({'error': 'Request must be JSON'}), 400
 
         data = request.get_json()
-        if 'frames' not in data:
-            logger.error("Missing 'frames' field")
-            return jsonify({'error': "Request missing 'frames' field"}), 400
+        frames = data.get('frames', [])
+        if not frames:
+            return jsonify({'error': 'Missing frames'}), 400
 
-        frames = np.array(data['frames'], dtype=np.float32)
-        frames = frames[:100] if len(frames) >= 100 else frames
-        if len(frames) == 0:
-            return jsonify({'gesture': 'No frames received', 'probabilities': []})
+        frames = np.array(frames, dtype=np.float32)
+        if frames.shape[1] != 222:
+            return jsonify({'error': f"Expected 222 keypoints, got {frames.shape[1]}"}), 400
 
-        if frames.shape[1] != 74 * 3:
-            logger.error(f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}")
-            return jsonify({'error': f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}"}), 400
+        frames = frames[:100]
+        x = frames.reshape(1, len(frames), 74, 3)
+        x = (x - x.mean(axis=(0, 1))) / (x.std(axis=(0, 1)) + 1e-8)
+        x = np.expand_dims(x, axis=-1).astype(np.float32)
 
-        keypoints_sequence = frames.reshape(1, len(frames), 74, 3)
-        keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
-        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1).astype(np.float32)
-
-        logger.info("Starting model inference")
-        interpreter.set_tensor(input_details[0]['index'], keypoints_sequence)
+        interpreter.set_tensor(input_details[0]['index'], x)
         interpreter.invoke()
-        prediction = interpreter.get_tensor(output_details[0]['index'])
-        pred_probs = prediction[0].tolist()
-        pred_index = np.argmax(prediction[0])
-        gesture = labels.get(str(pred_index), 'Unknown')
-        logger.info(f"Probabilities: {pred_probs}")
-        logger.info(f"Result: {gesture} (Index: {pred_index})")
+        output = interpreter.get_tensor(output_details[0]['index'])
 
-        room = request.args.get('room', 'default_room')
-        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs, 'type': 'sign'}, room=room)
-        return jsonify({'gesture': gesture, 'probabilities': pred_probs})
+        probs = output[0].tolist()
+        pred_idx = int(np.argmax(probs))
+        gesture = labels.get(str(pred_idx), 'Unknown')
+
+        room = request.args.get('room', 'default')
+        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': probs, 'type': 'sign'}, room=room)
+
+        return jsonify({'gesture': gesture, 'probabilities': probs})
     except Exception as e:
-        logger.error(f"Inference failed: {e}")
+        logger.error(f"Prediction error: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @socketio.on('join_room')
-def on_join(data):
-    room = data.get('room', 'default_room')
+def join(data):
+    room = data.get('room', 'default')
     join_room(room)
     emit('join_ack', {'room': room}, room=room)
-    logger.info(f"User joined room: {room}")
+
 
 @socketio.on('translation_result')
-def on_translation_result(data):
-    room = data.get('room', 'default_room')
+def handle_result(data):
+    room = data.get('room', 'default')
     emit('translation_result', data, room=room)
-    logger.info(f"Broadcasted translation to room: {room}")
+
 
 if __name__ == '__main__':
-    try:
-        logger.info("Starting Flask server with SocketIO")
-        if not load_models():
-            logger.error("Model loading failed, server will not start properly")
+    if load_models():
         port = int(os.environ.get('PORT', 5000))
-        socketio.run(app, debug=False, host='0.0.0.0', port=port)
-    except Exception as e:
-        logger.error(f"Server failed to start: {e}")
+        socketio.run(app, host='0.0.0.0', port=port)
+    else:
+        logger.error("Startup failed due to model loading error")
         sys.exit(1)
