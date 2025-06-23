@@ -63,8 +63,9 @@ def load_models():
             raise RuntimeError("Failed to initialize Vosk recognizer")
         logger.info("Vosk model loaded successfully")
     except Exception as e:
-        logger.error(f"Loading failed: {e}")
-        sys.exit(1)
+        logger.error(f"Loading failed: {type(e).__name__} - {str(e)}")
+        return False
+    return True
 
 def cleanup_files():
     """Clean up temporary files."""
@@ -84,23 +85,24 @@ def transcribe_audio(audio_data):
         return "Recognizer not available"
 
     try:
-        # Write audio data to temporary file
+        # Step 1: Save raw audio as input.webm
         with open("input.webm", "wb") as f:
             f.write(audio_data)
         logger.info("Audio data written to input.webm")
 
-        # Convert WebM to WAV using ffmpeg
+        # Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
         try:
-            ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000', loglevel='error').run(overwrite_output=True)
+            ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
         except ffmpeg.Error as e:
             logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
             raise Exception("Audio conversion failed")
 
-        # Process WAV file
+        # Step 3: Use Vosk for speech recognition
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError(f"Invalid sample rate: {wf.getframerate()} Hz, expected 16000 Hz")
             logger.info(f"Processing WAV file with sample rate: {wf.getframerate()} Hz")
+            result_text = ""
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
@@ -223,7 +225,8 @@ def on_translation_result(data):
 if __name__ == '__main__':
     try:
         logger.info("Starting Flask server with SocketIO")
-        load_models()
+        if not load_models():
+            logger.error("Model loading failed, server will not start properly")
         port = int(os.environ.get('PORT', 5000))
         socketio.run(app, debug=False, host='0.0.0.0', port=port)
     except Exception as e:
