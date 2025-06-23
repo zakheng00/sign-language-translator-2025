@@ -14,7 +14,7 @@ import eventlet
 # Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Disable ONEDNN for better TensorFlow compatibility on Render
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -39,7 +39,7 @@ recognizer = None
 def load_models():
     global interpreter, input_details, output_details, labels, recognizer
     try:
-        logger.info("Loading model and labels...")
+        logger.info(f"Loading model from {MODEL_PATH} and labels from {LABELS_PATH}...")
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
         if not os.path.exists(LABELS_PATH):
@@ -59,6 +59,8 @@ def load_models():
             raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
         vosk_model = Model(VOSK_MODEL_PATH)
         recognizer = KaldiRecognizer(vosk_model, 16000)
+        if recognizer is None:
+            raise RuntimeError("Failed to initialize Vosk recognizer")
         logger.info("Vosk model loaded successfully")
     except Exception as e:
         logger.error(f"Loading failed: {e}")
@@ -76,6 +78,10 @@ def cleanup_files():
 
 def transcribe_audio(audio_data):
     """Transcribe audio data using Vosk."""
+    global recognizer
+    if recognizer is None:
+        logger.error("Recognizer is not initialized")
+        return "Recognizer not available"
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
