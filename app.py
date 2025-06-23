@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_socketio import SocketIO, join_room, emit
 import numpy as np
 import tensorflow.lite as tflite
 import json
@@ -8,25 +9,27 @@ import os
 import wave
 import ffmpeg
 import sys
+import traceback
+import eventlet
 
-# Initialize Flask app
+# ✅ FIX: Import Vosk
+from vosk import Model, KaldiRecognizer
+
+# Initialize Flask app and SocketIO
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# Disable ONEDNN for better TensorFlow compatibility on Render
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-# Global variables for model and recognizer
 interpreter = None
 input_details = None
 output_details = None
@@ -61,11 +64,11 @@ def load_models():
         logger.info("Vosk model loaded successfully")
     except Exception as e:
         logger.error(f"Loading failed: {type(e).__name__} - {str(e)}")
+        logger.debug(traceback.format_exc())  # ✅ Added traceback for debug
         return False
     return True
 
 def cleanup_files():
-    """Clean up temporary files."""
     for fname in ['input.webm', 'temp.wav']:
         if os.path.exists(fname):
             try:
@@ -75,26 +78,22 @@ def cleanup_files():
                 logger.warning(f"Failed to clean up {fname}: {e}")
 
 def transcribe_audio(audio_data):
-    """Transcribe audio data using Vosk with improved error handling."""
     global recognizer
     if recognizer is None:
         logger.error("Recognizer is not initialized. Check Vosk model loading.")
         return "Recognizer not available"
 
     try:
-        # Step 1: Save raw audio as input.webm
         with open("input.webm", "wb") as f:
             f.write(audio_data)
         logger.info("Audio data written to input.webm")
 
-        # Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
         try:
             ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
         except ffmpeg.Error as e:
             logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
             raise Exception("Audio conversion failed")
 
-        # Step 3: Use Vosk for speech recognition
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError(f"Invalid sample rate: {wf.getframerate()} Hz, expected 16000 Hz")
@@ -104,8 +103,7 @@ def transcribe_audio(audio_data):
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
-                if not recognizer.AcceptWaveform(data):
-                    logger.warning("Partial recognition failed during waveform processing")
+                recognizer.AcceptWaveform(data)
             result = recognizer.FinalResult()
             result_text = json.loads(result).get("text", "")
             transcription = result_text if result_text.strip() else "Unable to recognize speech"
@@ -113,6 +111,7 @@ def transcribe_audio(audio_data):
             return transcription
     except Exception as e:
         logger.error(f"Transcription failed: {type(e).__name__} - {str(e)}")
+        logger.debug(traceback.format_exc())
         return "Transcription error"
     finally:
         cleanup_files()
@@ -169,10 +168,7 @@ def predict():
             logger.error("Missing 'frames' field")
             return jsonify({'error': "Request missing 'frames' field"}), 400
 
-        frames = data['frames']
-        logger.info(f"Received {len(frames)} frames")
-        frames = np.array(frames, dtype=np.float32)
-
+        frames = np.array(data['frames'], dtype=np.float32)
         frames = frames[:100] if len(frames) >= 100 else frames
         if len(frames) == 0:
             return jsonify({'gesture': 'No frames received', 'probabilities': []})
@@ -184,7 +180,6 @@ def predict():
         keypoints_sequence = frames.reshape(1, len(frames), 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
         keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1).astype(np.float32)
-        logger.info(f"Keypoints sequence shape: {keypoints_sequence.shape}")
 
         logger.info("Starting model inference")
         interpreter.set_tensor(input_details[0]['index'], keypoints_sequence)
@@ -196,17 +191,33 @@ def predict():
         logger.info(f"Probabilities: {pred_probs}")
         logger.info(f"Result: {gesture} (Index: {pred_index})")
 
+        room = request.args.get('room', 'default_room')
+        socketio.emit('translation_result', {'gesture': gesture, 'probabilities': pred_probs, 'type': 'sign'}, room=room)
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
 
+@socketio.on('join_room')
+def on_join(data):
+    room = data.get('room', 'default_room')
+    join_room(room)
+    emit('join_ack', {'room': room}, room=room)
+    logger.info(f"User joined room: {room}")
+
+@socketio.on('translation_result')
+def on_translation_result(data):
+    room = data.get('room', 'default_room')
+    emit('translation_result', data, room=room)
+    logger.info(f"Broadcasted translation to room: {room}")
+
 if __name__ == '__main__':
     try:
-        logger.info("Starting Flask server")
+        logger.info("Starting Flask server with SocketIO")
         if not load_models():
             logger.error("Model loading failed, server will not start properly")
         port = int(os.environ.get('PORT', 5000))
-        app.run(debug=False, host='0.0.0.0', port=port)
+        socketio.run(app, debug=False, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
+        sys.exit(1)
