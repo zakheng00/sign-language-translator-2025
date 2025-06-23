@@ -7,72 +7,108 @@ import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
-import ffmpeg  # ✅ Added: for format conversion
+import ffmpeg
 
+# Initialize Flask app
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
+# Disable ONEDNN for better TensorFlow compatibility
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
+# Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')  # Updated to .h5 model
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-try:
-    logger.info("Loading model and labels...")
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
-    if not os.path.exists(LABELS_PATH):
-        raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
+# Global variables for model and recognizer
+model = None
+labels = None
+recognizer = None
 
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-        labels = json.load(f)
-    logger.info("Sign language model and labels loaded successfully")
+def load_models():
+    global model, labels, recognizer
+    try:
+        logger.info(f"Loading model from {MODEL_PATH} and labels from {LABELS_PATH}...")
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
+        if not os.path.exists(LABELS_PATH):
+            raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
 
-    if not os.path.exists(VOSK_MODEL_PATH):
-        raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
-    vosk_model = Model(VOSK_MODEL_PATH)
-    recognizer = KaldiRecognizer(vosk_model, 16000)
-    logger.info("Vosk model loaded successfully")
-except Exception as e:
-    logger.error(f"Loading failed: {e}")
-    exit(1)
+        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        logger.info("Sign language model loaded successfully")
+
+        with open(LABELS_PATH, 'r', encoding='utf-8') as f:
+            labels = json.load(f)
+        logger.info("Labels loaded successfully")
+
+        if not os.path.exists(VOSK_MODEL_PATH):
+            raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
+        vosk_model = Model(VOSK_MODEL_PATH)
+        recognizer = KaldiRecognizer(vosk_model, 16000)
+        logger.info("Vosk model loaded successfully")
+    except Exception as e:
+        logger.error(f"Loading failed: {type(e).__name__} - {str(e)}")
+        return False
+    return True
+
+def cleanup_files():
+    """Clean up temporary files."""
+    for fname in ['input.webm', 'temp.wav']:
+        if os.path.exists(fname):
+            try:
+                os.remove(fname)
+                logger.info(f"Cleaned up temporary file: {fname}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up {fname}: {e}")
 
 def transcribe_audio(audio_data):
+    """Transcribe audio data using Vosk with improved error handling."""
+    global recognizer
+    if recognizer is None:
+        logger.error("Recognizer is not initialized. Check Vosk model loading.")
+        return "Recognizer not available"
+
     try:
-        # ✅ Step 1: Save raw audio as input.webm
+        # Step 1: Save raw audio as input.webm
         with open("input.webm", "wb") as f:
             f.write(audio_data)
+        logger.info("Audio data written to input.webm")
 
-        # ✅ Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
-        ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
+        # Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
+        try:
+            ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
+        except ffmpeg.Error as e:
+            logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
+            raise Exception("Audio conversion failed")
 
-        # ✅ Step 3: Use Vosk for speech recognition
+        # Step 3: Use Vosk for speech recognition
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
-                raise ValueError("Audio sample rate must be 16000 Hz")
+                raise ValueError(f"Invalid sample rate: {wf.getframerate()} Hz, expected 16000 Hz")
+            logger.info(f"Processing WAV file with sample rate: {wf.getframerate()} Hz")
             result_text = ""
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
-                recognizer.AcceptWaveform(data)
+                if not recognizer.AcceptWaveform(data):
+                    logger.warning("Partial recognition failed during waveform processing")
             result = recognizer.FinalResult()
             result_text = json.loads(result).get("text", "")
-            return result_text if result_text.strip() else "Unable to recognize speech"
+            transcription = result_text if result_text.strip() else "Unable to recognize speech"
+            logger.info(f"Transcription result: {transcription}")
+            return transcription
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Transcription failed: {type(e).__name__} - {str(e)}")
         return "Transcription error"
     finally:
-        # ✅ Step 4: Clean up temporary files
-        for fname in ['input.webm', 'temp.wav']:
-            if os.path.exists(fname):
-                os.remove(fname)
+        cleanup_files()
 
 @app.route('/')
 def index():
@@ -99,13 +135,14 @@ def transcribe():
 
         audio_file = request.files['audio']
         audio_data = audio_file.read()
-
         transcription = transcribe_audio(audio_data)
         logger.info(f"Transcription result: {transcription}")
         return jsonify({'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cleanup_files()
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -156,6 +193,8 @@ def predict():
 if __name__ == '__main__':
     try:
         logger.info("Starting Flask server")
+        if not load_models():
+            logger.error("Model loading failed, server will not start properly")
         port = int(os.environ.get('PORT', 5000))
         app.run(debug=False, host='0.0.0.0', port=port)
     except Exception as e:
