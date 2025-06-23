@@ -57,11 +57,10 @@ def load_models():
 
         if not os.path.exists(VOSK_MODEL_PATH):
             raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
-        logger.info(f"Attempting to load Vosk model from {VOSK_MODEL_PATH}")
         vosk_model = Model(VOSK_MODEL_PATH)
         recognizer = KaldiRecognizer(vosk_model, 16000)
         if recognizer is None:
-            raise RuntimeError(f"Failed to initialize Vosk recognizer with model at {VOSK_MODEL_PATH}")
+            raise RuntimeError("Failed to initialize Vosk recognizer")
         logger.info("Vosk model loaded successfully")
     except Exception as e:
         logger.error(f"Loading failed: {e}")
@@ -78,29 +77,43 @@ def cleanup_files():
                 logger.warning(f"Failed to clean up {fname}: {e}")
 
 def transcribe_audio(audio_data):
-    """Transcribe audio data using Vosk."""
+    """Transcribe audio data using Vosk with improved error handling."""
     global recognizer
     if recognizer is None:
-        logger.error("Recognizer is not initialized")
+        logger.error("Recognizer is not initialized. Check Vosk model loading.")
         return "Recognizer not available"
+
     try:
+        # Write audio data to temporary file
         with open("input.webm", "wb") as f:
             f.write(audio_data)
-        ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
+        logger.info("Audio data written to input.webm")
+
+        # Convert WebM to WAV using ffmpeg
+        try:
+            ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000', loglevel='error').run(overwrite_output=True)
+        except ffmpeg.Error as e:
+            logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
+            raise Exception("Audio conversion failed")
+
+        # Process WAV file
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
-                raise ValueError("Audio sample rate must be 16000 Hz")
+                raise ValueError(f"Invalid sample rate: {wf.getframerate()} Hz, expected 16000 Hz")
+            logger.info(f"Processing WAV file with sample rate: {wf.getframerate()} Hz")
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
                 if not recognizer.AcceptWaveform(data):
-                    logger.warning("Partial recognition failed")
+                    logger.warning("Partial recognition failed during waveform processing")
             result = recognizer.FinalResult()
             result_text = json.loads(result).get("text", "")
-            return result_text if result_text.strip() else "Unable to recognize speech"
+            transcription = result_text if result_text.strip() else "Unable to recognize speech"
+            logger.info(f"Transcription result: {transcription}")
+            return transcription
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Transcription failed: {type(e).__name__} - {str(e)}")
         return "Transcription error"
     finally:
         cleanup_files()
