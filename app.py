@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Define paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model_with_flex.tflite')  # Updated to .h5 model
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')  # Updated to .h5 model
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
