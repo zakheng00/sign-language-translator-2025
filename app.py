@@ -115,7 +115,7 @@ def transcribe():
         return jsonify({'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
-        return jsonify({'error': str(e)}), 500)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -161,7 +161,7 @@ def predict():
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
-        return jsonify({'error': str(e)}), 500)
+        return jsonify({'error': str(e)}), 500
 
 # Room management routes
 @app.route('/create_room', methods=['POST'])
@@ -174,7 +174,7 @@ def create_room():
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to create room: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/join_room', methods=['POST'])
 def join_room():
@@ -196,7 +196,7 @@ def join_room():
         return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to join room: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/rooms', methods=['GET'])
 def list_rooms():
@@ -205,7 +205,7 @@ def list_rooms():
         return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to list rooms: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     try:
