@@ -9,6 +9,7 @@ import wave
 from vosk import Model, KaldiRecognizer
 import ffmpeg  # ✅ Added: for format conversion
 from uuid import uuid4
+from threading import Lock
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -23,8 +24,9 @@ MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-# In-memory room storage (for simplicity)
+# In-memory room storage with thread safety
 rooms = {}
+room_lock = Lock()
 
 try:
     logger.info("Loading model and labels...")
@@ -54,14 +56,11 @@ except Exception as e:
 def transcribe_audio(audio_data):
     global recognizer
     try:
-        # ✅ Step 1: Save raw audio as input.webm
         with open("input.webm", "wb") as f:
             f.write(audio_data)
 
-        # ✅ Step 2: Convert input.webm to temp.wav (16kHz, mono) using ffmpeg
         ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
 
-        # ✅ Step 3: Use Vosk for speech recognition
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError("Audio sample rate must be 16000 Hz")
@@ -79,7 +78,6 @@ def transcribe_audio(audio_data):
         logger.error(f"Transcription failed: {e}")
         return "Transcription error"
     finally:
-        # ✅ Step 4: Clean up temporary files
         for fname in ['input.webm', 'temp.wav']:
             if os.path.exists(fname):
                 os.remove(fname)
@@ -174,7 +172,8 @@ def create_room():
     logger.info("Received /create_room request")
     try:
         room_id = str(uuid4())
-        rooms[room_id] = {'users': []}
+        with room_lock:
+            rooms[room_id] = {'users': []}
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -191,13 +190,14 @@ def join_room():
             return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
 
         room_id = data['room_id']
-        if room_id not in rooms:
-            logger.error(f"Room {room_id} does not exist")
-            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
+        with room_lock:
+            if room_id not in rooms:
+                logger.error(f"Room {room_id} does not exist")
+                return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
 
-        user_id = str(uuid4())  # Simple user identification
-        rooms[room_id]['users'].append(user_id)
-        logger.info(f"User {user_id} joined room {room_id}")
+            user_id = str(uuid4())
+            rooms[room_id]['users'].append(user_id)
+            logger.info(f"User {user_id} joined room {room_id}")
         return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to join room: {e}")
@@ -207,7 +207,8 @@ def join_room():
 def list_rooms():
     logger.info("Received /rooms request")
     try:
-        return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
+        with room_lock:
+            return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to list rooms: {e}")
         return jsonify({'error': str(e)}), 500
