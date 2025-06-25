@@ -31,6 +31,8 @@
     #signSection, #speechSection { position: relative; z-index: 0; }
     .controls { position: relative; z-index: 10; }
     .calibration-tip { color: #64748b; font-size: 0.875rem; margin-top: 5px; }
+    .loading { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
@@ -55,6 +57,7 @@
         </div>
         <div id="currentRoom" class="mt-2 text-lg text-gray-700"></div>
         <div id="roomError" class="error hidden"></div>
+        <div id="connectionStatus" class="mt-2 text-sm text-gray-600"></div>
       </div>
 
       <div id="signSection" class="section">
@@ -119,6 +122,7 @@
       const joinRoomBtn = document.getElementById('joinRoomBtn');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
+      const connectionStatus = document.getElementById('connectionStatus');
       const chatBox = document.getElementById('chatBox');
       const signSection = document.getElementById('signSection');
       const speechSection = document.getElementById('speechSection');
@@ -131,16 +135,31 @@
       let currentRoom = null;
       const NUM_SIGN_FRAMES = 100;
       let signFrameCount = 0;
-      let socket = io();
-      const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
+      let socket = io(API_URL, { reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000 });
 
-      // 验证 Socket.IO 连接
+      // Socket.IO 连接状态
       socket.on('connect', () => {
-        console.log('Connected to Socket.IO server');
+        connectionStatus.textContent = 'Connected to server';
+        connectionStatus.classList.remove('loading');
+        console.log('Connected to Socket.IO server with SID:', socket.id);
       });
+
       socket.on('connect_error', (error) => {
+        connectionStatus.textContent = 'Connection error, retrying...';
+        connectionStatus.classList.add('loading');
         console.error('Socket.IO connection error:', error);
-        showError('Connection error, please try again later');
+      });
+
+      socket.on('reconnect', () => {
+        connectionStatus.textContent = 'Reconnected to server';
+        connectionStatus.classList.remove('loading');
+        if (currentRoom) socket.emit('join_room', { room_id: currentRoom });
+      });
+
+      socket.on('disconnect', () => {
+        connectionStatus.textContent = 'Disconnected, attempting to reconnect...';
+        connectionStatus.classList.add('loading');
       });
 
       // 显示错误
@@ -301,15 +320,14 @@
         }
         try {
           submitSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: Translating...';
           console.log('Sending sign to backend, frames:', signFrames.length, 'Room:', currentRoom);
-          const response = await fetch(`${API_URL}/predict?room=${currentRoom}`, {
+          const response = await fetch(`${API_URL}/predict`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Socket-ID': socket.id },
             body: JSON.stringify({ frames: signFrames })
           });
-          if (!response.ok) {
-            throw new Error(`Backend error, status: ${response.status}`);
-          }
+          if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
           const result = await response.json();
           if (result.error) {
             outputSign.textContent = `Error: ${result.error}`;
@@ -318,7 +336,7 @@
             outputSign.textContent = `Your Sign Result: ${message}`;
             probabilitiesSign.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
             addChatMessage(message, true);
-            socket.emit('translation_result', { gesture: message, probabilities: result.probabilities, type: 'sign' }, { room: currentRoom });
+            socket.emit('send_gesture', { room_id: currentRoom, user_id: socket.id, gesture: message });
           }
           signFrames = [];
         } catch (err) {
@@ -328,29 +346,30 @@
         } finally {
           submitSignBtn.classList.add('disabled');
           stopSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: 0%';
         }
       }
 
       // 处理 MediaPipe 结果
       holistic.onResults((results) => {
         drawLandmarks(results);
-        if (capturingSign) {
-          captureSignFrame(results);
-        }
+        if (capturingSign) captureSignFrame(results);
       });
 
       // 音频录制设置
       let mediaRecorder;
 
       function startAudioRecording() {
+        if (!currentRoom) {
+          outputSpeech.textContent = 'Error: Please join or create a room first';
+          return;
+        }
         navigator.mediaDevices.getUserMedia({ audio: true })
           .then(stream => {
             mediaRecorder = new MediaRecorder(stream);
             speechAudioData = [];
             mediaRecorder.ondataavailable = event => speechAudioData.push(event.data);
-            mediaRecorder.onstop = () => {
-              stopSpeechRecording();
-            };
+            mediaRecorder.onstop = () => stopSpeechRecording();
             mediaRecorder.start();
             recordingSpeech = true;
             startSpeechBtn.textContent = 'Recording...';
@@ -384,16 +403,16 @@
         }
         try {
           submitSpeechBtn.classList.add('disabled');
+          progressSpeechDiv.textContent = 'Progress: Translating...';
           const formData = new FormData();
           formData.append('audio', new Blob(speechAudioData, { type: 'audio/webm' }), 'audio.webm');
           console.log('Sending speech to backend, Room:', currentRoom);
-          const response = await fetch(`${API_URL}/transcribe?room=${currentRoom}`, {
+          const response = await fetch(`${API_URL}/transcribe`, {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: { 'X-Socket-ID': socket.id }
           });
-          if (!response.ok) {
-            throw new Error(`Backend error, status: ${response.status}`);
-          }
+          if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
           const result = await response.json();
           if (result.error) {
             outputSpeech.textContent = `Error: ${result.error}`;
@@ -401,7 +420,7 @@
             const message = result.transcription || 'Unable to recognize speech';
             outputSpeech.textContent = `Your Speech Result: ${message}`;
             addChatMessage(message, true);
-            socket.emit('translation_result', { gesture: message, probabilities: [], type: 'speech' }, { room: currentRoom });
+            socket.emit('send_transcription', { room_id: currentRoom, user_id: socket.id, text: message });
           }
           speechAudioData = [];
         } catch (err) {
@@ -411,13 +430,14 @@
         } finally {
           submitSpeechBtn.classList.add('disabled');
           stopSpeechBtn.classList.add('disabled');
+          progressSpeechDiv.textContent = 'Progress: 0%';
         }
       }
 
       // 创建房间
       createRoomBtn.addEventListener('click', () => {
         currentRoom = 'room_' + Math.random().toString(36).substr(2, 9);
-        socket.emit('join_room', { room: currentRoom });
+        socket.emit('join_room', { room_id: currentRoom });
         currentRoomDiv.textContent = `Current Room: ${currentRoom} (Share this ID with another user)`;
         console.log(`Created and joined room: ${currentRoom}`);
         roomError.classList.add('hidden');
@@ -428,8 +448,8 @@
         const roomId = joinRoomInput.value.trim();
         if (roomId) {
           currentRoom = roomId;
-          socket.emit('join_room', { room: currentRoom });
-          currentRoomDiv.textContent = `Current Room: ${currentRoom}`;
+          socket.emit('join_room', { room_id: currentRoom });
+          currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connecting...)`;
           console.log(`Joined room: ${currentRoom}`);
           roomError.classList.add('hidden');
         } else {
@@ -437,21 +457,24 @@
         }
       });
 
-      // 接收加入确认
-      socket.on('join_ack', (data) => {
-        console.log(`Joined room acknowledgment: ${data.room}`);
-        currentRoomDiv.textContent = `Current Room: ${data.room} (Connected)`;
+      // 接收加入确认和翻译结果
+      socket.on('user_joined', (data) => {
+        console.log(`User ${data.user_id} joined room ${data.room_id}`);
+        addChatMessage(`User ${data.user_id} joined`, false);
       });
 
-      // 接收翻译结果
-      socket.on('translation_result', (data) => {
-        if (data.type === 'sign') {
-          outputSign.textContent = `Other's Sign Result: ${data.gesture || 'Unknown'}`;
+      socket.on('transcription', (data) => {
+        if (data.user_id !== socket.id) {
+          outputSpeech.textContent = `Other's Speech Result: ${data.text}`;
+          addChatMessage(data.text, false);
+        }
+      });
+
+      socket.on('gesture', (data) => {
+        if (data.user_id !== socket.id) {
+          outputSign.textContent = `Other's Sign Result: ${data.gesture}`;
           probabilitiesSign.textContent = `Other's Probs: ${data.probabilities ? data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-          addChatMessage(data.gesture || 'Unknown', false);
-        } else if (data.type === 'speech') {
-          outputSpeech.textContent = `Other's Speech Result: ${data.gesture || 'Unknown'}`;
-          addChatMessage(data.gesture || 'Unknown', false);
+          addChatMessage(data.gesture, false);
         }
       });
 
@@ -482,7 +505,7 @@
       submitSpeechBtn.addEventListener('click', transcribeSpeech);
 
       // 初始化
-      showSection('sign'); // 默认选择手语翻译
+      showSection('sign');
       startWebcam();
     });
   </script>
