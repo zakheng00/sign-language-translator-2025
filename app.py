@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, leave_room
+from flask_socketio import SocketIO, join_room, leave_room, emit
 import numpy as np
 import tensorflow as tf
 import json
@@ -8,14 +8,15 @@ import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
-import ffmpeg  # ✅ Added: for format conversion
+import ffmpeg
 from uuid import uuid4
+from threading import Thread
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# Configure SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Configure SocketIO with eventlet
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -60,9 +61,7 @@ def transcribe_audio(audio_data):
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
-
         ffmpeg.input('input.webm').output('temp.wav', ac=1, ar='16000').run(overwrite_output=True)
-
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError("Audio sample rate must be 16000 Hz")
@@ -83,6 +82,21 @@ def transcribe_audio(audio_data):
         for fname in ['input.webm', 'temp.wav']:
             if os.path.exists(fname):
                 os.remove(fname)
+
+def predict_gesture_async(frames, sid):
+    try:
+        logger.info("Starting model inference in thread")
+        keypoints_sequence = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
+        keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
+        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
+        prediction = model.predict(keypoints_sequence, verbose=0)
+        pred_probs = prediction[0].tolist()
+        pred_index = np.argmax(prediction, axis=-1)[0]
+        gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
+        logger.info(f"Prediction result: {gesture}, Probabilities: {pred_probs}")
+        socketio.emit('gesture', {'user_id': str(uuid4()), 'gesture': gesture, 'probabilities': pred_probs}, room=sid)
+    except Exception as e:
+        logger.error(f"Prediction failed in thread: {e}")
 
 @app.route('/')
 def index():
@@ -114,9 +128,11 @@ def transcribe():
 
         audio_file = request.files['audio']
         audio_data = audio_file.read()
-
+        sid = request.headers.get('X-Socket-ID')
         transcription = transcribe_audio(audio_data)
         logger.info(f"Transcription result: {transcription}")
+        if sid:
+            socketio.emit('transcription', {'user_id': str(uuid4()), 'text': transcription}, room=sid)
         return jsonify({'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
@@ -137,33 +153,12 @@ def predict():
 
         frames = data['frames']
         logger.info(f"Received {len(frames)} frames")
-        frames = np.array(frames, dtype=np.float32)
-
-        if len(frames) != 100:
-            logger.warning(f"Incorrect number of frames: expected 100, got {len(frames)}")
-            if len(frames) < 100:
-                padding = np.zeros((100 - len(frames), 74 * 3), dtype=np.float32)
-                frames = np.concatenate([frames, padding], axis=0)
-            else:
-                frames = frames[:100]
-
-        if frames.shape[1] != 74 * 3:
-            logger.error(f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}")
-            return jsonify({'error': f"Keypoints shape error: expected {74 * 3}, got {frames.shape[1]}"}), 400
-
-        keypoints_sequence = frames.reshape(1, 100, 74, 3)
-        keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
-        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
-        logger.info(f"Keypoints sequence shape: {keypoints_sequence.shape}")
-
-        logger.info("Starting model inference")
-        prediction = model.predict(keypoints_sequence, verbose=0)
-        pred_probs = prediction[0].tolist()
-        pred_index = np.argmax(prediction, axis=-1)[0]
-        gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
-        logger.info(f"Probabilities: {pred_probs}")
-        logger.info(f"Result: {gesture} (Index: {pred_index})")
-        return jsonify({'gesture': gesture, 'probabilities': pred_probs})
+        sid = request.headers.get('X-Socket-ID')
+        if sid:
+            Thread(target=predict_gesture_async, args=(frames, sid)).start()
+            return jsonify({'status': 'processing'})
+        else:
+            return jsonify({'error': 'No socket ID provided'}), 400
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
@@ -198,7 +193,6 @@ def join_room():
         user_id = str(uuid4())
         rooms[room_id]['users'].append(user_id)
         logger.info(f"User {user_id} joined room {room_id}")
-        # Notify room about new user (via SocketIO)
         socketio.emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
         return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -218,6 +212,7 @@ def list_rooms():
 @socketio.on('connect')
 def handle_connect():
     logger.info(f"Client connected: {request.sid}")
+    emit('connected', {'sid': request.sid})
 
 @socketio.on('join_room')
 def on_join(data):
@@ -228,11 +223,28 @@ def on_join(data):
         user_id = str(uuid4())
         rooms[room_id]['users'].append(user_id)
         logger.info(f"User {user_id} joined room {room_id} via SocketIO")
-        socketio.emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
-        return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
+        emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
     else:
         logger.error(f"Invalid room_id: {room_id}")
-        return jsonify({'error': 'Invalid room_id', 'status': 'failure'}), 400
+        emit('error', {'message': 'Invalid room_id'}, room=request.sid)
+
+@socketio.on('send_transcription')
+def handle_transcription(data):
+    logger.info(f"Received transcription: {data}")
+    room_id = data.get('room_id')
+    if room_id and room_id in rooms:
+        emit('transcription', {'user_id': data.get('user_id'), 'text': data.get('text')}, room=room_id)
+    else:
+        logger.error(f"Invalid room_id for transcription: {room_id}")
+
+@socketio.on('send_gesture')
+def handle_gesture(data):
+    logger.info(f"Received gesture: {data}")
+    room_id = data.get('room_id')
+    if room_id and room_id in rooms:
+        emit('gesture', {'user_id': data.get('user_id'), 'gesture': data.get('gesture')}, room=room_id)
+    else:
+        logger.error(f"Invalid room_id for gesture: {room_id}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -241,7 +253,7 @@ def handle_disconnect():
         if request.sid in [str(uuid4()) for _ in rooms[room_id]['users']]:  # Approximate check
             leave_room(room_id)
             logger.info(f"User left room {room_id}")
-            socketio.emit('user_left', {'room_id': room_id}, room=room_id)
+            emit('user_left', {'room_id': room_id}, room=room_id)
             break
 
 if __name__ == '__main__':
