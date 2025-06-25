@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_socketio import SocketIO, join_room, leave_room
 import numpy as np
 import tensorflow as tf
 import json
@@ -9,10 +10,12 @@ import wave
 from vosk import Model, KaldiRecognizer
 import ffmpeg  # ✅ Added: for format conversion
 from uuid import uuid4
-from threading import Lock
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+
+# Configure SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -24,9 +27,8 @@ MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-# In-memory room storage with thread safety
+# In-memory room storage
 rooms = {}
-room_lock = Lock()
 
 try:
     logger.info("Loading model and labels...")
@@ -172,8 +174,7 @@ def create_room():
     logger.info("Received /create_room request")
     try:
         room_id = str(uuid4())
-        with room_lock:
-            rooms[room_id] = {'users': []}
+        rooms[room_id] = {'users': []}
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -190,14 +191,15 @@ def join_room():
             return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
 
         room_id = data['room_id']
-        with room_lock:
-            if room_id not in rooms:
-                logger.error(f"Room {room_id} does not exist")
-                return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
+        if room_id not in rooms:
+            logger.error(f"Room {room_id} does not exist")
+            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
 
-            user_id = str(uuid4())
-            rooms[room_id]['users'].append(user_id)
-            logger.info(f"User {user_id} joined room {room_id}")
+        user_id = str(uuid4())
+        rooms[room_id]['users'].append(user_id)
+        logger.info(f"User {user_id} joined room {room_id}")
+        # Notify room about new user (via SocketIO)
+        socketio.emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
         return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to join room: {e}")
@@ -207,16 +209,44 @@ def join_room():
 def list_rooms():
     logger.info("Received /rooms request")
     try:
-        with room_lock:
-            return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
+        return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to list rooms: {e}")
         return jsonify({'error': str(e)}), 500
 
+# SocketIO events
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f"Client connected: {request.sid}")
+
+@socketio.on('join_room')
+def on_join(data):
+    logger.info(f"Received join_room event: {data}")
+    room_id = data.get('room_id')
+    if room_id and room_id in rooms:
+        join_room(room_id)
+        user_id = str(uuid4())
+        rooms[room_id]['users'].append(user_id)
+        logger.info(f"User {user_id} joined room {room_id} via SocketIO")
+        socketio.emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
+        return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
+    else:
+        logger.error(f"Invalid room_id: {room_id}")
+        return jsonify({'error': 'Invalid room_id', 'status': 'failure'}), 400
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info(f"Client disconnected: {request.sid}")
+    for room_id in rooms:
+        if request.sid in [str(uuid4()) for _ in rooms[room_id]['users']]:  # Approximate check
+            leave_room(room_id)
+            logger.info(f"User left room {room_id}")
+            socketio.emit('user_left', {'room_id': room_id}, room=room_id)
+            break
+
 if __name__ == '__main__':
     try:
-        logger.info("Starting Flask server")
-        port = int(os.environ.get('PORT', 5000))
-        app.run(debug=False, host='0.0.0.0', port=port)
+        logger.info("Starting Flask server with SocketIO")
+        socketio.run(app, debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
