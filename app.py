@@ -8,6 +8,7 @@ import os
 import wave
 from vosk import Model, KaldiRecognizer
 import ffmpeg  # ✅ Added: for format conversion
+from uuid import uuid4
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -21,6 +22,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
+
+# In-memory room storage (for simplicity)
+rooms = {}
 
 try:
     logger.info("Loading model and labels...")
@@ -111,7 +115,7 @@ def transcribe():
         return jsonify({'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500)
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -157,7 +161,51 @@ def predict():
         return jsonify({'gesture': gesture, 'probabilities': pred_probs})
     except Exception as e:
         logger.error(f"Inference failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500)
+
+# Room management routes
+@app.route('/create_room', methods=['POST'])
+def create_room():
+    logger.info("Received /create_room request")
+    try:
+        room_id = str(uuid4())
+        rooms[room_id] = {'users': []}
+        logger.info(f"Created room with ID: {room_id}")
+        return jsonify({'room_id': room_id, 'status': 'success'})
+    except Exception as e:
+        logger.error(f"Failed to create room: {e}")
+        return jsonify({'error': str(e), 'status': 'failure'}), 500
+
+@app.route('/join_room', methods=['POST'])
+def join_room():
+    logger.info("Received /join_room request")
+    try:
+        data = request.get_json()
+        if not data or 'room_id' not in data:
+            logger.error("Missing room_id in request")
+            return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
+
+        room_id = data['room_id']
+        if room_id not in rooms:
+            logger.error(f"Room {room_id} does not exist")
+            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
+
+        user_id = str(uuid4())  # Simple user identification
+        rooms[room_id]['users'].append(user_id)
+        logger.info(f"User {user_id} joined room {room_id}")
+        return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
+    except Exception as e:
+        logger.error(f"Failed to join room: {e}")
+        return jsonify({'error': str(e), 'status': 'failure'}), 500
+
+@app.route('/rooms', methods=['GET'])
+def list_rooms():
+    logger.info("Received /rooms request")
+    try:
+        return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
+    except Exception as e:
+        logger.error(f"Failed to list rooms: {e}")
+        return jsonify({'error': str(e), 'status': 'failure'}), 500
 
 if __name__ == '__main__':
     try:
