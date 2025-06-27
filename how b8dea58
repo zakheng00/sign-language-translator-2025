@@ -1,0 +1,81 @@
+[33mb8dea58[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Switch to Firebase for real-time communication
+[33m245b76e[m[33m ([m[1;31morigin/main[m[33m)[m Simplify room mode to focus on create and join room functionality
+[33md9d37f6[m Simplify room mode to focus on create and join room functionality
+[33mc1a909e[m Simplify room mode to focus on create and join room functionality
+[33m78276ee[m Simplify room mode to focus on create and join room functionality
+[33m024028d[m Simplify room mode to focus on create and join room functionality
+[33m99cc3b5[m Simplify room mode to focus on create and join room functionality
+[33m4e41273[m Simplify room mode to focus on create and join room functionality
+[33m94e982c[m Simplify room mode to focus on create and join room functionality
+[33m95bb8e9[m Simplify room mode to focus on create and join room functionality
+[33m8b167c8[m Simplify room mode to focus on create and join room functionality
+[33mf0dd669[m Simplify room mode to focus on create and join room functionality
+[33m6c3074b[m Simplify room mode to focus on create and join room functionality
+[33m2d6bcfc[m Simplify room mode to focus on create and join room functionality
+[33m250dbdf[m Simplify room mode to focus on create and join room functionality
+[33mfd812d9[m Simplify room mode to focus on create and join room functionality
+[33m8b26e14[m Simplify room mode to focus on create and join room functionality
+[33md5bf449[m Simplify room mode to focus on create and join room functionality
+[33ma3ed291[m Simplify room mode to focus on create and join room functionality
+[33med774e6[m Simplify room mode to focus on create and join room functionality
+[33m9c1e1ac[m Simplify room mode to focus on create and join room functionality
+[33m48c6b81[m Simplify room mode to focus on create and join room functionality
+[33m533b6ef[m Simplify room mode to focus on create and join room functionality
+[33mb8174ea[m Simplify room mode to focus on create and join room functionality
+[33mc9a1411[m Simplify room mode to focus on create and join room functionality
+[33mf640379[m Improve room mode with better event handling and UI
+[33m95ec1b4[m Fix join room and select speech translation button functionality
+[33m703148a[m Fix routes and add chat box to room mode
+[33m005730c[m Add room-mode.html for room mode functionality
+[33ma45db63[m Add room mode with sign and speech translation sync
+[33m1b00bfc[m Add room mode with sign and speech translation sync
+[33m2c2bdea[m Ensure flask-socketio and eventlet are in requirements.txt
+[33mce371f1[m Ensure flask-socketio and eventlet are in requirements.txt
+[33mdb4a1f3[m Ensure flask-socketio and eventlet are in requirements.txt
+[33m322a87e[m Add SocketIO for real-time translation between users
+[33ma135a95[m Update app.py to use TFLite model with Flex support
+[33m6532618[m Add TFLite model with Flex support
+[33m3281e6a[m Optimize predict endpoint with dynamic frames and timeout handling
+[33m12c673c[m Optimize predict endpoint with dynamic frames and timeout handling
+[33m970b662[m Improve live-translation with dynamic frame capture and progress feedback
+[33m92cdc92[m Update project and remove secrets
+[33m709dd4d[m Update project and remove secrets
+[33m1292f76[m Update project and remove secrets
+[33mc9e8f6c[m Update project and remove secrets
+[33m947c643[m Finalize project with Vosk and remove secrets
+[33mb939cff[m Add credentials to .gitignore
+[33mcfdb6f2[m Switch to Vosk for speech-to-text
+[33m23cbacb[m Add credentials to .gitignore
+[33meabe529[m Add credentials to .gitignore
+[33mb1bf11c[m Ignore untracked file
+[33m85f004f[m Temporarily save app.py changes
+[33mcc137ee[m Update .gitignore to ignore credentials
+[33mddfd97f[m Update speech-to-text.html with MediaRecorder
+[33me4b30f3[m Add credentials.json to .gitignore
+[33m7464382[m Implement Google Speech-to-Text API with secure credentials
+[33mbf1ad1d[m Add files
+[33mfe4b2bd[m Reinitialize repository with project files
+[33md898d1a[m Reinitialize repository with project files
+[33mad21cb2[m Reinitialize repository with project files
+[33m138f1ec[m Reinitialize repository with project files
+[33m9db99e4[m Reinitialize repository with project files
+[33mf376713[m Reinitialize repository with project files
+[33mdfbfd6e[m Reinitialize repository with project files
+[33m2bcd947[m Reinitialize repository with project files
+[33m5538d59[m Reinitialize repository with project files
+[33m5c7ae01[m Reinitialize repository with project files
+[33m113530c[m Update TensorFlow to 2.17.0
+[33mf5f268d[m Update TensorFlow to 2.17.0
+[33me61e312[m Reinitialize repository with project files
+[33m4c711a2[m Reinitialize repository with project files
+[33m86f64b1[m Reinitialize repository with project files
+[33m0e3f036[m Update gunicorn to 23.0.0
+[33m6c24369[m Add gunicorn to requirements.txt
+[33m932a7c9[m Reinitialize repository with project files
+[33mefdd611[m Reinitialize repository with project files
+[33mb289918[m Reinitialize repository with project files
+[33m111a197[m Reinitialize repository with project files
+[33m78fa743[m Merge branch 'main' of https://github.com/zakheng00/sign-language-translator-2025
+[33ma8b653a[m Initial commit
+[33m8f3cdea[m Initial commit
+[33m20dfae7[m Initial commit

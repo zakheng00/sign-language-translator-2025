@@ -7,4 +7,9 @@ gunicorn==22.0.0
 ml-dtypes>=0.3.1,<0.5.0
 vosk==0.3.45
 ffmpeg-python==0.2.0
+<<<<<<< HEAD
 pyrebase4
+=======
+flask-socketio==5.3.6
+eventlet==0.33.3
+>>>>>>> 245b76e3fe905ecd89ff3cdeea52331492026411
