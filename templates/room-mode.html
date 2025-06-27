@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Room Mode - Sign Language & Speech Translator</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -12,13 +12,13 @@
   <script>
     // Your Firebase configuration
     const firebaseConfig = {
-    apiKey: "AIzaSyBP48fanO_7IqIi3Qfn6nUjzmsdQrRybwQ",
-  authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
-  projectId: "signlanguagetranslator-cce9e",
-  storageBucket: "signlanguagetranslator-cce9e.firebasestorage.app",
-  messagingSenderId: "243699884064",
-  appId: "1:243699884064:web:9aa648646145cc22029c45",
-  measurementId: "G-1T7DTVV647"
+     apiKey: "{{FIREBASE_API_KEY}}",
+     authDomain: "{{FIREBASE_AUTH_DOMAIN}}",
+     projectId: "{{FIREBASE_PROJECT_ID}}",
+     storageBucket: "{{FIREBASE_STORAGE_BUCKET}}",
+     messagingSenderId: "{{FIREBASE_MESSAGING_SENDER_ID}}",
+     appId: "{{FIREBASE_APP_ID}}",
+     measurementId: "{{FIREBASE_MEASUREMENT_ID}}"
     };
 
     // Initialize Firebase
@@ -27,7 +27,6 @@
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
 
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
-    // ... (保持原有 style 標籤) ...
   </head>
   <body class="bg-gray-50 text-gray-800 font-sans">
     <!-- ... (保持原有 HTML 結構) ... -->

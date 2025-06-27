@@ -11,12 +11,10 @@ import ffmpeg
 from uuid import uuid4
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-import pyrebase
+import pyrebase  # Install: pip install pyrebase4
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-# Configure SocketIO with eventlet
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -28,36 +26,47 @@ MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-# In-memory room storages
+# Lazy loading of model
+model = None
+labels = None
+vosk_model = None
+recognizer = None
+executor = ThreadPoolExecutor(max_workers=2)
+
+# Firebase configuration
+firebase_config = {
+    "apiKey": "YOUR_API_KEY",
+    "authDomain": "YOUR_AUTH_DOMAIN",
+    "databaseURL": "YOUR_DATABASE_URL",
+    "projectId": "YOUR_PROJECT_ID",
+    "storageBucket": "YOUR_STORAGE_BUCKET",
+    "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
+    "appId": "YOUR_APP_ID",
+    "serviceAccount": "serviceAccountKey.json"
+}
+firebase = pyrebase.initialize_app(firebase_config)
+db = firebase.database()
+
+# In-memory room storage
 rooms = {}
 
-try:
-    logger.info("Loading model and labels...")
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model file {MODEL_PATH} does not exist")
-    if not os.path.exists(LABELS_PATH):
-        raise FileNotFoundError(f"Labels file {LABELS_PATH} does not exist")
-
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-        labels = json.load(f)
-    logger.info("Sign language model and labels loaded successfully")
-
-    if not os.path.exists(VOSK_MODEL_PATH):
-        raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
-    logger.info(f"Verifying Vosk model directory: {os.path.isdir(VOSK_MODEL_PATH)} - Contents: {os.listdir(VOSK_MODEL_PATH) if os.path.isdir(VOSK_MODEL_PATH) else 'Invalid directory'}")
-    vosk_model = Model(VOSK_MODEL_PATH)
-    logger.info(f"Vosk model object created: {vosk_model is not None}")
-    recognizer = KaldiRecognizer(vosk_model, 16000)
-    if recognizer is None:
-        raise RuntimeError("Failed to initialize Vosk recognizer")
-    logger.info("Vosk model loaded successfully")
-except Exception as e:
-    logger.error(f"Loading failed: {type(e).__name__} - {str(e)}")
-    exit(1)
+def load_models():
+    global model, labels, vosk_model, recognizer
+    if model is None:
+        logger.info("Loading model and labels...")
+        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        with open(LABELS_PATH, 'r', encoding='utf-8') as f:
+            labels = json.load(f)
+        logger.info("Sign language model and labels loaded successfully")
+    if vosk_model is None:
+        if not os.path.exists(VOSK_MODEL_PATH):
+            raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
+        vosk_model = Model(VOSK_MODEL_PATH)
+        recognizer = KaldiRecognizer(vosk_model, 16000)
+        logger.info("Vosk model loaded successfully")
 
 def transcribe_audio(audio_data):
-    global recognizer
+    load_models()
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
@@ -65,7 +74,6 @@ def transcribe_audio(audio_data):
         with wave.open("temp.wav", "rb") as wf:
             if wf.getframerate() != 16000:
                 raise ValueError("Audio sample rate must be 16000 Hz")
-            logger.info(f"Processing WAV file with sample rate: {wf.getframerate()} Hz")
             result_text = ""
             while True:
                 data = wf.readframes(4000)
@@ -83,7 +91,8 @@ def transcribe_audio(audio_data):
             if os.path.exists(fname):
                 os.remove(fname)
 
-def predict_gesture_async(frames, sid):
+def predict_gesture_async(frames, room_id):
+    load_models()
     try:
         logger.info("Starting model inference in thread")
         keypoints_sequence = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
@@ -94,7 +103,13 @@ def predict_gesture_async(frames, sid):
         pred_index = np.argmax(prediction, axis=-1)[0]
         gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
         logger.info(f"Prediction result: {gesture}, Probabilities: {pred_probs}")
-        socketio.emit('gesture', {'user_id': str(uuid4()), 'gesture': gesture, 'probabilities': pred_probs}, room=sid)
+        # Push to Firebase
+        db.child("rooms").child(room_id).child("messages").push({
+            "type": "gesture",
+            "data": gesture,
+            "probabilities": pred_probs,
+            "timestamp": firebase.ServerValue.TIMESTAMP
+        })
     except Exception as e:
         logger.error(f"Prediction failed in thread: {e}")
 
@@ -113,11 +128,6 @@ def speech_to_text():
     logger.info("Accessed speech-to-text page")
     return send_from_directory('templates', 'speech-to-text.html')
 
-@app.route('/room-mode')
-def room_mode():
-    logger.info("Accessed room-mode page")
-    return send_from_directory('templates', 'room-mode.html')
-
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     logger.info("Received /transcribe request")
@@ -128,11 +138,15 @@ def transcribe():
 
         audio_file = request.files['audio']
         audio_data = audio_file.read()
-        sid = request.headers.get('X-Socket-ID')
+        room_id = request.headers.get('X-Socket-ID')
         transcription = transcribe_audio(audio_data)
         logger.info(f"Transcription result: {transcription}")
-        if sid:
-            socketio.emit('transcription', {'user_id': str(uuid4()), 'text': transcription}, room=sid)
+        if room_id:
+            db.child("rooms").child(room_id).child("messages").push({
+                "type": "transcription",
+                "data": transcription,
+                "timestamp": firebase.ServerValue.TIMESTAMP
+            })
         return jsonify({'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
@@ -153,23 +167,23 @@ def predict():
 
         frames = data['frames']
         logger.info(f"Received {len(frames)} frames")
-        sid = request.headers.get('X-Socket-ID')
-        if sid:
-            Thread(target=predict_gesture_async, args=(frames, sid)).start()
+        room_id = request.headers.get('X-Socket-ID')
+        if room_id:
+            executor.submit(predict_gesture_async, frames, room_id)
             return jsonify({'status': 'processing'})
         else:
-            return jsonify({'error': 'No socket ID provided'}), 400
+            return jsonify({'error': 'No valid session'}), 400
     except Exception as e:
         logger.error(f"Inference failed: {e}")
         return jsonify({'error': str(e)}), 500
 
-# Room management routes
 @app.route('/create_room', methods=['POST'])
 def create_room():
     logger.info("Received /create_room request")
     try:
         room_id = str(uuid4())
         rooms[room_id] = {'users': []}
+        db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -186,79 +200,24 @@ def join_room():
             return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
 
         room_id = data['room_id']
-        if room_id not in rooms:
+        if not db.child("rooms").child(room_id).get().val():
             logger.error(f"Room {room_id} does not exist")
             return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
 
         user_id = str(uuid4())
+        rooms[room_id] = rooms.get(room_id, {'users': []})
         rooms[room_id]['users'].append(user_id)
+        db.child("rooms").child(room_id).child("users").set(rooms[room_id]['users'])
         logger.info(f"User {user_id} joined room {room_id}")
-        socketio.emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
         return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to join room: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/rooms', methods=['GET'])
-def list_rooms():
-    logger.info("Received /rooms request")
-    try:
-        return jsonify({'rooms': list(rooms.keys()), 'status': 'success'})
-    except Exception as e:
-        logger.error(f"Failed to list rooms: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# SocketIO events
-@socketio.on('connect')
-def handle_connect():
-    logger.info(f"Client connected: {request.sid}")
-    emit('connected', {'sid': request.sid})
-
-@socketio.on('join_room')
-def on_join(data):
-    logger.info(f"Received join_room event: {data}")
-    room_id = data.get('room_id')
-    if room_id and room_id in rooms:
-        join_room(room_id)
-        user_id = str(uuid4())
-        rooms[room_id]['users'].append(user_id)
-        logger.info(f"User {user_id} joined room {room_id} via SocketIO")
-        emit('user_joined', {'user_id': user_id, 'room_id': room_id}, room=room_id)
-    else:
-        logger.error(f"Invalid room_id: {room_id}")
-        emit('error', {'message': 'Invalid room_id'}, room=request.sid)
-
-@socketio.on('send_transcription')
-def handle_transcription(data):
-    logger.info(f"Received transcription: {data}")
-    room_id = data.get('room_id')
-    if room_id and room_id in rooms:
-        emit('transcription', {'user_id': data.get('user_id'), 'text': data.get('text')}, room=room_id)
-    else:
-        logger.error(f"Invalid room_id for transcription: {room_id}")
-
-@socketio.on('send_gesture')
-def handle_gesture(data):
-    logger.info(f"Received gesture: {data}")
-    room_id = data.get('room_id')
-    if room_id and room_id in rooms:
-        emit('gesture', {'user_id': data.get('user_id'), 'gesture': data.get('gesture')}, room=room_id)
-    else:
-        logger.error(f"Invalid room_id for gesture: {room_id}")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    logger.info(f"Client disconnected: {request.sid}")
-    for room_id in rooms:
-        if request.sid in [str(uuid4()) for _ in rooms[room_id]['users']]:  # Approximate check
-            leave_room(room_id)
-            logger.info(f"User left room {room_id}")
-            emit('user_left', {'room_id': room_id}, room=room_id)
-            break
-
 if __name__ == '__main__':
     try:
-        logger.info("Starting Flask server with SocketIO")
-        socketio.run(app, debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+        load_models()
+        logger.info("Starting Flask server")
+        app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
