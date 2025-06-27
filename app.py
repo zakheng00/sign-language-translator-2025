@@ -59,15 +59,15 @@ except Exception as e:
 
 if temp_file_path:
     firebase_config = {
-        "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
-        "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
-        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.firebaseio.com/'),  # 檢查正確的 URL
-        "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
-        "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
-        "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
-        "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
-        "serviceAccount": temp_file_path
-    }
+    "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+    "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
+    "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
+    "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
+    "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
+    "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
+    "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
+    "serviceAccount": temp_file_path
+}
 
     try:
         firebase = pyrebase.initialize_app(firebase_config)
