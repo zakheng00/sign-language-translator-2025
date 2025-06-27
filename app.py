@@ -39,6 +39,7 @@ vosk_model = None
 recognizer = None
 executor = ThreadPoolExecutor(max_workers=2)
 rooms = {}  # 全局房間存儲
+db = None  # Firebase 數據庫，初始化可能失敗
 
 # 從環境變量加載 Firebase 配置
 firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT', '{}')
@@ -51,33 +52,38 @@ try:
     logger.info("Firebase service account file created successfully")
 except json.JSONDecodeError:
     logger.error("Invalid JSON in FIREBASE_SERVICE_ACCOUNT environment variable")
-    raise
+    temp_file_path = None  # 設置為 None，後續處理
 except Exception as e:
     logger.error(f"Failed to create temporary file for Firebase service account: {e}")
-    raise
+    temp_file_path = None  # 設置為 None，後續處理
 
-firebase_config = {
-    "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
-    "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
-    "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e.firebaseio.com/'),
-    "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
-    "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
-    "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
-    "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
-    "serviceAccount": temp_file_path
-}
+if temp_file_path:
+    firebase_config = {
+        "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+        "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
+        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.firebaseio.com/'),  # 檢查正確的 URL
+        "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
+        "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
+        "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
+        "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
+        "serviceAccount": temp_file_path
+    }
 
-try:
-    firebase = pyrebase.initialize_app(firebase_config)
-    db = firebase.database()
-    # 測試 Firebase 連接
-    test_ref = db.child("test").push({"test": "ping"})
-    if not test_ref:
-        raise Exception("Firebase connection test failed")
-    logger.info("Firebase initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize Firebase: {e}")
-    raise
+    try:
+        firebase = pyrebase.initialize_app(firebase_config)
+        db = firebase.database()
+        # 可選連接測試
+        try:
+            test_ref = db.child("test").push({"test": "ping"})
+            logger.info("Firebase connection test succeeded")
+        except Exception as e:
+            logger.warning(f"Firebase connection test failed: {e} - Continuing with limited functionality")
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase: {e}")
+        db = None  # 設置為 None，後續處理
+else:
+    logger.warning("Firebase service account not configured, running without Firebase support")
+    db = None
 
 # 確保臨時文件在應用退出時刪除
 @atexit.register
@@ -147,6 +153,9 @@ def transcribe_audio(audio_data):
 # 手語預測（異步）
 def predict_gesture_async(frames, room_id):
     load_models()
+    if db is None:
+        logger.error("Firebase not initialized, skipping gesture prediction")
+        return
     try:
         logger.info("Starting model inference in thread")
         keypoints_sequence = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
@@ -200,7 +209,7 @@ def transcribe():
         room_id = request.headers.get('X-Socket-ID')
         transcription = transcribe_audio(audio_data)
         logger.info(f"Transcription result: {transcription}")
-        if room_id:
+        if db and room_id:
             db.child("rooms").child(room_id).child("messages").push({
                 "type": "transcription",
                 "data": transcription,
@@ -239,13 +248,17 @@ def predict():
 @app.route('/create_room', methods=['POST'])
 def create_room():
     logger.info("Received /create_room request")
+    if db is None:
+        logger.error("Firebase not initialized, cannot create room")
+        return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
     try:
         room_id = str(uuid4())
         rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
-        # 測試 Firebase 連接
-        test_ref = db.child("test").push({"test": "ping"})
-        if not test_ref:
-            raise Exception("Firebase connection test failed")
+        # 可選連接測試
+        try:
+            test_ref = db.child("test").push({"test": "ping"})
+        except Exception as e:
+            logger.warning(f"Firebase connection test failed: {e} - Attempting to create room")
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
@@ -256,6 +269,9 @@ def create_room():
 @app.route('/join_room', methods=['POST'])
 def join_room():
     logger.info("Received /join_room request")
+    if db is None:
+        logger.error("Firebase not initialized, cannot join room")
+        return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
     try:
         data = request.get_json()
         if not data or 'room_id' not in data:
