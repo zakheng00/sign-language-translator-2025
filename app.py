@@ -48,6 +48,10 @@ try:
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
         temp_file.write(firebase_service_account_json)
         temp_file_path = temp_file.name
+    logger.info("Firebase service account file created successfully")
+except json.JSONDecodeError:
+    logger.error("Invalid JSON in FIREBASE_SERVICE_ACCOUNT environment variable")
+    raise
 except Exception as e:
     logger.error(f"Failed to create temporary file for Firebase service account: {e}")
     raise
@@ -66,6 +70,11 @@ firebase_config = {
 try:
     firebase = pyrebase.initialize_app(firebase_config)
     db = firebase.database()
+    # 測試 Firebase 連接
+    test_ref = db.child("test").push({"test": "ping"})
+    if not test_ref:
+        raise Exception("Firebase connection test failed")
+    logger.info("Firebase initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Firebase: {e}")
     raise
@@ -79,6 +88,14 @@ def cleanup():
             logger.info(f"Cleaned up temporary file: {temp_file_path}")
         except Exception as e:
             logger.error(f"Failed to clean up temporary file: {e}")
+    # 清理其他臨時文件
+    for fname in ['input.webm', 'temp.wav']:
+        if os.path.exists(fname):
+            try:
+                os.remove(fname)
+                logger.info(f"Cleaned up temporary file: {fname}")
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary file {fname}: {e}")
 
 # 懶加載模型
 def load_models():
@@ -126,13 +143,6 @@ def transcribe_audio(audio_data):
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return "Transcription error"
-    finally:
-        for fname in ['input.webm', 'temp.wav']:
-            if os.path.exists(fname):
-                try:
-                    os.remove(fname)
-                except Exception as e:
-                    logger.warning(f"Failed to remove temporary file {fname}: {e}")
 
 # 手語預測（異步）
 def predict_gesture_async(frames, room_id):
@@ -232,6 +242,10 @@ def create_room():
     try:
         room_id = str(uuid4())
         rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
+        # 測試 Firebase 連接
+        test_ref = db.child("test").push({"test": "ping"})
+        if not test_ref:
+            raise Exception("Firebase connection test failed")
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
