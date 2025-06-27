@@ -42,7 +42,7 @@ firebase_config = {
     "storageBucket": "YOUR_STORAGE_BUCKET",
     "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
     "appId": "YOUR_APP_ID",
-    "serviceAccount": "serviceAccountKey.json"
+    "serviceAccount": "firebase-adminsdk.json"
 }
 firebase = pyrebase.initialize_app(firebase_config)
 db = firebase.database()
@@ -127,6 +127,11 @@ def live_translation():
 def speech_to_text():
     logger.info("Accessed speech-to-text page")
     return send_from_directory('templates', 'speech-to-text.html')
+
+@app.route('/room-mode')
+def room_mode():
+    logger.info("Accessed room-mode page")
+    return send_from_directory('templates', 'room-mode.html')
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
