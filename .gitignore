@@ -4,3 +4,4 @@ serviceAccountKey.json
 credentials.json 
 golden-tide-459204-n6-fce40c90ad2e.json 
 >>>>>>> 245b76e3fe905ecd89ff3cdeea52331492026411
+"*.json" 
