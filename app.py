@@ -11,71 +11,100 @@ import ffmpeg
 from uuid import uuid4
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-import pyrebase  # Install: pip install pyrebase4
+import pyrebase
 import tempfile
 import atexit
 
+# 初始化 Flask 應用
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
+# 禁用 ONEDNN 以避免 TensorFlow 兼容性問題
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
+# 配置日誌
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# 定義路徑
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
-# Lazy loading of model
+# 全局變量（懶加載）
 model = None
 labels = None
 vosk_model = None
 recognizer = None
 executor = ThreadPoolExecutor(max_workers=2)
+rooms = {}  # 全局房間存儲
 
-# 從環境變量加載 Firebase 服務帳戶
+# 從環境變量加載 Firebase 配置
 firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT', '{}')
-with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-    temp_file.write(firebase_service_account_json)
-    temp_file_path = temp_file.name
+temp_file_path = None
+
+try:
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+        temp_file.write(firebase_service_account_json)
+        temp_file_path = temp_file.name
+except Exception as e:
+    logger.error(f"Failed to create temporary file for Firebase service account: {e}")
+    raise
 
 firebase_config = {
-    "apiKey": "YOUR_API_KEY",  # 可從環境變量動態獲取（可選）
-    "authDomain": "signlanguagetranslator-cce9e.firebaseapp.com",
-    "databaseURL": "https://signlanguagetranslator-cce9e.firebaseio.com",
-    "projectId": "signlanguagetranslator-cce9e",
-    "storageBucket": "signlanguagetranslator-cce9e.appspot.com",
-    "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
-    "appId": "YOUR_APP_ID",
-    "serviceAccount": temp_file_path  # 使用臨時文件路徑
+    "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+    "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
+    "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e.firebaseio.com/'),
+    "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
+    "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
+    "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
+    "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
+    "serviceAccount": temp_file_path
 }
-firebase = pyrebase.initialize_app(firebase_config)
-db = firebase.database()
+
+try:
+    firebase = pyrebase.initialize_app(firebase_config)
+    db = firebase.database()
+except Exception as e:
+    logger.error(f"Failed to initialize Firebase: {e}")
+    raise
 
 # 確保臨時文件在應用退出時刪除
 @atexit.register
 def cleanup():
-    import os
-    os.unlink(temp_file_path)
+    if temp_file_path and os.path.exists(temp_file_path):
+        try:
+            os.unlink(temp_file_path)
+            logger.info(f"Cleaned up temporary file: {temp_file_path}")
+        except Exception as e:
+            logger.error(f"Failed to clean up temporary file: {e}")
 
-# 後續代碼保持不變...
+# 懶加載模型
 def load_models():
     global model, labels, vosk_model, recognizer
     if model is None:
-        logger.info("Loading model and labels...")
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-            labels = json.load(f)
-        logger.info("Sign language model and labels loaded successfully")
+        try:
+            logger.info("Loading model and labels...")
+            model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+            with open(LABELS_PATH, 'r', encoding='utf-8') as f:
+                labels = json.load(f)
+            logger.info("Sign language model and labels loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load model or labels: {e}")
+            raise
     if vosk_model is None:
-        if not os.path.exists(VOSK_MODEL_PATH):
-            raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
-        vosk_model = Model(VOSK_MODEL_PATH)
-        recognizer = KaldiRecognizer(vosk_model, 16000)
-        logger.info("Vosk model loaded successfully")
+        try:
+            if not os.path.exists(VOSK_MODEL_PATH):
+                raise FileNotFoundError(f"Vosk model file {VOSK_MODEL_PATH} does not exist")
+            vosk_model = Model(VOSK_MODEL_PATH)
+            recognizer = KaldiRecognizer(vosk_model, 16000)
+            logger.info("Vosk model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load Vosk model: {e}")
+            raise
 
+# 音頻轉錄
 def transcribe_audio(audio_data):
     load_models()
     try:
@@ -100,8 +129,12 @@ def transcribe_audio(audio_data):
     finally:
         for fname in ['input.webm', 'temp.wav']:
             if os.path.exists(fname):
-                os.remove(fname)
+                try:
+                    os.remove(fname)
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary file {fname}: {e}")
 
+# 手語預測（異步）
 def predict_gesture_async(frames, room_id):
     load_models()
     try:
@@ -114,7 +147,6 @@ def predict_gesture_async(frames, room_id):
         pred_index = np.argmax(prediction, axis=-1)[0]
         gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
         logger.info(f"Prediction result: {gesture}, Probabilities: {pred_probs}")
-        # Push to Firebase
         db.child("rooms").child(room_id).child("messages").push({
             "type": "gesture",
             "data": gesture,
@@ -124,6 +156,7 @@ def predict_gesture_async(frames, room_id):
     except Exception as e:
         logger.error(f"Prediction failed in thread: {e}")
 
+# 路由
 @app.route('/')
 def index():
     logger.info("Accessed homepage")
@@ -198,7 +231,7 @@ def create_room():
     logger.info("Received /create_room request")
     try:
         room_id = str(uuid4())
-        rooms[room_id] = {'users': []}
+        rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
@@ -216,7 +249,8 @@ def join_room():
             return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
 
         room_id = data['room_id']
-        if not db.child("rooms").child(room_id).get().val():
+        room_data = db.child("rooms").child(room_id).get().val()
+        if not room_data:
             logger.error(f"Room {room_id} does not exist")
             return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
 
