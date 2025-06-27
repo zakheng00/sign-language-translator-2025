@@ -12,6 +12,8 @@ from uuid import uuid4
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 import pyrebase  # Install: pip install pyrebase4
+import tempfile
+import atexit
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -33,23 +35,32 @@ vosk_model = None
 recognizer = None
 executor = ThreadPoolExecutor(max_workers=2)
 
-# Firebase configuration
+# 從環境變量加載 Firebase 服務帳戶
+firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT', '{}')
+with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    temp_file.write(firebase_service_account_json)
+    temp_file_path = temp_file.name
+
 firebase_config = {
-    "apiKey": "YOUR_API_KEY",
-    "authDomain": "YOUR_AUTH_DOMAIN",
-    "databaseURL": "YOUR_DATABASE_URL",
-    "projectId": "YOUR_PROJECT_ID",
-    "storageBucket": "YOUR_STORAGE_BUCKET",
+    "apiKey": "YOUR_API_KEY",  # 可從環境變量動態獲取（可選）
+    "authDomain": "signlanguagetranslator-cce9e.firebaseapp.com",
+    "databaseURL": "https://signlanguagetranslator-cce9e.firebaseio.com",
+    "projectId": "signlanguagetranslator-cce9e",
+    "storageBucket": "signlanguagetranslator-cce9e.appspot.com",
     "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
     "appId": "YOUR_APP_ID",
-    "serviceAccount": "firebase-adminsdk.json"
+    "serviceAccount": temp_file_path  # 使用臨時文件路徑
 }
 firebase = pyrebase.initialize_app(firebase_config)
 db = firebase.database()
 
-# In-memory room storage
-rooms = {}
+# 確保臨時文件在應用退出時刪除
+@atexit.register
+def cleanup():
+    import os
+    os.unlink(temp_file_path)
 
+# 後續代碼保持不變...
 def load_models():
     global model, labels, vosk_model, recognizer
     if model is None:
