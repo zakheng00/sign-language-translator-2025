@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, leave_room, emit
 import numpy as np
 import tensorflow as tf
 import json
@@ -11,10 +10,11 @@ from vosk import Model, KaldiRecognizer
 import ffmpeg
 from uuid import uuid4
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+import pyrebase
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-
 # Configure SocketIO with eventlet
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
