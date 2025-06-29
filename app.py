@@ -50,10 +50,10 @@ try:
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
         temp_file.write(firebase_service_account_json)
         temp_file_path = temp_file.name
-    logger.info("Firebase service account file created successfully")
-except json.JSONDecodeError:
-    logger.error("Invalid JSON in FIREBASE_SERVICE_ACCOUNT environment variable")
-    temp_file_path = None  # 設置為 None，後續處理
+    logger.info(f"Firebase service account file created successfully at {temp_file_path}")
+except json.JSONDecodeError as e:
+    logger.error(f"Invalid JSON in FIREBASE_SERVICE_ACCOUNT: {e}, using empty config")
+    temp_file_path = None
 except Exception as e:
     logger.error(f"Failed to create temporary file for Firebase service account: {e}")
     temp_file_path = None  
@@ -62,7 +62,7 @@ if temp_file_path:
     firebase_config = {
         "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
         "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
-        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
+        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', ''),
         "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
         "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
         "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
@@ -70,18 +70,18 @@ if temp_file_path:
         "serviceAccount": temp_file_path
     }
 
-    try:
-        firebase = pyrebase.initialize_app(firebase_config)
-        db = firebase.database()
-        
+    if not firebase_config["databaseURL"]:
+        logger.error("FIREBASE_DATABASE_URL is not set or empty")
+        db = None
+    else:
         try:
+            firebase = pyrebase.initialize_app(firebase_config)
+            db = firebase.database()
             test_ref = db.child("test").push({"test": "ping"})
             logger.info("Firebase connection test succeeded")
         except Exception as e:
-            logger.warning(f"Firebase connection test failed: {e} - Continuing with limited functionality")
-    except Exception as e:
-        logger.error(f"Failed to initialize Firebase: {e}")
-        db = None  # 設置為 None，後續處理
+            logger.error(f"Failed to initialize Firebase or test connection: {e}")
+            db = None
 else:
     logger.warning("Firebase service account not configured, running without Firebase support")
     db = None
@@ -95,7 +95,6 @@ def cleanup():
             logger.info(f"Cleaned up temporary file: {temp_file_path}")
         except Exception as e:
             logger.error(f"Failed to clean up temporary file: {e}")
-    # 清理其他臨時文件
     for fname in ['input.webm', 'temp.wav']:
         if os.path.exists(fname):
             try:
@@ -257,12 +256,16 @@ def create_room():
         rooms[room_id] = {'users': []}
         logger.debug(f"Attempting to set room at: rooms/{room_id}")
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
-        # 添加延遲以確保同步
-        time.sleep(1)  # 延遲 1 秒
-        # 驗證寫入
-        room_data = db.child("rooms").child(room_id).get().val()
+        # 添加重試邏輯以確保數據同步
+        room_data = None
+        for attempt in range(3):  # 最多重試 3 次
+            time.sleep(1)  # 每次延遲 1 秒
+            room_data = db.child("rooms").child(room_id).get().val()
+            if room_data and room_data.get("users") is not None and room_data.get("messages") is not None:
+                break
+            logger.warning(f"Attempt {attempt + 1}/3 failed to verify room {room_id}: {room_data}")
         if not room_data or room_data.get("users") is None or room_data.get("messages") is None:
-            logger.warning(f"Room {room_id} data verification failed: {room_data}")
+            logger.warning(f"Room {room_id} data verification failed after retries: {room_data}")
             return jsonify({'error': 'Room data verification failed', 'status': 'failure'}), 500
         logger.info(f"Room {room_id} data verified: {room_data}")
         logger.info(f"Created room with ID: {room_id}")
