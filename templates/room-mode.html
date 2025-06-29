@@ -346,33 +346,42 @@
    joinRoomBtn.addEventListener('click', () => {
   const roomId = joinRoomInput.value.trim();
   if (roomId) {
-    fetch(`${API_URL}/join_room`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room_id: roomId })
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (data.status === 'success') {
-          currentRoom = roomId;
-          currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connected)`;
-          const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-          onChildAdded(messagesRef, (snapshot) => {
-            const msg = snapshot.val();
-            if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
-            else if (msg.type === 'gesture' && msg.data) {
-              outputSign.textContent = `Other's Sign Result: ${msg.data}`;
-              probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-              addChatMessage(msg.data, false);
-            }
-          });
-          console.log(`Joined room: ${currentRoom}`);
-          roomError.classList.add('hidden');
-        } else {
-          showError(data.error || 'Failed to join room');
-        }
+    let attempts = 0;
+    const maxAttempts = 3;
+    const checkRoom = () => {
+      fetch(`${API_URL}/join_room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: roomId })
       })
-      .catch(err => showError('Network error: ' + err.message));
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            currentRoom = roomId;
+            currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connected)`;
+            const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+            onChildAdded(messagesRef, (snapshot) => {
+              const msg = snapshot.val();
+              if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
+              else if (msg.type === 'gesture' && msg.data) {
+                outputSign.textContent = `Other's Sign Result: ${msg.data}`;
+                probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
+                addChatMessage(msg.data, false);
+              }
+            });
+            console.log(`Joined room: ${currentRoom}`);
+            roomError.classList.add('hidden');
+          } else if (attempts < maxAttempts) {
+            attempts++;
+            setTimeout(checkRoom, 1000); // 每秒重試一次
+            console.log(`Retrying join for room ${roomId}, attempt ${attempts}`);
+          } else {
+            showError(data.error || 'Failed to join room after multiple attempts');
+          }
+        })
+        .catch(err => showError('Network error: ' + err.message));
+    };
+    checkRoom();
   } else {
     showError('Please enter a valid room ID');
   }
