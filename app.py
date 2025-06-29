@@ -59,15 +59,15 @@ except Exception as e:
 
 if temp_file_path:
     firebase_config = {
-    "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
-    "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
-    "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
-    "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
-    "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
-    "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
-    "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
-    "serviceAccount": temp_file_path
-}
+        "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+        "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
+        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
+        "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
+        "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
+        "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
+        "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
+        "serviceAccount": temp_file_path
+    }
 
     try:
         firebase = pyrebase.initialize_app(firebase_config)
@@ -243,22 +243,6 @@ def predict():
             return jsonify({'error': 'No valid session'}), 400
     except Exception as e:
         logger.error(f"Inference failed: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/create_room', methods=['POST'])
-def create_room():
-    logger.info("Received /create_room request")
-    if db is None:
-        logger.error("Firebase not initialized, cannot create room")
-        return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
-    try:
-        room_id = str(uuid4())
-        rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
-        db.child("rooms").child(room_id).set({"users": [], "messages": []})
-        logger.info(f"Created room with ID: {room_id}")
-        return jsonify({'room_id': room_id, 'status': 'success'})
-    except Exception as e:
-        logger.error(f"Failed to create room: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/create_room', methods=['POST'])
