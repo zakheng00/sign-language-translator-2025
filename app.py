@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pyrebase
 import tempfile
 import atexit
+import time
 
 # 初始化 Flask 應用
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -256,17 +257,41 @@ def create_room():
         rooms[room_id] = {'users': []}
         logger.debug(f"Attempting to set room at: rooms/{room_id}")
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
+        # 添加延遲以確保同步
+        time.sleep(1)  # 延遲 1 秒
         # 驗證寫入
         room_data = db.child("rooms").child(room_id).get().val()
         if not room_data or room_data.get("users") is None or room_data.get("messages") is None:
             logger.warning(f"Room {room_id} data verification failed: {room_data}")
-        else:
-            logger.info(f"Room {room_id} data verified: {room_data}")
+            return jsonify({'error': 'Room data verification failed', 'status': 'failure'}), 500
+        logger.info(f"Room {room_id} data verified: {room_data}")
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
         logger.error(f"Failed to create room: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'status': 'failure'}), 500
+
+@app.route('/join_room', methods=['POST'])
+def join_room():
+    logger.info("Received /join_room request")
+    if db is None:
+        logger.error("Firebase not initialized, cannot join room")
+        return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
+    try:
+        data = request.get_json()
+        if not data or 'room_id' not in data:
+            logger.error("Missing room_id in request")
+            return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
+        room_id = data['room_id']
+        room_data = db.child("rooms").child(room_id).get().val()
+        if not room_data:
+            logger.warning(f"Room {room_id} does not exist")
+            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
+        logger.info(f"Joined room: {room_id}")
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Failed to join room: {e}")
+        return jsonify({'error': str(e), 'status': 'failure'}), 500
 
 if __name__ == '__main__':
     try:
