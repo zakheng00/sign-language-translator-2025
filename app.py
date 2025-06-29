@@ -52,27 +52,26 @@ try:
     logger.info("Firebase service account file created successfully")
 except json.JSONDecodeError:
     logger.error("Invalid JSON in FIREBASE_SERVICE_ACCOUNT environment variable")
-    temp_file_path = None  # 設置為 None，後續處理
+    temp_file_path = None  
 except Exception as e:
     logger.error(f"Failed to create temporary file for Firebase service account: {e}")
-    temp_file_path = None  # 設置為 None，後續處理
+    temp_file_path = None  
 
 if temp_file_path:
     firebase_config = {
-    "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
-    "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
-    "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
-    "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
-    "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
-    "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
-    "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
-    "serviceAccount": temp_file_path
-}
+        "apiKey": os.environ.get('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+        "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN', 'signlanguagetranslator-cce9e.firebaseapp.com'),
+        "databaseURL": os.environ.get('FIREBASE_DATABASE_URL', 'https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app'),
+        "projectId": os.environ.get('FIREBASE_PROJECT_ID', 'signlanguagetranslator-cce9e'),
+        "storageBucket": os.environ.get('FIREBASE_STORAGE_BUCKET', 'signlanguagetranslator-cce9e.appspot.com'),
+        "messagingSenderId": os.environ.get('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_MESSAGING_SENDER_ID'),
+        "appId": os.environ.get('FIREBASE_APP_ID', 'YOUR_APP_ID'),
+        "serviceAccount": temp_file_path
+    }
 
     try:
         firebase = pyrebase.initialize_app(firebase_config)
         db = firebase.database()
-        # 可選連接測試
         try:
             test_ref = db.child("test").push({"test": "ping"})
             logger.info("Firebase connection test succeeded")
@@ -80,7 +79,7 @@ if temp_file_path:
             logger.warning(f"Firebase connection test failed: {e} - Continuing with limited functionality")
     except Exception as e:
         logger.error(f"Failed to initialize Firebase: {e}")
-        db = None  # 設置為 None，後續處理
+        db = None
 else:
     logger.warning("Firebase service account not configured, running without Firebase support")
     db = None
@@ -94,7 +93,6 @@ def cleanup():
             logger.info(f"Cleaned up temporary file: {temp_file_path}")
         except Exception as e:
             logger.error(f"Failed to clean up temporary file: {e}")
-    # 清理其他臨時文件
     for fname in ['input.webm', 'temp.wav']:
         if os.path.exists(fname):
             try:
@@ -108,7 +106,11 @@ def load_models():
     global model, labels, vosk_model, recognizer
     if model is None:
         try:
-            logger.info("Loading model and labels...")
+            logger.info(f"Checking model path: {MODEL_PATH}")
+            if not os.path.exists(MODEL_PATH):
+                raise FileNotFoundError(f"Model file {MODEL_PATH} not found")
+            if not os.path.exists(LABELS_PATH):
+                raise FileNotFoundError(f"Labels file {LABELS_PATH} not found")
             model = tf.keras.models.load_model(MODEL_PATH, compile=False)
             with open(LABELS_PATH, 'r', encoding='utf-8') as f:
                 labels = json.load(f)
@@ -150,14 +152,14 @@ def transcribe_audio(audio_data):
         logger.error(f"Transcription failed: {e}")
         return "Transcription error"
 
-# 手語預測（異步）
-def predict_gesture_async(frames, room_id):
+# 手語預測（同步，移除異步以簡化）
+def predict_gesture(frames, room_id):
     load_models()
     if db is None:
         logger.error("Firebase not initialized, skipping gesture prediction")
         return
     try:
-        logger.info("Starting model inference in thread")
+        logger.info("Starting model inference")
         keypoints_sequence = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
         keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
         keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
@@ -166,14 +168,17 @@ def predict_gesture_async(frames, room_id):
         pred_index = np.argmax(prediction, axis=-1)[0]
         gesture = labels[str(pred_index)] if str(pred_index) in labels else 'Unknown'
         logger.info(f"Prediction result: {gesture}, Probabilities: {pred_probs}")
-        db.child("rooms").child(room_id).child("messages").push({
-            "type": "gesture",
-            "data": gesture,
-            "probabilities": pred_probs,
-            "timestamp": firebase.ServerValue.TIMESTAMP
-        })
+        if db:
+            db.child("rooms").child(room_id).child("messages").push({
+                "type": "gesture",
+                "data": gesture,
+                "probabilities": pred_probs,
+                "timestamp": firebase.ServerValue.TIMESTAMP
+            })
+        return gesture, pred_probs
     except Exception as e:
-        logger.error(f"Prediction failed in thread: {e}")
+        logger.error(f"Prediction failed: {e}")
+        raise
 
 # 路由
 @app.route('/')
@@ -215,7 +220,7 @@ def transcribe():
                 "data": transcription,
                 "timestamp": firebase.ServerValue.TIMESTAMP
             })
-        return jsonify({'transcription': transcription})
+        return jsonify({'status': 'success', 'transcription': transcription})
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return jsonify({'error': str(e)}), 500
@@ -237,8 +242,8 @@ def predict():
         logger.info(f"Received {len(frames)} frames")
         room_id = request.headers.get('X-Socket-ID')
         if room_id:
-            executor.submit(predict_gesture_async, frames, room_id)
-            return jsonify({'status': 'processing'})
+            gesture, pred_probs = predict_gesture(frames, room_id)
+            return jsonify({'status': 'success', 'gesture': gesture, 'probabilities': pred_probs})
         else:
             return jsonify({'error': 'No valid session'}), 400
     except Exception as e:
@@ -253,12 +258,7 @@ def create_room():
         return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
     try:
         room_id = str(uuid4())
-        rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
-        # 可選連接測試
-        try:
-            test_ref = db.child("test").push({"test": "ping"})
-        except Exception as e:
-            logger.warning(f"Firebase connection test failed: {e} - Attempting to create room")
+        rooms[room_id] = {'users': []}
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
