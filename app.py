@@ -215,8 +215,8 @@ def join_room():
         data = request.get_json()
         room_id = data.get("room_id")
         room_data = db.child("rooms").child(room_id).get().val()
-        if not room_data:
-            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
+        if not room_data or "messages" not in room_data or "users" not in room_data:
+            return jsonify({'error': 'Room does not exist or is incomplete', 'status': 'failure'}), 404
         return jsonify({'status': 'success'})
     except Exception as e:
         logger.error(f"Join room error: {e}")
