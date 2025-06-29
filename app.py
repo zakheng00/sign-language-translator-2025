@@ -254,11 +254,6 @@ def create_room():
     try:
         room_id = str(uuid4())
         rooms[room_id] = {'users': []}  # 確保 rooms 已初始化
-        # 可選連接測試
-        try:
-            test_ref = db.child("test").push({"test": "ping"})
-        except Exception as e:
-            logger.warning(f"Firebase connection test failed: {e} - Attempting to create room")
         db.child("rooms").child(room_id).set({"users": [], "messages": []})
         logger.info(f"Created room with ID: {room_id}")
         return jsonify({'room_id': room_id, 'status': 'success'})
