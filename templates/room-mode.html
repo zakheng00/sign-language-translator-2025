@@ -13,9 +13,9 @@
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold text-center mb-4">Room Mode</h1>
     <div class="flex justify-center gap-4 mb-4">
-      <button id="createRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Create Room</button>
+      <button id="createRoomBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" style="display: block;">Create Room</button>
       <input id="joinRoomInput" type="text" placeholder="Enter Room ID" class="border p-2 rounded">
-      <button id="joinRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Join Room</button>
+      <button id="joinRoomBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" style="display: block;">Join Room</button>
     </div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
@@ -31,9 +31,9 @@
       <div id="progress-sign" class="mt-2"></div>
       <div id="output-sign" class="mt-2"></div>
       <div id="probabilities-sign" class="mt-2"></div>
-      <button id="startSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="startSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2">Start</button>
       <button id="stopSignBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
-      <button id="submitSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+      <button id="submitSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
 
     <!-- Speech Section -->
@@ -42,39 +42,37 @@
       <canvas id="audioCanvas" width="480" height="100"></canvas>
       <div id="progress-speech" class="mt-2"></div>
       <div id="output-speech" class="mt-2"></div>
-      <button id="startSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="startSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2">Start</button>
       <button id="stopSpeechBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
-      <button id="submitSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+      <button id="submitSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
 
     <!-- Section Selection -->
     <div class="flex justify-center gap-4">
-      <button id="selectSignBtn" class="bg-primary text-white px-4 py-2 rounded">Select Sign</button>
-      <button id="selectSpeechBtn" class="bg-primary text-white px-4 py-2 rounded">Select Speech</button>
+      <button id="selectSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Sign</button>
+      <button id="selectSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Speech</button>
     </div>
   </div>
 
   <script type="module">
     // Your Firebase configuration (replace with your actual values)
-  const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
-  databaseURL: "https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "signlanguagetranslator-cce9e",
-  storageBucket: "signlanguagetranslator-cce9e.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
+      databaseURL: "https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "signlanguagetranslator-cce9e",
+      storageBucket: "signlanguagetranslator-cce9e.appspot.com",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
 
     // Initialize Firebase
     import { initializeApp } from "firebase/app";
-    import { getDatabase, ref, set } from "firebase/database";
+    import { getDatabase, ref, onChildAdded } from "firebase/database";
 
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
-    const roomRef = ref(database, 'rooms/' + roomId);
-    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     console.log('JavaScript running');
 
@@ -100,7 +98,6 @@
       const joinRoomBtn = document.getElementById('joinRoomBtn');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
-      const connectionStatus = document.getElementById('connectionStatus');
       const chatBox = document.getElementById('chatBox');
       const signSection = document.getElementById('signSection');
       const speechSection = document.getElementById('speechSection');
@@ -125,7 +122,7 @@
       function addChatMessage(message, isSelf) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
+        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-blue-500 text-white' : 'bg-gray-200'}">${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
@@ -145,9 +142,24 @@
       // 绘制关键点
       function drawLandmarks(results) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'blue'; ctx.fill(); }
-        if (results.leftHandLandmarks) for (const landmark of results.leftHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'red'; ctx.fill(); }
-        if (results.rightHandLandmarks) for (const landmark of results.rightHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'green'; ctx.fill(); }
+        if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { 
+          ctx.beginPath(); 
+          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
+          ctx.fillStyle = 'blue'; 
+          ctx.fill(); 
+        }
+        if (results.leftHandLandmarks) for (const landmark of results.leftHandLandmarks) { 
+          ctx.beginPath(); 
+          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
+          ctx.fillStyle = 'red'; 
+          ctx.fill(); 
+        }
+        if (results.rightHandLandmarks) for (const landmark of results.rightHandLandmarks) { 
+          ctx.beginPath(); 
+          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
+          ctx.fillStyle = 'green'; 
+          ctx.fill(); 
+        }
       }
 
       // 提取关键点
@@ -296,10 +308,11 @@
           if (result.transcription) {
             outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
             addChatMessage(result.transcription, true);
-            database.ref(`rooms/${currentRoom}/messages`).push({
+            const roomRef = ref(database, `rooms/${currentRoom}/messages`);
+            set(ref(database, `rooms/${currentRoom}/messages`), {
               type: 'transcription',
               data: result.transcription,
-              timestamp: firebase.database.ServerValue.TIMESTAMP
+              timestamp: Date.now() // 注意：Firebase ServerValue.TIMESTAMP 在客戶端不可用，需後端處理
             });
           }
           speechAudioData = [];
@@ -322,7 +335,8 @@
             if (data.status === 'success') {
               currentRoom = data.room_id;
               currentRoomDiv.textContent = `Current Room: ${currentRoom} (Share this ID with another user)`;
-              database.ref(`rooms/${currentRoom}/messages`).on('child_added', (snapshot) => {
+              const roomRef = ref(database, `rooms/${currentRoom}/messages`);
+              onChildAdded(roomRef, (snapshot) => {
                 const msg = snapshot.val();
                 if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
                 else if (msg.type === 'gesture' && msg.data) {
@@ -354,7 +368,8 @@
               if (data.status === 'success') {
                 currentRoom = roomId;
                 currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connected)`;
-                database.ref(`rooms/${currentRoom}/messages`).on('child_added', (snapshot) => {
+                const roomRef = ref(database, `rooms/${currentRoom}/messages`);
+                onChildAdded(roomRef, (snapshot) => {
                   const msg = snapshot.val();
                   if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
                   else if (msg.type === 'gesture' && msg.data) {
