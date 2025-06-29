@@ -56,24 +56,24 @@
 
   <script type="module">
     // Your Firebase configuration (replace with your actual values)
-    const firebaseConfig = {
-      apiKey: "your-api-key",
-      authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
-      projectId: "signlanguagetranslator-cce9e",
-      storageBucket: "signlanguagetranslator-cce9e.appspot.com",
-      messagingSenderId: "243699884064",
-      appId: "1:243699884064:web:9aa648646145cc22029c45",
-      measurementId: "G-1T7DTVV647"
-    };
+  const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
+  databaseURL: "https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "signlanguagetranslator-cce9e",
+  storageBucket: "signlanguagetranslator-cce9e.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 
     // Initialize Firebase
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { initializeApp } from "firebase/app";
+    import { getDatabase, ref, set } from "firebase/database";
 
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
-
+    const roomRef = ref(database, 'rooms/' + roomId);
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     console.log('JavaScript running');
@@ -375,7 +375,6 @@
         }
       });
 
-      // 按钮事件
       selectSignBtn.addEventListener('click', () => showSection('sign'));
       selectSpeechBtn.addEventListener('click', () => showSection('speech'));
 
