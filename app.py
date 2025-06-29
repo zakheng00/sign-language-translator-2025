@@ -261,32 +261,27 @@ def create_room():
         logger.error(f"Failed to create room: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/join_room', methods=['POST'])
-def join_room():
-    logger.info("Received /join_room request")
+@app.route('/create_room', methods=['POST'])
+def create_room():
+    logger.info("Received /create_room request")
     if db is None:
-        logger.error("Firebase not initialized, cannot join room")
+        logger.error("Firebase not initialized, cannot create room")
         return jsonify({'error': 'Firebase service unavailable', 'status': 'failure'}), 500
     try:
-        data = request.get_json()
-        if not data or 'room_id' not in data:
-            logger.error("Missing room_id in request")
-            return jsonify({'error': 'Missing room_id', 'status': 'failure'}), 400
-
-        room_id = data['room_id']
+        room_id = str(uuid4())
+        rooms[room_id] = {'users': []}
+        logger.debug(f"Attempting to set room at: rooms/{room_id}")
+        db.child("rooms").child(room_id).set({"users": [], "messages": []})
+        # 驗證寫入
         room_data = db.child("rooms").child(room_id).get().val()
-        if not room_data:
-            logger.error(f"Room {room_id} does not exist")
-            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
-
-        user_id = str(uuid4())
-        rooms[room_id] = rooms.get(room_id, {'users': []})
-        rooms[room_id]['users'].append(user_id)
-        db.child("rooms").child(room_id).child("users").set(rooms[room_id]['users'])
-        logger.info(f"User {user_id} joined room {room_id}")
-        return jsonify({'user_id': user_id, 'room_id': room_id, 'status': 'success'})
+        if not room_data or room_data.get("users") is None or room_data.get("messages") is None:
+            logger.warning(f"Room {room_id} data verification failed: {room_data}")
+        else:
+            logger.info(f"Room {room_id} data verified: {room_data}")
+        logger.info(f"Created room with ID: {room_id}")
+        return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
-        logger.error(f"Failed to join room: {e}")
+        logger.error(f"Failed to create room: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
