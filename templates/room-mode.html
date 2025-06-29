@@ -9,7 +9,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
-  <!-- Room Creation and Joining -->
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold text-center mb-4">Room Mode</h1>
     <div class="flex justify-center gap-4 mb-4">
@@ -19,11 +18,7 @@
     </div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
-
-    <!-- Chat Box -->
     <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
-
-    <!-- Sign Language Section -->
     <div id="signSection" class="mb-4">
       <h2 class="text-xl font-bold mb-2">Sign Language Translation</h2>
       <video id="video" width="480" height="360" autoplay muted></video>
@@ -35,8 +30,6 @@
       <button id="stopSignBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
       <button id="submitSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
-
-    <!-- Speech Section -->
     <div id="speechSection" class="mb-4 hidden">
       <h2 class="text-xl font-bold mb-2">Speech to Text</h2>
       <canvas id="audioCanvas" width="480" height="100"></canvas>
@@ -46,8 +39,6 @@
       <button id="stopSpeechBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
       <button id="submitSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
-
-    <!-- Section Selection -->
     <div class="flex justify-center gap-4">
       <button id="selectSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Sign</button>
       <button id="selectSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Speech</button>
@@ -55,7 +46,6 @@
   </div>
 
   <script type="module">
-    // Your Firebase configuration (replace with your actual values)
     const firebaseConfig = {
       apiKey: "YOUR_API_KEY",
       authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
@@ -66,12 +56,18 @@
       appId: "YOUR_APP_ID"
     };
 
-    // Initialize Firebase
     import { initializeApp } from "firebase/app";
     import { getDatabase, ref, onChildAdded } from "firebase/database";
 
-    const app = initializeApp(firebaseConfig);
-    const database = getDatabase(app);
+    try {
+      const app = initializeApp(firebaseConfig);
+      const database = getDatabase(app);
+      console.log('Firebase initialized successfully');
+    } catch (error) {
+      console.error('Firebase initialization failed:', error);
+      showError('Firebase initialization failed. Check console for details.');
+    }
+
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
 
     console.log('JavaScript running');
@@ -111,14 +107,12 @@
       const NUM_SIGN_FRAMES = 100;
       let signFrameCount = 0;
 
-      // 显示错误
       function showError(message) {
         roomError.textContent = message;
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      // 添加消息到聊天框
       function addChatMessage(message, isSelf) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
@@ -127,7 +121,6 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
-      // 切换显示区域
       function showSection(section) {
         signSection.classList.add('hidden');
         speechSection.classList.add('hidden');
@@ -135,11 +128,9 @@
         else if (section === 'speech') speechSection.classList.remove('hidden');
       }
 
-      // 初始化 MediaPipe Holistic
       const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
       holistic.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
-      // 绘制关键点
       function drawLandmarks(results) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { 
@@ -162,7 +153,6 @@
         }
       }
 
-      // 提取关键点
       function extractKeypoints(results) {
         const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
         const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
@@ -173,7 +163,6 @@
         return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
       }
 
-      // 启动摄像头
       async function startWebcam() {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -188,7 +177,6 @@
         }
       }
 
-      // 捕获手语帧
       function captureSignFrame(results) {
         if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
           const keypoints = extractKeypoints(results);
@@ -201,7 +189,6 @@
         }
       }
 
-      // 停止手语录制
       function stopSignRecording() {
         if (capturingSign) {
           capturingSign = false;
@@ -213,7 +200,6 @@
         }
       }
 
-      // 提交手语翻译
       async function predictSign() {
         if (!currentRoom) {
           outputSign.textContent = 'Error: Please join or create a room first';
@@ -244,13 +230,11 @@
         }
       }
 
-      // 处理 MediaPipe 结果
       holistic.onResults((results) => {
         drawLandmarks(results);
         if (capturingSign) captureSignFrame(results);
       });
 
-      // 音频录制设置
       let mediaRecorder;
 
       function startAudioRecording() {
@@ -312,7 +296,7 @@
             set(ref(database, `rooms/${currentRoom}/messages`), {
               type: 'transcription',
               data: result.transcription,
-              timestamp: Date.now() // 注意：Firebase ServerValue.TIMESTAMP 在客戶端不可用，需後端處理
+              timestamp: Date.now()
             });
           }
           speechAudioData = [];
@@ -327,8 +311,8 @@
         }
       }
 
-      // 创建房间
       createRoomBtn.addEventListener('click', () => {
+        console.log('Create Room button clicked');
         fetch(`${API_URL}/create_room`, { method: 'POST' })
           .then(response => response.json())
           .then(data => {
@@ -354,8 +338,8 @@
           .catch(err => showError('Network error: ' + err.message));
       });
 
-      // 加入房间
       joinRoomBtn.addEventListener('click', () => {
+        console.log('Join Room button clicked');
         const roomId = joinRoomInput.value.trim();
         if (roomId) {
           fetch(`${API_URL}/join_room`, {
@@ -390,10 +374,18 @@
         }
       });
 
-      selectSignBtn.addEventListener('click', () => showSection('sign'));
-      selectSpeechBtn.addEventListener('click', () => showSection('speech'));
+      selectSignBtn.addEventListener('click', () => {
+        console.log('Select Sign button clicked');
+        showSection('sign');
+      });
+
+      selectSpeechBtn.addEventListener('click', () => {
+        console.log('Select Speech button clicked');
+        showSection('speech');
+      });
 
       startSignBtn.addEventListener('click', () => {
+        console.log('Start Sign button clicked');
         if (!capturingSign && currentRoom) {
           capturingSign = true;
           signFrames = [];
@@ -407,14 +399,31 @@
         }
       });
 
-      stopSignBtn.addEventListener('click', stopSignRecording);
-      submitSignBtn.addEventListener('click', predictSign);
+      stopSignBtn.addEventListener('click', () => {
+        console.log('Stop Sign button clicked');
+        stopSignRecording();
+      });
 
-      startSpeechBtn.addEventListener('click', startAudioRecording);
-      stopSpeechBtn.addEventListener('click', stopSpeechRecording);
-      submitSpeechBtn.addEventListener('click', transcribeSpeech);
+      submitSignBtn.addEventListener('click', () => {
+        console.log('Submit Sign button clicked');
+        predictSign();
+      });
 
-      // 初始化
+      startSpeechBtn.addEventListener('click', () => {
+        console.log('Start Speech button clicked');
+        startAudioRecording();
+      });
+
+      stopSpeechBtn.addEventListener('click', () => {
+        console.log('Stop Speech button clicked');
+        stopSpeechRecording();
+      });
+
+      submitSpeechBtn.addEventListener('click', () => {
+        console.log('Submit Speech button clicked');
+        transcribeSpeech();
+      });
+
       showSection('sign');
       startWebcam();
     });
