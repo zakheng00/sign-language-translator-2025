@@ -194,15 +194,25 @@ def create_room():
         return jsonify({'error': 'Firebase unavailable', 'status': 'failure'}), 500
     try:
         room_id = str(uuid4())
-        db.child("rooms").child(room_id).set({"users": [], "messages": []})
-        # 重試驗證資料是否成功寫入
+        logger.info(f"Creating room: {room_id}")
+        db.child("rooms").child(room_id).set({
+            "users": [],
+            "messages": [],
+            "created_at": int(time.time() * 1000)
+        })
+
+        # 增加 sleep 時間 + debug log
         for attempt in range(5):
-            time.sleep(2)
+            time.sleep(3)  # 延遲更久給 Firebase
             room_data = db.child("rooms").child(room_id).get().val()
-            if room_data and "users" in room_data and "messages" in room_data:
+            logger.debug(f"Attempt {attempt + 1}: Read room data = {room_data}")
+            if isinstance(room_data, dict) and "users" in room_data and "messages" in room_data:
+                logger.info(f"Room {room_id} verified successfully.")
                 return jsonify({'room_id': room_id, 'status': 'success'})
-            logger.warning(f"Attempt {attempt + 1}/5 failed: {room_data}")
+
+        logger.warning(f"Room verification failed after retries: {room_id}")
         return jsonify({'error': 'Room verification failed', 'status': 'failure'}), 500
+
     except Exception as e:
         logger.error(f"Create room error: {e}")
         return jsonify({'error': str(e), 'status': 'failure'}), 500
