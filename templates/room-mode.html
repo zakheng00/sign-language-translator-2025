@@ -9,16 +9,21 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
+  <!-- Room Creation and Joining -->
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold text-center mb-4">Room Mode</h1>
     <div class="flex justify-center gap-4 mb-4">
-      <button id="createRoomBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" style="display: block;">Create Room</button>
+      <button id="createRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Create Room</button>
       <input id="joinRoomInput" type="text" placeholder="Enter Room ID" class="border p-2 rounded">
-      <button id="joinRoomBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" style="display: block;">Join Room</button>
+      <button id="joinRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Join Room</button>
     </div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
+
+    <!-- Chat Box -->
     <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
+
+    <!-- Sign Language Section -->
     <div id="signSection" class="mb-4">
       <h2 class="text-xl font-bold mb-2">Sign Language Translation</h2>
       <video id="video" width="480" height="360" autoplay muted></video>
@@ -26,49 +31,51 @@
       <div id="progress-sign" class="mt-2"></div>
       <div id="output-sign" class="mt-2"></div>
       <div id="probabilities-sign" class="mt-2"></div>
-      <button id="startSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="startSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
       <button id="stopSignBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
-      <button id="submitSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+      <button id="submitSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
+
+    <!-- Speech Section -->
     <div id="speechSection" class="mb-4 hidden">
       <h2 class="text-xl font-bold mb-2">Speech to Text</h2>
       <canvas id="audioCanvas" width="480" height="100"></canvas>
       <div id="progress-speech" class="mt-2"></div>
       <div id="output-speech" class="mt-2"></div>
-      <button id="startSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="startSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
       <button id="stopSpeechBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
-      <button id="submitSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+      <button id="submitSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
     </div>
+
+    <!-- Section Selection -->
     <div class="flex justify-center gap-4">
-      <button id="selectSignBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Sign</button>
-      <button id="selectSpeechBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Select Speech</button>
+      <button id="selectSignBtn" class="bg-primary text-white px-4 py-2 rounded">Select Sign</button>
+      <button id="selectSpeechBtn" class="bg-primary text-white px-4 py-2 rounded">Select Speech</button>
     </div>
   </div>
 
   <script type="module">
+    // Your Firebase configuration (replace with your actual values)
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
+      apiKey: "your-api-key",
       authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
       databaseURL: "https://signlanguagetranslator-cce9e-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "signlanguagetranslator-cce9e",
       storageBucket: "signlanguagetranslator-cce9e.appspot.com",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      messagingSenderId: "243699884064",
+      appId: "1:243699884064:web:9aa648646145cc22029c45",
+      measurementId: "G-1T7DTVV647"
     };
 
-    import { initializeApp } from "firebase/app";
-    import { getDatabase, ref, onChildAdded } from "firebase/database";
+    // Initialize Firebase
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getDatabase, ref, onChildAdded, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
-    try {
-      const app = initializeApp(firebaseConfig);
-      const database = getDatabase(app);
-      console.log('Firebase initialized successfully');
-    } catch (error) {
-      console.error('Firebase initialization failed:', error);
-      showError('Firebase initialization failed. Check console for details.');
-    }
-
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
+
+    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     console.log('JavaScript running');
 
@@ -107,20 +114,23 @@
       const NUM_SIGN_FRAMES = 100;
       let signFrameCount = 0;
 
+      // 显示错误
       function showError(message) {
         roomError.textContent = message;
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
+      // 添加消息到聊天框
       function addChatMessage(message, isSelf) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-blue-500 text-white' : 'bg-gray-200'}">${message}</span>`;
+        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
+      // 切换显示区域
       function showSection(section) {
         signSection.classList.add('hidden');
         speechSection.classList.add('hidden');
@@ -128,31 +138,19 @@
         else if (section === 'speech') speechSection.classList.remove('hidden');
       }
 
+      // 初始化 MediaPipe Holistic
       const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
       holistic.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
+      // 绘制关键点
       function drawLandmarks(results) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { 
-          ctx.beginPath(); 
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
-          ctx.fillStyle = 'blue'; 
-          ctx.fill(); 
-        }
-        if (results.leftHandLandmarks) for (const landmark of results.leftHandLandmarks) { 
-          ctx.beginPath(); 
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
-          ctx.fillStyle = 'red'; 
-          ctx.fill(); 
-        }
-        if (results.rightHandLandmarks) for (const landmark of results.rightHandLandmarks) { 
-          ctx.beginPath(); 
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); 
-          ctx.fillStyle = 'green'; 
-          ctx.fill(); 
-        }
+        if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'blue'; ctx.fill(); }
+        if (results.leftHandLandmarks) for (const landmark of results.leftHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'red'; ctx.fill(); }
+        if (results.rightHandLandmarks) for (const landmark of results.rightHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'green'; ctx.fill(); }
       }
 
+      // 提取关键点
       function extractKeypoints(results) {
         const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
         const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
@@ -163,6 +161,7 @@
         return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
       }
 
+      // 启动摄像头
       async function startWebcam() {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -177,6 +176,7 @@
         }
       }
 
+      // 捕获手语帧
       function captureSignFrame(results) {
         if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
           const keypoints = extractKeypoints(results);
@@ -189,6 +189,7 @@
         }
       }
 
+      // 停止手语录制
       function stopSignRecording() {
         if (capturingSign) {
           capturingSign = false;
@@ -200,6 +201,7 @@
         }
       }
 
+      // 提交手语翻译
       async function predictSign() {
         if (!currentRoom) {
           outputSign.textContent = 'Error: Please join or create a room first';
@@ -230,11 +232,13 @@
         }
       }
 
+      // 处理 MediaPipe 结果
       holistic.onResults((results) => {
         drawLandmarks(results);
         if (capturingSign) captureSignFrame(results);
       });
 
+      // 音频录制设置
       let mediaRecorder;
 
       function startAudioRecording() {
@@ -292,11 +296,11 @@
           if (result.transcription) {
             outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
             addChatMessage(result.transcription, true);
-            const roomRef = ref(database, `rooms/${currentRoom}/messages`);
-            set(ref(database, `rooms/${currentRoom}/messages`), {
+            const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+            await set(ref(database, `${messagesRef.push()}`), {
               type: 'transcription',
               data: result.transcription,
-              timestamp: Date.now()
+              timestamp: serverTimestamp()
             });
           }
           speechAudioData = [];
@@ -311,16 +315,16 @@
         }
       }
 
+      // 创建房间
       createRoomBtn.addEventListener('click', () => {
-        console.log('Create Room button clicked');
         fetch(`${API_URL}/create_room`, { method: 'POST' })
           .then(response => response.json())
           .then(data => {
             if (data.status === 'success') {
               currentRoom = data.room_id;
               currentRoomDiv.textContent = `Current Room: ${currentRoom} (Share this ID with another user)`;
-              const roomRef = ref(database, `rooms/${currentRoom}/messages`);
-              onChildAdded(roomRef, (snapshot) => {
+              const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+              onChildAdded(messagesRef, (snapshot) => {
                 const msg = snapshot.val();
                 if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
                 else if (msg.type === 'gesture' && msg.data) {
@@ -338,8 +342,8 @@
           .catch(err => showError('Network error: ' + err.message));
       });
 
+      // 加入房间
       joinRoomBtn.addEventListener('click', () => {
-        console.log('Join Room button clicked');
         const roomId = joinRoomInput.value.trim();
         if (roomId) {
           fetch(`${API_URL}/join_room`, {
@@ -352,8 +356,8 @@
               if (data.status === 'success') {
                 currentRoom = roomId;
                 currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connected)`;
-                const roomRef = ref(database, `rooms/${currentRoom}/messages`);
-                onChildAdded(roomRef, (snapshot) => {
+                const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+                onChildAdded(messagesRef, (snapshot) => {
                   const msg = snapshot.val();
                   if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
                   else if (msg.type === 'gesture' && msg.data) {
@@ -374,18 +378,11 @@
         }
       });
 
-      selectSignBtn.addEventListener('click', () => {
-        console.log('Select Sign button clicked');
-        showSection('sign');
-      });
-
-      selectSpeechBtn.addEventListener('click', () => {
-        console.log('Select Speech button clicked');
-        showSection('speech');
-      });
+      // 按钮事件
+      selectSignBtn.addEventListener('click', () => showSection('sign'));
+      selectSpeechBtn.addEventListener('click', () => showSection('speech'));
 
       startSignBtn.addEventListener('click', () => {
-        console.log('Start Sign button clicked');
         if (!capturingSign && currentRoom) {
           capturingSign = true;
           signFrames = [];
@@ -399,31 +396,14 @@
         }
       });
 
-      stopSignBtn.addEventListener('click', () => {
-        console.log('Stop Sign button clicked');
-        stopSignRecording();
-      });
+      stopSignBtn.addEventListener('click', stopSignRecording);
+      submitSignBtn.addEventListener('click', predictSign);
 
-      submitSignBtn.addEventListener('click', () => {
-        console.log('Submit Sign button clicked');
-        predictSign();
-      });
+      startSpeechBtn.addEventListener('click', startAudioRecording);
+      stopSpeechBtn.addEventListener('click', stopSpeechRecording);
+      submitSpeechBtn.addEventListener('click', transcribeSpeech);
 
-      startSpeechBtn.addEventListener('click', () => {
-        console.log('Start Speech button clicked');
-        startAudioRecording();
-      });
-
-      stopSpeechBtn.addEventListener('click', () => {
-        console.log('Stop Speech button clicked');
-        stopSpeechRecording();
-      });
-
-      submitSpeechBtn.addEventListener('click', () => {
-        console.log('Submit Speech button clicked');
-        transcribeSpeech();
-      });
-
+      // 初始化
       showSection('sign');
       startWebcam();
     });
