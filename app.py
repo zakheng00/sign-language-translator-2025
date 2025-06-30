@@ -12,7 +12,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
 from firebase_admin import credentials, db as firebase_db
-from firebase_admin.db import ServerValue  # 修正導入
+from firebase_admin import ServerValue  # 修正為從 firebase_admin 導入
 import tempfile
 import atexit
 import time
@@ -69,6 +69,7 @@ if temp_file_path:
         })
         db = firebase_db.reference(app=firebase_app)
         logger.info("Firebase Admin connected successfully")
+        logger.debug(f"Firebase Admin version: {firebase_admin.__version__}")  # 診斷版本
     except ValueError as ve:
         logger.error(f"Invalid Firebase configuration: {ve}")
     except Exception as e:
@@ -156,16 +157,6 @@ def predict_gesture_async(frames, room_id):
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
-
-@app.route('/live-translation')
-def live_translation():
-    logger.info("Accessed live sign language translation page")
-    return send_from_directory('templates', 'live-translation.html')
-
-@app.route('/speech-to-text')
-def speech_to_text():
-    logger.info("Accessed speech-to-text page")
-    return send_from_directory('templates', 'speech-to-text.html')
 
 @app.route('/room-mode')
 def room_mode():
