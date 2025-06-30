@@ -59,10 +59,10 @@ if temp_file_path:
     try:
         logger.info("Attempting to initialize Firebase app")
         cred = credentials.Certificate(temp_file_path)
-        firebase_admin.initialize_app(cred, {
+        firebase_app = firebase_admin.initialize_app(cred, {
             'databaseURL': os.environ.get("FIREBASE_DATABASE_URL", "")
         })
-        db = db.reference()
+        db = db.reference(app=firebase_app)  # 明確指定應用程序
         logger.info("Firebase Admin connected successfully")
     except ValueError as ve:
         logger.error(f"Invalid Firebase configuration: {ve}")
