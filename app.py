@@ -66,7 +66,7 @@ if temp_file_path:
         firebase_app = firebase_admin.initialize_app(cred, {
             'databaseURL': database_url
         })
-        db = firebase_db.reference(app=firebase_app)  # 使用 firebase_db.reference
+        db = firebase_db.reference(app=firebase_app)
         logger.info("Firebase Admin connected successfully")
     except ValueError as ve:
         logger.error(f"Invalid Firebase configuration: {ve}")
@@ -211,10 +211,11 @@ def join_room():
     try:
         data = request.get_json()
         room_id = data.get("room_id")
-        room_data = db.child("rooms").child(room_id).get().val()
-        if not room_data:
+        room_data = db.child("rooms").child(room_id).get()
+        if room_data is None:
             return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
-        user_count = len(room_data.get("users", []))
+        room_dict = room_data.val() if hasattr(room_data, 'val') else room_data
+        user_count = len(room_dict.get("users", []))
         if user_count >= 2:
             return jsonify({'error': 'Room full', 'status': 'failure'}), 403
         return jsonify({'status': 'success'})
