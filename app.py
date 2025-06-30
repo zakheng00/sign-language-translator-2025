@@ -35,23 +35,41 @@ recognizer = None
 executor = ThreadPoolExecutor(max_workers=2)
 db = None
 
+# 環境變量和臨時文件處理
 firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT', '{}')
 temp_file_path = None
+logger.debug(f"FIREBASE_SERVICE_ACCOUNT content length: {len(firebase_service_account_json)}")
 
-try:
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-        temp_file.write(firebase_service_account_json)
-        temp_file_path = temp_file.name
-except Exception as e:
-    logger.error(f"Failed to create temp Firebase key: {e}")
+if firebase_service_account_json and firebase_service_account_json != '{}':
+    try:
+        temp_dir = '/tmp'
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=temp_dir) as temp_file:
+            temp_file.write(firebase_service_account_json)
+            temp_file_path = temp_file.name
+        logger.info(f"Temporary Firebase key file created at: {temp_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to create temp Firebase key: {e}")
+else:
+    logger.error("FIREBASE_SERVICE_ACCOUNT environment variable is invalid or empty")
 
+# Firebase 初始化
 if temp_file_path:
-    cred = credentials.Certificate(temp_file_path)
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': os.environ.get("FIREBASE_DATABASE_URL", "")
-    })
-    db = db.reference()
-    logger.info("Firebase Admin connected successfully.")
+    try:
+        logger.info("Attempting to initialize Firebase app")
+        cred = credentials.Certificate(temp_file_path)
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': os.environ.get("FIREBASE_DATABASE_URL", "")
+        })
+        db = db.reference()
+        logger.info("Firebase Admin connected successfully")
+    except ValueError as ve:
+        logger.error(f"Invalid Firebase configuration: {ve}")
+    except Exception as e:
+        logger.error(f"Firebase initialization failed: {e}")
+else:
+    logger.error("Skipping Firebase initialization due to missing service account file")
 
 @atexit.register
 def cleanup():
@@ -81,6 +99,8 @@ def load_models():
 
 def transcribe_audio(audio_data):
     load_models()
+    if db is None:
+        return "Database not initialized"
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
