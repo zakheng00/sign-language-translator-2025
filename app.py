@@ -11,7 +11,7 @@ import subprocess
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
-from firebase_admin import credentials, db as firebase_db
+from firebase_admin import credentials, db as firebase_db, ServerValue
 import tempfile
 import atexit
 import time
@@ -108,8 +108,14 @@ def transcribe_audio(audio_data):
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
+        logger.debug("Running ffmpeg version check")
         subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        subprocess.run(['ffmpeg', '-i', 'input.webm', 'temp.wav', '-ac', '1', '-ar', '16000', '-y'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.debug("Converting input.webm to temp.wav")
+        result = subprocess.run(
+            ['ffmpeg', '-i', 'input.webm', '-ac', '1', '-ar', '16000', '-y', 'temp.wav'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
+        )
+        logger.debug(f"FFmpeg output: {result.stderr.decode()}")
         with wave.open("temp.wav", "rb") as wf:
             while True:
                 data = wf.readframes(4000)
@@ -141,7 +147,7 @@ def predict_gesture_async(frames, room_id):
             "type": "gesture",
             "data": gesture,
             "probabilities": pred_probs,
-            "timestamp": db.ServerValue.TIMESTAMP
+            "timestamp": ServerValue.TIMESTAMP
         })
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
@@ -149,6 +155,16 @@ def predict_gesture_async(frames, room_id):
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
+
+@app.route('/live-translation')
+def live_translation():
+    logger.info("Accessed live sign language translation page")
+    return send_from_directory('templates', 'live-translation.html')
+
+@app.route('/speech-to-text')
+def speech_to_text():
+    logger.info("Accessed speech-to-text page")
+    return send_from_directory('templates', 'speech-to-text.html')
 
 @app.route('/room-mode')
 def room_mode():
@@ -166,7 +182,7 @@ def transcribe():
             db.child("rooms").child(room_id).child("messages").push({
                 "type": "transcription",
                 "data": transcription,
-                "timestamp": db.ServerValue.TIMESTAMP
+                "timestamp": ServerValue.TIMESTAMP
             })
         return jsonify({'transcription': transcription})
     except Exception as e:
@@ -197,7 +213,7 @@ def create_room():
         db.child("rooms").child(room_id).set({
             "users": [],
             "messages": [],
-            "created_at": db.ServerValue.TIMESTAMP
+            "created_at": ServerValue.TIMESTAMP
         })
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -250,7 +266,7 @@ if __name__ == '__main__':
                 db.child("rooms").child(room_id).set({
                     "users": [],
                     "messages": [],
-                    "created_at": db.ServerValue.TIMESTAMP
+                    "created_at": ServerValue.TIMESTAMP
                 })
                 logger.info(f"Pre-created room with ID: {room_id}")
         logger.info("Starting Flask server")

@@ -260,8 +260,11 @@
           signFrameCount++;
           const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
           progressSignDiv.textContent = `Progress: ${progress}%`;
-          if (signFrames.length < NUM_SIGN_FRAMES) requestAnimationFrame(() => holistic.send({ image: video }));
-          else stopSignRecording();
+          if (signFrames.length < NUM_SIGN_FRAMES && capturingSign) {
+            requestAnimationFrame(() => holistic.send({ image: video }));
+          } else {
+            stopSignRecording();
+          }
         }
       }
 
@@ -273,7 +276,8 @@
           startSignBtn.textContent = 'Start';
           stopSignBtn.classList.add('disabled');
           submitSignBtn.classList.remove('disabled');
-          progressSignDiv.textContent = `Progress: 100%`;
+          progressSignDiv.textContent = `Progress: ${Math.round((signFrames.length / NUM_SIGN_FRAMES) * 100)}%`;
+          console.log('Sign recording stopped manually');
         }
       }
 
@@ -399,6 +403,7 @@
         if (!capturingSign && currentRoom) {
           capturingSign = true;
           signFrames = [];
+          signFrameCount = 0;
           startSignBtn.textContent = 'Recording...';
           stopSignBtn.classList.remove('disabled');
           submitSignBtn.classList.add('disabled');
@@ -406,10 +411,19 @@
           holistic.send({ image: video });
         } else if (!currentRoom) {
           outputSign.textContent = 'Error: Please join or create a room first';
+        } else {
+          console.log('Recording already in progress');
         }
       });
 
-      stopSignBtn.addEventListener('click', stopSignRecording);
+      stopSignBtn.addEventListener('click', () => {
+        if (!stopSignBtn.classList.contains('disabled')) {
+          stopSignRecording();
+        } else {
+          console.log('Stop button is disabled');
+        }
+      });
+
       submitSignBtn.addEventListener('click', predictSign);
 
       startSpeechBtn.addEventListener('click', startAudioRecording);
