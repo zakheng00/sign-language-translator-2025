@@ -11,7 +11,8 @@ import subprocess
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
-from firebase_admin import credentials, db as firebase_db, ServerValue
+from firebase_admin import credentials, db as firebase_db
+from firebase_admin.db import ServerValue  # 修正導入
 import tempfile
 import atexit
 import time
