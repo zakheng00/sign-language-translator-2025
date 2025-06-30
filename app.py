@@ -1,9 +1,12 @@
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import tensorflow as tf
 import json
-import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
@@ -13,10 +16,10 @@ from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
 from firebase_admin import credentials, db as firebase_db
 try:
-    from firebase_admin import ServerValue  # 嘗試從 firebase_admin 導入
+    from firebase_admin import ServerValue
 except ImportError:
-    ServerValue = None  # 設置為 None 作為後備
-    logger.warning("ServerValue not available, using fallback timestamp")
+    ServerValue = None
+    logger.warning("ServerValue not available in firebase_admin, using fallback timestamp")
 import tempfile
 import atexit
 import time
@@ -25,8 +28,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger.debug(f"Firebase Admin version: {firebase_admin.__version__}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
@@ -73,7 +75,6 @@ if temp_file_path:
         })
         db = firebase_db.reference(app=firebase_app)
         logger.info("Firebase Admin connected successfully")
-        logger.debug(f"Firebase Admin version: {firebase_admin.__version__}")  # 診斷版本
     except ValueError as ve:
         logger.error(f"Invalid Firebase configuration: {ve}")
     except Exception as e:
