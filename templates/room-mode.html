@@ -14,9 +14,7 @@
     <div class="text-center mb-4">
       <p>Please join one of the available rooms (max 2 users per room).</p>
     </div>
-    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-      <!-- Room cards will be inserted here -->
-    </div>
+    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"></div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
 
@@ -68,8 +66,8 @@
     };
 
     // Initialize Firebase
-   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-   import { getDatabase, ref, onChildAdded, serverTimestamp, get, set } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getDatabase, ref, onChildAdded, serverTimestamp, get, set } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
@@ -180,6 +178,10 @@
 
       // 加入房间
       function joinRoom(roomId) {
+        if (!database) {
+          showError('Firebase database not initialized.');
+          return;
+        }
         console.log('Joining room:', roomId);
         fetch(`${API_URL}/join_room`, {
           method: 'POST',
@@ -194,8 +196,7 @@
             if (data.status === 'success') {
               currentRoom = roomId;
               currentRoomDiv.textContent = `Current Room: ${roomId} (Connected)`;
-             const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-              const newMessageRef = messagesRef.push()
+              const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
               onChildAdded(messagesRef, (snapshot) => {
                 const msg = snapshot.val();
                 if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
@@ -378,11 +379,12 @@
             outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
             addChatMessage(result.transcription, true);
             const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-            await set(ref(database, `${messagesRef.push()}`), {
-            type: 'transcription',
-            data: result.transcription,
-            timestamp: serverTimestamp()
-           });
+            const newMessageRef = messagesRef.push(); // 修正: 獨立生成新參考點
+            await set(newMessageRef, {
+              type: 'transcription',
+              data: result.transcription,
+              timestamp: serverTimestamp()
+            });
           }
           speechAudioData = [];
         } catch (err) {
