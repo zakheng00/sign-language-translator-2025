@@ -7,10 +7,11 @@ import logging
 import os
 import wave
 from vosk import Model, KaldiRecognizer
-import ffmpeg
+import subprocess
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
-import pyrebase
+import firebase_admin
+from firebase_admin import credentials, db
 import tempfile
 import atexit
 import time
@@ -45,27 +46,12 @@ except Exception as e:
     logger.error(f"Failed to create temp Firebase key: {e}")
 
 if temp_file_path:
-    firebase_config = {
-        "apiKey": os.environ.get("FIREBASE_API_KEY", "YOUR_API_KEY"),
-        "authDomain": os.environ.get("FIREBASE_AUTH_DOMAIN", "YOUR_DOMAIN"),
-        "databaseURL": os.environ.get("FIREBASE_DATABASE_URL", ""),
-        "projectId": os.environ.get("FIREBASE_PROJECT_ID", ""),
-        "storageBucket": os.environ.get("FIREBASE_STORAGE_BUCKET", ""),
-        "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID", ""),
-        "appId": os.environ.get("FIREBASE_APP_ID", ""),
-        "serviceAccount": temp_file_path
-    }
-
-    if not firebase_config["databaseURL"]:
-        logger.error("Missing databaseURL")
-    else:
-        try:
-            firebase = pyrebase.initialize_app(firebase_config)
-            db = firebase.database()
-            logger.info("Firebase connected successfully.")
-        except Exception as e:
-            logger.error(f"Firebase init failed: {e}")
-            db = None
+    cred = credentials.Certificate(temp_file_path)
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': os.environ.get("FIREBASE_DATABASE_URL", "")
+    })
+    db = db.reference()
+    logger.info("Firebase Admin connected successfully.")
 
 @atexit.register
 def cleanup():
@@ -98,7 +84,8 @@ def transcribe_audio(audio_data):
     try:
         with open("input.webm", "wb") as f:
             f.write(audio_data)
-        ffmpeg.input("input.webm").output("temp.wav", ac=1, ar="16000").run(overwrite_output=True)
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(['ffmpeg', '-i', 'input.webm', 'temp.wav', '-ac', '1', '-ar', '16000', '-y'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         with wave.open("temp.wav", "rb") as wf:
             while True:
                 data = wf.readframes(4000)
@@ -107,6 +94,9 @@ def transcribe_audio(audio_data):
                 recognizer.AcceptWaveform(data)
             result = json.loads(recognizer.FinalResult())
             return result.get("text", "") or "Unable to recognize speech"
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg error: {e.stderr.decode()}")
+        return "Transcription error: FFmpeg failed"
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return "Transcription error"
@@ -127,7 +117,7 @@ def predict_gesture_async(frames, room_id):
             "type": "gesture",
             "data": gesture,
             "probabilities": pred_probs,
-            "timestamp": pyrebase.ServerValue.TIMESTAMP
+            "timestamp": db.ServerValue.TIMESTAMP
         })
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
@@ -152,7 +142,7 @@ def transcribe():
             db.child("rooms").child(room_id).child("messages").push({
                 "type": "transcription",
                 "data": transcription,
-                "timestamp": pyrebase.ServerValue.TIMESTAMP
+                "timestamp": db.ServerValue.TIMESTAMP
             })
         return jsonify({'transcription': transcription})
     except Exception as e:
@@ -183,7 +173,7 @@ def create_room():
         db.child("rooms").child(room_id).set({
             "users": [],
             "messages": [],
-            "created_at": pyrebase.ServerValue.TIMESTAMP
+            "created_at": db.ServerValue.TIMESTAMP
         })
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -231,11 +221,11 @@ if __name__ == '__main__':
         load_models()
         if db:
             for _ in range(2):  # 創建 2 個房間
-                room_id = str(uuid4())[:8]  # 使用 8 位 ID
+                room_id = str(uuid4())[:8]
                 db.child("rooms").child(room_id).set({
                     "users": [],
                     "messages": [],
-                    "created_at": pyrebase.ServerValue.TIMESTAMP
+                    "created_at": db.ServerValue.TIMESTAMP
                 })
                 logger.info(f"Pre-created room with ID: {room_id}")
         logger.info("Starting Flask server")
