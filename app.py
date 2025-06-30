@@ -12,7 +12,11 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
 from firebase_admin import credentials, db as firebase_db
-from firebase_admin import ServerValue  # 修正為從 firebase_admin 導入
+try:
+    from firebase_admin import ServerValue  # 嘗試從 firebase_admin 導入
+except ImportError:
+    ServerValue = None  # 設置為 None 作為後備
+    logger.warning("ServerValue not available, using fallback timestamp")
 import tempfile
 import atexit
 import time
@@ -145,11 +149,12 @@ def predict_gesture_async(frames, room_id):
         pred_probs = prediction[0].tolist()
         pred_index = np.argmax(prediction, axis=-1)[0]
         gesture = labels.get(str(pred_index), 'Unknown')
+        timestamp = ServerValue.TIMESTAMP if ServerValue else {"timestamp": int(time.time() * 1000)}  # 容錯
         db.child("rooms").child(room_id).child("messages").push({
             "type": "gesture",
             "data": gesture,
             "probabilities": pred_probs,
-            "timestamp": ServerValue.TIMESTAMP
+            "timestamp": timestamp
         })
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
@@ -171,10 +176,11 @@ def transcribe():
         room_id = request.headers.get('X-Socket-ID')
         transcription = transcribe_audio(audio_data)
         if db and room_id:
+            timestamp = ServerValue.TIMESTAMP if ServerValue else {"timestamp": int(time.time() * 1000)}  # 容錯
             db.child("rooms").child(room_id).child("messages").push({
                 "type": "transcription",
                 "data": transcription,
-                "timestamp": ServerValue.TIMESTAMP
+                "timestamp": timestamp
             })
         return jsonify({'transcription': transcription})
     except Exception as e:
@@ -202,10 +208,11 @@ def create_room():
     try:
         room_id = str(uuid4())[:8]
         logger.info(f"Creating room: {room_id}")
+        timestamp = ServerValue.TIMESTAMP if ServerValue else {"timestamp": int(time.time() * 1000)}  # 容錯
         db.child("rooms").child(room_id).set({
             "users": [],
             "messages": [],
-            "created_at": ServerValue.TIMESTAMP
+            "created_at": timestamp
         })
         return jsonify({'room_id': room_id, 'status': 'success'})
     except Exception as e:
@@ -255,10 +262,11 @@ if __name__ == '__main__':
         if db:
             for _ in range(2):  # 創建 2 個房間
                 room_id = str(uuid4())[:8]
+                timestamp = ServerValue.TIMESTAMP if ServerValue else {"timestamp": int(time.time() * 1000)}  # 容錯
                 db.child("rooms").child(room_id).set({
                     "users": [],
                     "messages": [],
-                    "created_at": ServerValue.TIMESTAMP
+                    "created_at": timestamp
                 })
                 logger.info(f"Pre-created room with ID: {room_id}")
         logger.info("Starting Flask server")
