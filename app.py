@@ -11,7 +11,7 @@ import subprocess
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
-from firebase_admin import credentials, db
+from firebase_admin import credentials, db as firebase_db
 import tempfile
 import atexit
 import time
@@ -56,13 +56,17 @@ else:
 
 # Firebase 初始化
 if temp_file_path:
+    database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
+    logger.debug(f"Using database URL: {database_url}")
+    if not database_url:
+        logger.error("FIREBASE_DATABASE_URL is not set or empty")
     try:
         logger.info("Attempting to initialize Firebase app")
         cred = credentials.Certificate(temp_file_path)
         firebase_app = firebase_admin.initialize_app(cred, {
-            'databaseURL': os.environ.get("FIREBASE_DATABASE_URL", "")
+            'databaseURL': database_url
         })
-        db = db.reference(app=firebase_app)  # 明確指定應用程序
+        db = firebase_db.reference(app=firebase_app)  # 使用 firebase_db.reference
         logger.info("Firebase Admin connected successfully")
     except ValueError as ve:
         logger.error(f"Invalid Firebase configuration: {ve}")
