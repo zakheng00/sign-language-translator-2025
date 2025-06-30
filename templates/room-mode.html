@@ -154,7 +154,7 @@
         card.innerHTML = `
           <h2 class="text-xl font-bold mb-2">Room ${roomId.slice(0, 8)}...</h2>
           <p class="mb-2">Users: ${users.length} / ${MAX_USERS}</p>
-          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass}" onclick="joinRoom('${roomId}')">${btnText}</button>
+          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass} join-btn" data-room-id="${roomId}">${btnText}</button>
         `;
         roomsList.appendChild(card);
       }
@@ -180,12 +180,16 @@
 
       // 加入房间
       function joinRoom(roomId) {
+        console.log('Joining room:', roomId);
         fetch(`${API_URL}/join_room`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ room_id: roomId })
         })
-          .then(response => response.json())
+          .then(response => {
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+          })
           .then(data => {
             if (data.status === 'success') {
               currentRoom = roomId;
@@ -202,7 +206,7 @@
               });
               console.log(`Joined room: ${currentRoom}`);
               roomError.classList.add('hidden');
-              showSection('sign'); // 默认显示手语部分
+              showSection('sign');
             } else {
               showError(data.error || 'Unable to join room.');
             }
@@ -411,6 +415,15 @@
       startSpeechBtn.addEventListener('click', startAudioRecording);
       stopSpeechBtn.addEventListener('click', stopSpeechRecording);
       submitSpeechBtn.addEventListener('click', transcribeSpeech);
+
+      // 事件委託處理 Join Room 點擊
+      roomsList.addEventListener('click', (event) => {
+        const button = event.target.closest('.join-btn');
+        if (button && !button.disabled) {
+          const roomId = button.getAttribute('data-room-id');
+          joinRoom(roomId);
+        }
+      });
 
       // 初始化
       showSection('sign');
