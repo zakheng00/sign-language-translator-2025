@@ -9,22 +9,22 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
-  <!-- Room Creation and Joining -->
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold text-center mb-4">Room Mode</h1>
-    <div class="flex justify-center gap-4 mb-4">
-      <button id="createRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Create Room</button>
-      <input id="joinRoomInput" type="text" placeholder="Enter Room ID" class="border p-2 rounded">
-      <button id="joinRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Join Room</button>
+    <div class="text-center mb-4">
+      <p>Please join one of the available rooms (max 2 users per room).</p>
+    </div>
+    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <!-- Room cards will be inserted here -->
     </div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
 
     <!-- Chat Box -->
-    <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
+    <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto hidden"></div>
 
     <!-- Sign Language Section -->
-    <div id="signSection" class="mb-4">
+    <div id="signSection" class="mb-4 hidden">
       <h2 class="text-xl font-bold mb-2">Sign Language Translation</h2>
       <video id="video" width="480" height="360" autoplay muted></video>
       <canvas id="canvas" width="480" height="360" class="absolute"></canvas>
@@ -55,7 +55,7 @@
   </div>
 
   <script type="module">
-    // Your Firebase configuration (replace with your actual values)
+    // Firebase configuration (replace with your actual values)
     const firebaseConfig = {
       apiKey: "your-api-key",
       authDomain: "signlanguagetranslator-cce9e.firebaseapp.com",
@@ -69,7 +69,7 @@
 
     // Initialize Firebase
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase, ref, onChildAdded, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { getDatabase, ref, onChildAdded, serverTimestamp, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
@@ -80,6 +80,12 @@
     console.log('JavaScript running');
 
     document.addEventListener('DOMContentLoaded', () => {
+      const roomsList = document.getElementById('roomsList');
+      const currentRoomDiv = document.getElementById('currentRoom');
+      const roomError = document.getElementById('roomError');
+      const chatBox = document.getElementById('chatBox');
+      const signSection = document.getElementById('signSection');
+      const speechSection = document.getElementById('speechSection');
       const video = document.getElementById('video');
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -96,14 +102,6 @@
       const outputSign = document.getElementById('output-sign');
       const probabilitiesSign = document.getElementById('probabilities-sign');
       const outputSpeech = document.getElementById('output-speech');
-      const createRoomBtn = document.getElementById('createRoomBtn');
-      const joinRoomInput = document.getElementById('joinRoomInput');
-      const joinRoomBtn = document.getElementById('joinRoomBtn');
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
-      const chatBox = document.getElementById('chatBox');
-      const signSection = document.getElementById('signSection');
-      const speechSection = document.getElementById('speechSection');
       const selectSignBtn = document.getElementById('selectSignBtn');
       const selectSpeechBtn = document.getElementById('selectSpeechBtn');
       let signFrames = [];
@@ -113,6 +111,7 @@
       let currentRoom = null;
       const NUM_SIGN_FRAMES = 100;
       let signFrameCount = 0;
+      const MAX_USERS = 2;
 
       // 显示错误
       function showError(message) {
@@ -134,8 +133,81 @@
       function showSection(section) {
         signSection.classList.add('hidden');
         speechSection.classList.add('hidden');
-        if (section === 'sign') signSection.classList.remove('hidden');
-        else if (section === 'speech') speechSection.classList.remove('hidden');
+        chatBox.classList.add('hidden');
+        if (section === 'sign') {
+          signSection.classList.remove('hidden');
+          chatBox.classList.remove('hidden');
+        } else if (section === 'speech') {
+          speechSection.classList.remove('hidden');
+          chatBox.classList.remove('hidden');
+        }
+      }
+
+      // 创建房间卡片
+      function createRoomCard(roomId, users) {
+        const full = users.length >= MAX_USERS;
+        const btnText = full ? 'Room Full' : 'Join Room';
+        const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
+
+        const card = document.createElement('div');
+        card.className = 'p-4 border rounded shadow';
+        card.innerHTML = `
+          <h2 class="text-xl font-bold mb-2">Room ${roomId.slice(0, 8)}...</h2>
+          <p class="mb-2">Users: ${users.length} / ${MAX_USERS}</p>
+          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass}" onclick="joinRoom('${roomId}')">${btnText}</button>
+        `;
+        roomsList.appendChild(card);
+      }
+
+      // 获取并显示房间列表
+      async function fetchRooms() {
+        try {
+          const roomsRef = ref(database, 'rooms');
+          const snapshot = await get(roomsRef);
+          const rooms = snapshot.val() || {};
+          roomsList.innerHTML = '';
+          for (const [roomId, roomData] of Object.entries(rooms)) {
+            createRoomCard(roomId, roomData.users || []);
+          }
+          if (Object.keys(rooms).length === 0) {
+            showError('No rooms available. Please try again later.');
+          }
+        } catch (err) {
+          console.error('Failed to fetch rooms:', err);
+          showError('Failed to load rooms.');
+        }
+      }
+
+      // 加入房间
+      function joinRoom(roomId) {
+        fetch(`${API_URL}/join_room`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room_id: roomId })
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.status === 'success') {
+              currentRoom = roomId;
+              currentRoomDiv.textContent = `Current Room: ${roomId} (Connected)`;
+              const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+              onChildAdded(messagesRef, (snapshot) => {
+                const msg = snapshot.val();
+                if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
+                else if (msg.type === 'gesture' && msg.data) {
+                  outputSign.textContent = `Other's Sign Result: ${msg.data}`;
+                  probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
+                  addChatMessage(msg.data, false);
+                }
+              });
+              console.log(`Joined room: ${currentRoom}`);
+              roomError.classList.add('hidden');
+              showSection('sign'); // 默认显示手语部分
+            } else {
+              showError(data.error || 'Unable to join room.');
+            }
+          })
+          .catch(err => showError('Network error while joining room: ' + err.message));
       }
 
       // 初始化 MediaPipe Holistic
@@ -315,79 +387,6 @@
         }
       }
 
-      // 创建房间
-      createRoomBtn.addEventListener('click', () => {
-        fetch(`${API_URL}/create_room`, { method: 'POST' })
-          .then(response => response.json())
-          .then(data => {
-            if (data.status === 'success') {
-              currentRoom = data.room_id;
-              currentRoomDiv.textContent = `Current Room: ${currentRoom} (Share this ID with another user)`;
-              const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-              onChildAdded(messagesRef, (snapshot) => {
-                const msg = snapshot.val();
-                if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
-                else if (msg.type === 'gesture' && msg.data) {
-                  outputSign.textContent = `Other's Sign Result: ${msg.data}`;
-                  probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-                  addChatMessage(msg.data, false);
-                }
-              });
-              console.log(`Created and joined room: ${currentRoom}`);
-              roomError.classList.add('hidden');
-            } else {
-              showError(data.error || 'Failed to create room');
-            }
-          })
-          .catch(err => showError('Network error: ' + err.message));
-      });
-
-      // 加入房间
-   joinRoomBtn.addEventListener('click', () => {
-  const roomId = joinRoomInput.value.trim();
-  if (roomId) {
-    let attempts = 0;
-    const maxAttempts = 3;
-    const checkRoom = () => {
-      fetch(`${API_URL}/join_room`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room_id: roomId })
-      })
-        .then(response => response.json())
-        .then(data => {
-          if (data.status === 'success') {
-            currentRoom = roomId;
-            currentRoomDiv.textContent = `Current Room: ${currentRoom} (Connected)`;
-            const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-            onChildAdded(messagesRef, (snapshot) => {
-              const msg = snapshot.val();
-              if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
-              else if (msg.type === 'gesture' && msg.data) {
-                outputSign.textContent = `Other's Sign Result: ${msg.data}`;
-                probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-                addChatMessage(msg.data, false);
-              }
-            });
-            console.log(`Joined room: ${currentRoom}`);
-            roomError.classList.add('hidden');
-          } else if (attempts < maxAttempts) {
-            attempts++;
-            setTimeout(checkRoom, 1000); // 每秒重試一次
-            console.log(`Retrying join for room ${roomId}, attempt ${attempts}`);
-          } else {
-            showError(data.error || 'Failed to join room after multiple attempts');
-          }
-        })
-        .catch(err => showError('Network error: ' + err.message));
-    };
-    checkRoom();
-  } else {
-    showError('Please enter a valid room ID');
-  }
-});
-      
-
       // 按钮事件
       selectSignBtn.addEventListener('click', () => showSection('sign'));
       selectSpeechBtn.addEventListener('click', () => showSection('speech'));
@@ -416,6 +415,7 @@
       // 初始化
       showSection('sign');
       startWebcam();
+      fetchRooms();
     });
   </script>
 </body>
