@@ -8,7 +8,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
 from firebase_admin import credentials, db as firebase_db
-from firebase_admin import ServerValue  # 直接導入，預設使用最新版本
+from firebase_admin.db import ServerValue  # 修正導入
 import tempfile
 import atexit
 import time
@@ -16,6 +16,8 @@ import numpy as np
 import tensorflow as tf
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+
+# 後續程式碼保持不變...
 
 # 設置日誌
 logger = logging.getLogger(__name__)
