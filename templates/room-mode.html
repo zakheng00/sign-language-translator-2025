@@ -1,423 +1,500 @@
-<script type="module">
-  // ... (previous imports and config remain the same)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Room Mode - Sign Language & Speech Translator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <div class="container mx-auto p-4">
+    <h1 class="text-3xl font-bold text-center mb-4">Room Mode</h1>
+    <div class="text-center mb-4">
+      <p>Please join one of the available rooms (max 2 users per room).</p>
+    </div>
+    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"></div>
+    <div id="currentRoom" class="text-center mb-4"></div>
+    <div id="roomError" class="text-red-500 text-center hidden"></div>
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const roomsList = document.getElementById('roomsList');
-    const currentRoomDiv = document.getElementById('currentRoom');
-    const roomError = document.getElementById('roomError');
-    const chatContainer = document.getElementById('chatContainer');
-    const chatBox = document.getElementById('chatBox');
-    const chatInput = document.getElementById('chatInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const signSection = document.getElementById('signSection');
-    const speechSection = document.getElementById('speechSection');
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const audioCanvas = document.getElementById('audioCanvas');
-    const audioCtx = audioCanvas.getContext('2d');
-    const startSignBtn = document.getElementById('startSignBtn');
-    const stopSignBtn = document.getElementById('stopSignBtn');
-    const submitSignBtn = document.getElementById('submitSignBtn');
-    const startSpeechBtn = document.getElementById('startSpeechBtn');
-    const stopSpeechBtn = document.getElementById('stopSpeechBtn');
-    const submitSpeechBtn = document.getElementById('submitSpeechBtn');
-    const progressSignDiv = document.getElementById('progress-sign');
-    const progressSpeechDiv = document.getElementById('progress-speech');
-    const outputSign = document.getElementById('output-sign');
-    const probabilitiesSign = document.getElementById('probabilities-sign');
-    const outputSpeech = document.getElementById('output-speech');
-    const selectSignBtn = document.getElementById('selectSignBtn');
-    const selectSpeechBtn = document.getElementById('selectSpeechBtn');
-    let signFrames = [];
-    let speechAudioData = [];
-    let capturingSign = false;
-    let recordingSpeech = false;
-    let currentRoom = null;
-    const NUM_SIGN_FRAMES = 100;
-    let signFrameCount = 0;
-    const MAX_USERS = 2;
-    let socket = null;
+    <!-- Chat Box and Input -->
+    <div id="chatContainer" class="mb-4 hidden">
+      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
+      <div class="flex gap-2">
+        <input id="chatInput" class="border p-2 w-full" placeholder="Type a message..." />
+        <button id="sendBtn" class="bg-primary text-white px-4 py-2 rounded">Send</button>
+      </div>
+    </div>
 
-    // 显示错误
-    function showError(message) {
-      roomError.textContent = message;
-      roomError.classList.remove('hidden');
-      setTimeout(() => roomError.classList.add('hidden'), 5000);
-    }
+    <!-- Sign Language Section -->
+    <div id="signSection" class="mb-4">
+      <h2 class="text-xl font-bold mb-2">Sign Language Translation</h2>
+      <video id="video" width="480" height="360" autoplay muted></video>
+      <canvas id="canvas" width="480" height="360" class="absolute"></canvas>
+      <div id="progress-sign" class="mt-2"></div>
+      <div id="output-sign" class="mt-2"></div>
+      <div id="probabilities-sign" class="mt-2"></div>
+      <button id="startSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="stopSignBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
+      <button id="submitSignBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+    </div>
 
-    // 添加消息到聊天框
-    function addChatMessage(message, isSelf) {
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-      messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
-      chatBox.appendChild(messageDiv);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
+    <!-- Speech Section -->
+    <div id="speechSection" class="mb-4">
+      <h2 class="text-xl font-bold mb-2">Speech to Text</h2>
+      <canvas id="audioCanvas" width="480" height="100"></canvas>
+      <div id="progress-speech" class="mt-2"></div>
+      <div id="output-speech" class="mt-2"></div>
+      <button id="startSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2">Start</button>
+      <button id="stopSpeechBtn" class="bg-gray-400 text-white px-4 py-2 rounded mt-2 disabled">Stop</button>
+      <button id="submitSpeechBtn" class="bg-primary text-white px-4 py-2 rounded mt-2 disabled">Submit</button>
+    </div>
 
-    // 切换显示区域
-    function showSection(section) {
-      signSection.classList.add('hidden');
-      speechSection.classList.add('hidden');
-      chatContainer.classList.add('hidden');
-      if (section === 'sign') {
-        signSection.classList.remove('hidden');
-        chatContainer.classList.remove('hidden');
-      } else if (section === 'speech') {
-        speechSection.classList.remove('hidden');
-        chatContainer.classList.remove('hidden');
+    <!-- Section Selection -->
+    <div class="flex justify-center gap-4">
+      <button id="selectSignBtn" class="bg-primary text-white px-4 py-2 rounded">Select Sign</button>
+      <button id="selectSpeechBtn" class="bg-primary text-white px-4 py-2 rounded">Select Speech</button>
+    </div>
+  </div>
+
+  <script type="module">
+    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
+
+    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
+
+    console.log('JavaScript running');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const roomsList = document.getElementById('roomsList');
+      const currentRoomDiv = document.getElementById('currentRoom');
+      const roomError = document.getElementById('roomError');
+      const chatContainer = document.getElementById('chatContainer');
+      const chatBox = document.getElementById('chatBox');
+      const chatInput = document.getElementById('chatInput');
+      const sendBtn = document.getElementById('sendBtn');
+      const signSection = document.getElementById('signSection');
+      const speechSection = document.getElementById('speechSection');
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const audioCanvas = document.getElementById('audioCanvas');
+      const ctx = canvas ? canvas.getContext('2d') : null;
+      const audioCtx = audioCanvas ? audioCanvas.getContext('2d') : null;
+
+      if (!canvas || !ctx) {
+        console.error('Canvas element or context is null. Check HTML structure.');
+        return;
       }
-    }
-
-    // 创建房间卡片
-    function createRoomCard(roomId, userCount) {
-      const full = userCount >= MAX_USERS;
-      const btnText = full ? 'Room Full' : 'Join Room';
-      const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
-
-      const card = document.createElement('div');
-      card.className = 'p-4 border rounded shadow';
-      card.innerHTML = `
-        <h2 class="text-xl font-bold mb-2">Room ${roomId.slice(0, 8)}...</h2>
-        <p class="mb-2">Users: ${userCount} / ${MAX_USERS}</p>
-        <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass} join-btn" data-room-id="${roomId}">${btnText}</button>
-      `;
-      roomsList.appendChild(card);
-    }
-
-    // 获取并显示房间列表
-    async function fetchRooms() {
-      try {
-        const response = await fetch(`${API_URL}/list_rooms`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const rooms = await response.json();
-        roomsList.innerHTML = '';
-        rooms.forEach(room => createRoomCard(room.room_id, room.user_count));
-        if (rooms.length === 0) {
-          showError('No rooms available. Please try again later.');
-        }
-      } catch (err) {
-        console.error('Failed to fetch rooms:', err);
-        showError('Failed to load rooms.');
-      }
-    }
-
-    // 加入房间
-    async function joinRoom(roomId) {
-      if (!roomId || typeof roomId !== 'string') {
-        showError('❗ Room ID is invalid.');
+      if (!audioCanvas || !audioCtx) {
+        console.error('AudioCanvas element or context is null. Check HTML structure.');
         return;
       }
 
-      console.log('🔗 Attempting to join room:', roomId);
+      const startSignBtn = document.getElementById('startSignBtn');
+      const stopSignBtn = document.getElementById('stopSignBtn');
+      const submitSignBtn = document.getElementById('submitSignBtn');
+      const startSpeechBtn = document.getElementById('startSpeechBtn');
+      const stopSpeechBtn = document.getElementById('stopSpeechBtn');
+      const submitSpeechBtn = document.getElementById('submitSpeechBtn');
+      const progressSignDiv = document.getElementById('progress-sign');
+      const progressSpeechDiv = document.getElementById('progress-speech');
+      const outputSign = document.getElementById('output-sign');
+      const probabilitiesSign = document.getElementById('probabilities-sign');
+      const outputSpeech = document.getElementById('output-speech');
+      const selectSignBtn = document.getElementById('selectSignBtn');
+      const selectSpeechBtn = document.getElementById('selectSpeechBtn');
+      let signFrames = [];
+      let speechAudioData = [];
+      let capturingSign = false;
+      let recordingSpeech = false;
+      let currentRoom = null;
+      const NUM_SIGN_FRAMES = 100;
+      let signFrameCount = 0;
+      const MAX_USERS = 2;
+      let socket = null;
 
-      try {
-        const response = await fetch(`${API_URL}/join_room`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room_id: roomId })
-        });
+      // 显示错误
+      function showError(message) {
+        roomError.textContent = message;
+        roomError.classList.remove('hidden');
+        setTimeout(() => roomError.classList.add('hidden'), 5000);
+      }
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Server responded with ${response.status}: ${errText}`);
-        }
+      // 添加消息到聊天框
+      function addChatMessage(message, isSelf) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
+        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
+        chatBox.appendChild(messageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
 
-        const data = await response.json();
-
-        if (data.status === 'success') {
-          currentRoom = roomId;
-          currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
-          roomError.classList.add('hidden');
+      // 切换显示区域
+      function showSection(section) {
+        signSection.classList.add('hidden');
+        speechSection.classList.add('hidden');
+        chatContainer.classList.add('hidden');
+        if (section === 'sign') {
+          signSection.classList.remove('hidden');
           chatContainer.classList.remove('hidden');
+        } else if (section === 'speech') {
+          speechSection.classList.remove('hidden');
+          chatContainer.classList.remove('hidden');
+        }
+      }
 
-          // Initialize Socket.IO
-          socket = io(API_URL);
-          socket.emit('join', { room_id: roomId });
+      // 创建房间卡片
+      function createRoomCard(roomId, userCount) {
+        const full = userCount >= MAX_USERS;
+        const btnText = full ? 'Room Full' : 'Join Room';
+        const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
 
-          // Listen for messages
-          socket.on('message', (data) => {
-            addChatMessage(data.msg, data.sid === socket.id);
+        const card = document.createElement('div');
+        card.className = 'p-4 border rounded shadow';
+        card.innerHTML = `
+          <h2 class="text-xl font-bold mb-2">Room ${roomId.slice(0, 8)}...</h2>
+          <p class="mb-2">Users: ${userCount} / ${MAX_USERS}</p>
+          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass} join-btn" data-room-id="${roomId}">${btnText}</button>
+        `;
+        roomsList.appendChild(card);
+      }
+
+      // 获取并显示房间列表
+      async function fetchRooms() {
+        try {
+          const response = await fetch(`${API_URL}/list_rooms`);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const rooms = await response.json();
+          roomsList.innerHTML = '';
+          rooms.forEach(room => createRoomCard(room.room_id, room.user_count));
+          if (rooms.length === 0) {
+            showError('No rooms available. Please try again later.');
+          }
+        } catch (err) {
+          console.error('Failed to fetch rooms:', err);
+          showError('Failed to load rooms.');
+        }
+      }
+
+      // 加入房间
+      async function joinRoom(roomId) {
+        if (!roomId || typeof roomId !== 'string') {
+          showError('❗ Room ID is invalid.');
+          return;
+        }
+
+        console.log('🔗 Attempting to join room:', roomId);
+
+        try {
+          const response = await fetch(`${API_URL}/join_room`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room_id: roomId })
           });
-          socket.on('transcription', (data) => {
-            addChatMessage(data.data, data.sid === socket.id);
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Server responded with ${response.status}: ${errText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.status === 'success') {
+            currentRoom = roomId;
+            currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
+            roomError.classList.add('hidden');
+            chatContainer.classList.remove('hidden');
+
+            // Initialize Socket.IO
+            socket = io(API_URL);
+            socket.emit('join', { room_id: roomId });
+
+            // Listen for messages
+            socket.on('message', (data) => {
+              addChatMessage(data.msg, data.sid === socket.id);
+            });
+            socket.on('transcription', (data) => {
+              addChatMessage(data.data, data.sid === socket.id);
+            });
+            socket.on('gesture', (data) => {
+              outputSign.textContent = `🤟 Other's Sign Result: ${data.data}`;
+              probabilitiesSign.textContent = `🎯 Other's Probs: ${data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
+              addChatMessage(data.data, data.sid === socket.id);
+            });
+
+            console.log(`✅ Joined room: ${currentRoom}`);
+            showSection('sign');
+          } else {
+            console.warn('Join room failed:', data);
+            showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          console.error('Join room error:', err);
+          showError(`⚠️ Network or server error: ${err.message}`);
+        }
+      }
+
+      // Send chat message
+      function sendMessage() {
+        const msg = chatInput.value.trim();
+        if (!msg || !currentRoom || !socket) return;
+        socket.emit('message', { room_id: currentRoom, msg });
+        chatInput.value = '';
+      }
+
+      // Initialize MediaPipe Holistic
+      const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
+      holistic.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+      // 绘制关键点
+      function drawLandmarks(results) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (results.poseLandmarks) {
+          for (const landmark of results.poseLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'blue';
+            ctx.fill();
+          }
+        }
+        if (results.leftHandLandmarks) {
+          for (const landmark of results.leftHandLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+          }
+        }
+        if (results.rightHandLandmarks) {
+          for (const landmark of results.rightHandLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'green';
+            ctx.fill();
+          }
+        }
+      }
+
+      // 提取关键点
+      function extractKeypoints(results) {
+        const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
+        const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+        const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+        if (results.poseLandmarks) results.poseLandmarks.forEach((landmark, i) => (pose[i] = [landmark.x, landmark.y, landmark.z]));
+        if (results.leftHandLandmarks) results.leftHandLandmarks.forEach((landmark, i) => (leftHand[i] = [landmark.x, landmark.y, landmark.z]));
+        if (results.rightHandLandmarks) results.rightHandLandmarks.forEach((landmark, i) => (rightHand[i] = [landmark.x, landmark.y, landmark.z]));
+        return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
+      }
+
+      // 启动摄像头
+      async function startWebcam() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          video.srcObject = stream;
+          const camera = new Camera(video, {
+            onFrame: async () => await holistic.send({ image: video }),
+            width: 480,
+            height: 360
           });
-          socket.on('gesture', (data) => {
-            outputSign.textContent = `🤟 Other's Sign Result: ${data.data}`;
-            probabilitiesSign.textContent = `🎯 Other's Probs: ${data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
-            addChatMessage(data.data, data.sid === socket.id);
+          await camera.start();
+          console.log('MediaPipe camera started');
+        } catch (err) {
+          console.error('Failed to start webcam:', err);
+          outputSign.textContent = 'Error: Unable to access camera - ' + err.message;
+          alert('Please allow camera access to continue!');
+        }
+      }
+
+      // 捕获手语帧
+      function captureSignFrame(results) {
+        if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
+          const keypoints = extractKeypoints(results);
+          signFrames.push(keypoints);
+          signFrameCount++;
+          const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
+          progressSignDiv.textContent = `Progress: ${progress}%`;
+          if (signFrames.length < NUM_SIGN_FRAMES && capturingSign) {
+            requestAnimationFrame(() => holistic.send({ image: video }));
+          } else {
+            stopSignRecording();
+          }
+        }
+      }
+
+      // 停止手语录制
+      function stopSignRecording() {
+        if (capturingSign) {
+          capturingSign = false;
+          signFrameCount = 0;
+          startSignBtn.textContent = 'Start';
+          stopSignBtn.classList.add('disabled');
+          submitSignBtn.classList.remove('disabled');
+          progressSignDiv.textContent = `Progress: ${Math.round((signFrames.length / NUM_SIGN_FRAMES) * 100)}%`;
+          console.log('Sign recording stopped manually');
+        }
+      }
+
+      // 提交手语翻译
+      async function predictSign() {
+        if (!currentRoom) {
+          outputSign.textContent = 'Error: Please join or create a room first';
+          return;
+        }
+        try {
+          submitSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: Translating...';
+          const response = await fetch(`${API_URL}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Socket-ID': currentRoom },
+            body: JSON.stringify({ frames: signFrames })
           });
-
-          console.log(`✅ Joined room: ${currentRoom}`);
-          showSection('sign');
-        } else {
-          console.warn('Join room failed:', data);
-          showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
-        }
-      } catch (err) {
-        console.error('Join room error:', err);
-        showError(`⚠️ Network or server error: ${err.message}`);
-      }
-    }
-
-    // Send chat message
-    function sendMessage() {
-      const msg = chatInput.value.trim();
-      if (!msg || !currentRoom || !socket) return;
-      socket.emit('message', { room_id: currentRoom, msg });
-      chatInput.value = '';
-    }
-
-    // Initialize MediaPipe Holistic
-    const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
-    holistic.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-
-    // 绘制关键点
-    function drawLandmarks(results) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (results.poseLandmarks) {
-        for (const landmark of results.poseLandmarks) {
-          ctx.beginPath();
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'blue';
-          ctx.fill();
+          if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
+          const result = await response.json();
+          if (result.status === 'processing') {
+            console.log('Prediction processing, waiting for Socket.IO update');
+          }
+          signFrames = [];
+        } catch (err) {
+          console.error('Sign prediction failed:', err);
+          outputSign.textContent = `Error: Prediction failed - ${err.message}`;
+          alert('Sign prediction failed, please try again.');
+        } finally {
+          submitSignBtn.classList.add('disabled');
+          stopSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: 0%';
         }
       }
-      if (results.leftHandLandmarks) {
-        for (const landmark of results.leftHandLandmarks) {
-          ctx.beginPath();
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'red';
-          ctx.fill();
+
+      // 处理 MediaPipe 结果
+      holistic.onResults((results) => {
+        drawLandmarks(results);
+        if (capturingSign) captureSignFrame(results);
+      });
+
+      // 音频录制设置
+      let mediaRecorder;
+
+      function startAudioRecording() {
+        if (!currentRoom) {
+          outputSpeech.textContent = 'Error: Please join or create a room first';
+          return;
+        }
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            speechAudioData = [];
+            mediaRecorder.ondataavailable = event => speechAudioData.push(event.data);
+            mediaRecorder.onstop = () => stopSpeechRecording();
+            mediaRecorder.start();
+            recordingSpeech = true;
+            startSpeechBtn.textContent = 'Recording...';
+            stopSpeechBtn.classList.remove('disabled');
+            progressSpeechDiv.textContent = 'Progress: Recording...';
+          })
+          .catch(err => {
+            console.error('Failed to start audio recording:', err);
+            outputSpeech.textContent = 'Error: Unable to access microphone - ' + err.message;
+            alert('Please allow microphone access to continue!');
+          });
+      }
+
+      function stopSpeechRecording() {
+        if (recordingSpeech && mediaRecorder) {
+          mediaRecorder.stop();
+          recordingSpeech = false;
+          startSpeechBtn.textContent = 'Start';
+          stopSpeechBtn.classList.add('disabled');
+          submitSpeechBtn.classList.remove('disabled');
+          progressSpeechDiv.textContent = 'Progress: Recorded';
         }
       }
-      if (results.rightHandLandmarks) {
-        for (const landmark of results.rightHandLandmarks) {
-          ctx.beginPath();
-          ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
-          ctx.fillStyle = 'green';
-          ctx.fill();
+
+      async function transcribeSpeech() {
+        if (!currentRoom) {
+          outputSpeech.textContent = 'Error: Please join or create a room first';
+          return;
         }
-      }
-    }
-
-    // 提取关键点
-    function extractKeypoints(results) {
-      const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
-      const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-      const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-      if (results.poseLandmarks) results.poseLandmarks.forEach((landmark, i) => (pose[i] = [landmark.x, landmark.y, landmark.z]));
-      if (results.leftHandLandmarks) results.leftHandLandmarks.forEach((landmark, i) => (leftHand[i] = [landmark.x, landmark.y, landmark.z]));
-      if (results.rightHandLandmarks) results.rightHandLandmarks.forEach((landmark, i) => (rightHand[i] = [landmark.x, landmark.y, landmark.z]));
-      return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
-    }
-
-    // 启动摄像头
-    async function startWebcam() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        const camera = new Camera(video, {
-          onFrame: async () => await holistic.send({ image: video }),
-          width: 480,
-          height: 360
-        });
-        await camera.start();
-        console.log('MediaPipe camera started');
-      } catch (err) {
-        console.error('Failed to start webcam:', err);
-        outputSign.textContent = 'Error: Unable to access camera - ' + err.message;
-        alert('Please allow camera access to continue!');
-      }
-    }
-
-    // 捕获手语帧
-    function captureSignFrame(results) {
-      if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
-        const keypoints = extractKeypoints(results);
-        signFrames.push(keypoints);
-        signFrameCount++;
-        const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
-        progressSignDiv.textContent = `Progress: ${progress}%`;
-        if (signFrames.length < NUM_SIGN_FRAMES && capturingSign) {
-          requestAnimationFrame(() => holistic.send({ image: video }));
-        } else {
-          stopSignRecording();
-        }
-      }
-    }
-
-    // 停止手语录制
-    function stopSignRecording() {
-      if (capturingSign) {
-        capturingSign = false;
-        signFrameCount = 0;
-        startSignBtn.textContent = 'Start';
-        stopSignBtn.classList.add('disabled');
-        submitSignBtn.classList.remove('disabled');
-        progressSignDiv.textContent = `Progress: ${Math.round((signFrames.length / NUM_SIGN_FRAMES) * 100)}%`;
-        console.log('Sign recording stopped manually');
-      }
-    }
-
-    // 提交手语翻译
-    async function predictSign() {
-      if (!currentRoom) {
-        outputSign.textContent = 'Error: Please join or create a room first';
-        return;
-      }
-      try {
-        submitSignBtn.classList.add('disabled');
-        progressSignDiv.textContent = 'Progress: Translating...';
-        const response = await fetch(`${API_URL}/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Socket-ID': currentRoom },
-          body: JSON.stringify({ frames: signFrames })
-        });
-        if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
-        const result = await response.json();
-        if (result.status === 'processing') {
-          console.log('Prediction processing, waiting for Socket.IO update');
-        }
-        signFrames = [];
-      } catch (err) {
-        console.error('Sign prediction failed:', err);
-        outputSign.textContent = `Error: Prediction failed - ${err.message}`;
-        alert('Sign prediction failed, please try again.');
-      } finally {
-        submitSignBtn.classList.add('disabled');
-        stopSignBtn.classList.add('disabled');
-        progressSignDiv.textContent = 'Progress: 0%';
-      }
-    }
-
-    // 处理 MediaPipe 结果
-    holistic.onResults((results) => {
-      drawLandmarks(results);
-      if (capturingSign) captureSignFrame(results);
-    });
-
-    // 音频录制设置
-    let mediaRecorder;
-
-    function startAudioRecording() {
-      if (!currentRoom) {
-        outputSpeech.textContent = 'Error: Please join or create a room first';
-        return;
-      }
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-          mediaRecorder = new MediaRecorder(stream);
+        try {
+          submitSpeechBtn.classList.add('disabled');
+          progressSpeechDiv.textContent = 'Progress: Translating...';
+          const formData = new FormData();
+          formData.append('audio', new Blob(speechAudioData, { type: 'audio/webm' }), 'audio.webm');
+          const response = await fetch(`${API_URL}/transcribe`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Socket-ID': currentRoom }
+          });
+          if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
+          const result = await response.json();
+          if (result.transcription) {
+            outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
+            addChatMessage(result.transcription, true);
+          }
           speechAudioData = [];
-          mediaRecorder.ondataavailable = event => speechAudioData.push(event.data);
-          mediaRecorder.onstop = () => stopSpeechRecording();
-          mediaRecorder.start();
-          recordingSpeech = true;
-          startSpeechBtn.textContent = 'Recording...';
-          stopSpeechBtn.classList.remove('disabled');
-          progressSpeechDiv.textContent = 'Progress: Recording...';
-        })
-        .catch(err => {
-          console.error('Failed to start audio recording:', err);
-          outputSpeech.textContent = 'Error: Unable to access microphone - ' + err.message;
-          alert('Please allow microphone access to continue!');
-        });
-    }
-
-    function stopSpeechRecording() {
-      if (recordingSpeech && mediaRecorder) {
-        mediaRecorder.stop();
-        recordingSpeech = false;
-        startSpeechBtn.textContent = 'Start';
-        stopSpeechBtn.classList.add('disabled');
-        submitSpeechBtn.classList.remove('disabled');
-        progressSpeechDiv.textContent = 'Progress: Recorded';
-      }
-    }
-
-    async function transcribeSpeech() {
-      if (!currentRoom) {
-        outputSpeech.textContent = 'Error: Please join or create a room first';
-        return;
-      }
-      try {
-        submitSpeechBtn.classList.add('disabled');
-        progressSpeechDiv.textContent = 'Progress: Translating...';
-        const formData = new FormData();
-        formData.append('audio', new Blob(speechAudioData, { type: 'audio/webm' }), 'audio.webm');
-        const response = await fetch(`${API_URL}/transcribe`, {
-          method: 'POST',
-          body: formData,
-          headers: { 'X-Socket-ID': currentRoom }
-        });
-        if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
-        const result = await response.json();
-        if (result.transcription) {
-          outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
-          addChatMessage(result.transcription, true);
+        } catch (err) {
+          console.error('Speech transcription failed:', err);
+          outputSpeech.textContent = `Error: Transcription failed - ${err.message}`;
+          alert('Speech transcription failed, please try again.');
+        } finally {
+          submitSpeechBtn.classList.add('disabled');
+          stopSpeechBtn.classList.add('disabled');
+          progressSpeechDiv.textContent = 'Progress: 0%';
         }
-        speechAudioData = [];
-      } catch (err) {
-        console.error('Speech transcription failed:', err);
-        outputSpeech.textContent = `Error: Transcription failed - ${err.message}`;
-        alert('Speech transcription failed, please try again.');
-      } finally {
-        submitSpeechBtn.classList.add('disabled');
-        stopSpeechBtn.classList.add('disabled');
-        progressSpeechDiv.textContent = 'Progress: 0%';
       }
-    }
 
-    // 按钮事件
-    selectSignBtn.addEventListener('click', () => showSection('sign'));
-    selectSpeechBtn.addEventListener('click', () => showSection('speech'));
+      // 按钮事件
+      selectSignBtn.addEventListener('click', () => showSection('sign'));
+      selectSpeechBtn.addEventListener('click', () => showSection('speech'));
 
-    startSignBtn.addEventListener('click', () => {
-      if (!capturingSign && currentRoom) {
-        capturingSign = true;
-        signFrames = [];
-        signFrameCount = 0;
-        startSignBtn.textContent = 'Recording...';
-        stopSignBtn.classList.remove('disabled');
-        submitSignBtn.classList.add('disabled');
-        progressSignDiv.textContent = 'Progress: 0%';
-        holistic.send({ image: video });
-      } else if (!currentRoom) {
-        outputSign.textContent = 'Error: Please join or create a room first';
-      } else {
-        console.log('Recording already in progress');
-      }
+      startSignBtn.addEventListener('click', () => {
+        if (!capturingSign && currentRoom) {
+          capturingSign = true;
+          signFrames = [];
+          signFrameCount = 0;
+          startSignBtn.textContent = 'Recording...';
+          stopSignBtn.classList.remove('disabled');
+          submitSignBtn.classList.add('disabled');
+          progressSignDiv.textContent = 'Progress: 0%';
+          holistic.send({ image: video });
+        } else if (!currentRoom) {
+          outputSign.textContent = 'Error: Please join or create a room first';
+        } else {
+          console.log('Recording already in progress');
+        }
+      });
+
+      stopSignBtn.addEventListener('click', () => {
+        if (!stopSignBtn.classList.contains('disabled')) {
+          stopSignRecording();
+        } else {
+          console.log('Stop button is disabled');
+        }
+      });
+
+      submitSignBtn.addEventListener('click', predictSign);
+
+      startSpeechBtn.addEventListener('click', startAudioRecording);
+      stopSpeechBtn.addEventListener('click', stopSpeechRecording);
+      submitSpeechBtn.addEventListener('click', transcribeSpeech);
+
+      sendBtn.addEventListener('click', sendMessage);
+
+      // 事件委託處理 Join Room 點擊
+      roomsList.addEventListener('click', (event) => {
+        const button = event.target.closest('.join-btn');
+        if (button && !button.disabled) {
+          const roomId = button.getAttribute('data-room-id');
+          joinRoom(roomId);
+        }
+      });
+
+      // 初始化
+      showSection('sign');
+      startWebcam();
+      fetchRooms();
+      setInterval(fetchRooms, 5000); // Refresh room list every 5 seconds
     });
-
-    stopSignBtn.addEventListener('click', () => {
-      if (!stopSignBtn.classList.contains('disabled')) {
-        stopSignRecording();
-      } else {
-        console.log('Stop button is disabled');
-      }
-    });
-
-    submitSignBtn.addEventListener('click', predictSign);
-
-    startSpeechBtn.addEventListener('click', startAudioRecording);
-    stopSpeechBtn.addEventListener('click', stopSpeechRecording);
-    submitSpeechBtn.addEventListener('click', transcribeSpeech);
-
-    sendBtn.addEventListener('click', sendMessage);
-
-    // 事件委託處理 Join Room 點擊
-    roomsList.addEventListener('click', (event) => {
-      const button = event.target.closest('.join-btn');
-      if (button && !button.disabled) {
-        const roomId = button.getAttribute('data-room-id');
-        joinRoom(roomId);
-      }
-    });
-
-    // 初始化
-    showSection('sign');
-    startWebcam();
-    fetchRooms();
-    setInterval(fetchRooms, 5000); // Refresh room list every 5 seconds
-  });
-</script>
+  </script>
+</body>
+</html>
