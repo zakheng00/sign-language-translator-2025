@@ -74,6 +74,17 @@ def initialize_firebase():
     except Exception as e:
         logger.error(f"🔥 Firebase initialization failed: {e}")
 
+if __name__ == '__main__':
+    initialize_firebase()   # ← 一定要先调用
+    load_models()
+    # 预创建两个房间
+    if db_ref:
+        for _ in range(2):
+            rid = uuid4().hex[:8]
+            db_ref.child('rooms').child(rid).set({'users': [], 'messages': [], 'created_at': int(time.time()*1000)})
+            logger.info(f"Pre-created room: {rid}")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    
 # ─── 模型加载 ─────────────────────────────────
 def load_models():
     global model, labels, vosk_model, recognizer
@@ -199,13 +210,4 @@ def join_room():
     return jsonify({'status': 'success'})
 
 # ─── 启动 ─────────────────────────────────────
-if __name__ == '__main__':
-    initialize_firebase()   # ← 一定要先调用
-    load_models()
-    # 预创建两个房间
-    if db_ref:
-        for _ in range(2):
-            rid = uuid4().hex[:8]
-            db_ref.child('rooms').child(rid).set({'users': [], 'messages': [], 'created_at': int(time.time()*1000)})
-            logger.info(f"Pre-created room: {rid}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
