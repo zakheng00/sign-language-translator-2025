@@ -233,23 +233,46 @@ def create_room():
 @app.route('/join_room', methods=['POST'])
 def join_room():
     if db is None:
+        logger.error("Firebase not initialized")
         return jsonify({'error': 'Firebase unavailable', 'status': 'failure'}), 500
     try:
         data = request.get_json()
         room_id = data.get("room_id")
         if not room_id:
+            logger.warning("No room_id provided in request")
             return jsonify({'error': 'Missing room ID', 'status': 'failure'}), 400
+
+        # 嘗試取得資料
+        logger.info(f"Trying to join room: {room_id}")
         room_data = db.child("rooms").child(room_id).get()
-        if room_data is None:
-            return jsonify({'error': 'Room does not exist', 'status': 'failure'}), 404
-        room_dict = room_data.val() if hasattr(room_data, 'val') else room_data
-        user_count = len(room_dict.get("users", []))
-        if user_count >= 2:
+        
+        # 安全地嘗試轉換為 dict
+        if hasattr(room_data, 'val'):
+            room_dict = room_data.val()
+        else:
+            room_dict = room_data
+
+        if not isinstance(room_dict, dict) or not room_dict:
+            logger.warning(f"Room {room_id} does not exist or is not a valid dict: {room_dict}")
+            return jsonify({'error': 'Room does not exist or is incomplete', 'status': 'failure'}), 404
+
+        # 確認使用者數量
+        users = room_dict.get("users", [])
+        if not isinstance(users, list):
+            logger.warning(f"Users field in room {room_id} is not a list: {users}")
+            users = []
+
+        if len(users) >= 2:
+            logger.info(f"Room {room_id} is full")
             return jsonify({'error': 'Room full', 'status': 'failure'}), 403
+
+        logger.info(f"Successfully joined room: {room_id}")
         return jsonify({'status': 'success'})
+
     except Exception as e:
-        logger.error(f"Join room error: {e}")
+        logger.exception(f"Join room error: {e}")
         return jsonify({'error': str(e), 'status': 'failure'}), 500
+
 
 @app.route('/list_rooms')
 def list_rooms():

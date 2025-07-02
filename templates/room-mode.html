@@ -177,44 +177,64 @@
       }
 
       // 加入房间
-      function joinRoom(roomId) {
-        if (!database) {
-          showError('Firebase database not initialized.');
-          return;
+      async function joinRoom(roomId) {
+  if (!database) {
+    showError('❌ Firebase database not initialized.');
+    return;
+  }
+
+  if (!roomId || typeof roomId !== 'string') {
+    showError('❗ Room ID is invalid.');
+    return;
+  }
+
+  console.log('🔗 Attempting to join room:', roomId);
+
+  try {
+    const response = await fetch(`${API_URL}/join_room`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room_id: roomId })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Server responded with ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'success') {
+      currentRoom = roomId;
+      currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
+      roomError.classList.add('hidden');
+
+      const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+      onChildAdded(messagesRef, (snapshot) => {
+        const msg = snapshot.val();
+        if (msg.type === 'transcription' && msg.data) {
+          addChatMessage(msg.data, false);
+        } else if (msg.type === 'gesture' && msg.data) {
+          outputSign.textContent = `🤟 Other's Sign Result: ${msg.data}`;
+          probabilitiesSign.textContent = `🎯 Other's Probs: ${
+            msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'
+          }`;
+          addChatMessage(msg.data, false);
         }
-        console.log('Joining room:', roomId);
-        fetch(`${API_URL}/join_room`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room_id: roomId })
-        })
-          .then(response => {
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-          })
-          .then(data => {
-            if (data.status === 'success') {
-              currentRoom = roomId;
-              currentRoomDiv.textContent = `Current Room: ${roomId} (Connected)`;
-              const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-              onChildAdded(messagesRef, (snapshot) => {
-                const msg = snapshot.val();
-                if (msg.type === 'transcription' && msg.data) addChatMessage(msg.data, false);
-                else if (msg.type === 'gesture' && msg.data) {
-                  outputSign.textContent = `Other's Sign Result: ${msg.data}`;
-                  probabilitiesSign.textContent = `Other's Probs: ${msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
-                  addChatMessage(msg.data, false);
-                }
-              });
-              console.log(`Joined room: ${currentRoom}`);
-              roomError.classList.add('hidden');
-              showSection('sign');
-            } else {
-              showError(data.error || 'Unable to join room.');
-            }
-          })
-          .catch(err => showError('Network error while joining room: ' + err.message));
-      }
+      });
+
+      console.log(`✅ Joined room: ${currentRoom}`);
+      showSection('sign');
+    } else {
+      console.warn('Join room failed:', data);
+      showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
+    }
+  } catch (err) {
+    console.error('Join room error:', err);
+    showError(`⚠️ Network or server error: ${err.message}`);
+  }
+}
+
 
       // 初始化 MediaPipe Holistic
       const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
