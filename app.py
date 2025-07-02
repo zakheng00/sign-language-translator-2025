@@ -45,34 +45,27 @@ temp_file_path = None
 
 # ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    global db_ref, temp_file_path
+    global db
+    firebase_service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "{}")
+    database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
 
-    b64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64', '')
-    url = os.environ.get('FIREBASE_DATABASE_URL', '')
-
-    if not b64:
-        logger.error("FIREBASE_SERVICE_ACCOUNT_BASE64 is not set.")
-        return
-    if not url:
-        logger.error("FIREBASE_DATABASE_URL is not set.")
+    if not firebase_service_account_json or firebase_service_account_json == "{}":
+        logger.error("FIREBASE_SERVICE_ACCOUNT is invalid or empty")
         return
 
     try:
-        # 解码并写入临时 JSON 文件
-        decoded = base64.b64decode(b64)
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.json') as tf:
-            tf.write(decoded)
-            temp_file_path = tf.name
+        parsed_json = json.loads(firebase_service_account_json)
+        # 使用安全的方式寫入 temp file
+        temp_path = os.path.join(tempfile.gettempdir(), "firebase.json")
+        with open(temp_path, "w") as f:
+            json.dump(parsed_json, f)
 
-        # 初始化 Admin SDK
-        cred = credentials.Certificate(temp_file_path)
-        app_firebase = firebase_admin.initialize_app(cred, {
-            'databaseURL': url
-        })
-        db_ref = firebase_db.reference(app=app_firebase)
+        cred = credentials.Certificate(temp_path)
+        initialize_app(cred, {"databaseURL": database_url})
+        db = firebase_db
         logger.info("✅ Firebase initialized successfully")
     except Exception as e:
-        logger.error(f"🔥 Firebase initialization failed: {e}")
+        logger.error(f"❌ Firebase initialization failed: {e}")
 
 if __name__ == '__main__':
     initialize_firebase()   # ← 一定要先调用
@@ -84,7 +77,7 @@ if __name__ == '__main__':
             db_ref.child('rooms').child(rid).set({'users': [], 'messages': [], 'created_at': int(time.time()*1000)})
             logger.info(f"Pre-created room: {rid}")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-    
+
 # ─── 模型加载 ─────────────────────────────────
 def load_models():
     global model, labels, vosk_model, recognizer
