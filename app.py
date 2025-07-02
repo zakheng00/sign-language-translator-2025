@@ -1,36 +1,37 @@
-import logging
 import os
-import json
-import wave
-from vosk import Model, KaldiRecognizer
-import subprocess
-from uuid import uuid4
-from concurrent.futures import ThreadPoolExecutor
-import firebase_admin
-from firebase_admin import credentials, initialize_app
-from firebase_admin import db as firebase_db
 import base64
 import tempfile
-import tempfile
-import atexit
+import logging
 import time
-import numpy as np
-import tensorflow as tf
+from uuid import uuid4
+from concurrent.futures import ThreadPoolExecutor
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# 設置日誌
-logger = logging.getLogger(__name__)
+import firebase_admin
+from firebase_admin import credentials, db as firebase_db
+
+import numpy as np
+import tensorflow as tf
+from vosk import Model, KaldiRecognizer
+import wave
+import subprocess
+import json
+
+# ─── 日志 ───────────────────────────────────
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# 禁用 ONEDNN 優化（避免潛在問題）
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
-# 初始化 Flask 應用
+# ─── Flask ──────────────────────────────────
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# 路徑與全局變量
+# ─── 全局变量 ────────────────────────────────
+db_ref = None             # Firebase database reference
+executor = ThreadPoolExecutor(max_workers=2)
+
+# ─── 模型路径 ───────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
@@ -40,138 +41,105 @@ model = None
 labels = None
 vosk_model = None
 recognizer = None
-executor = ThreadPoolExecutor(max_workers=4)  # 增加執行緒數
-db = None
 temp_file_path = None
 
-# Firebase 初始化
+# ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    global db
-    firebase_b64 = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64", "")
-    database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
-    
-    if not firebase_b64:
-        logger.error("❌ FIREBASE_SERVICE_ACCOUNT_BASE64 is missing or empty.")
+    global db_ref, temp_file_path
+
+    b64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64', '')
+    url = os.environ.get('FIREBASE_DATABASE_URL', '')
+
+    if not b64:
+        logger.error("FIREBASE_SERVICE_ACCOUNT_BASE64 is not set.")
         return
-    if not database_url:
-        logger.error("❌ FIREBASE_DATABASE_URL is missing or empty.")
+    if not url:
+        logger.error("FIREBASE_DATABASE_URL is not set.")
         return
 
     try:
-        decoded = base64.b64decode(firebase_b64).decode("utf-8")
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as temp_file:
-            temp_file.write(decoded)
-            temp_file.flush()
-            cred = credentials.Certificate(temp_file.name)
-            firebase_app = initialize_app(cred, {"databaseURL": database_url})
-            db = firebase_db.reference(app=firebase_app)
-            logger.info("✅ Firebase initialized successfully.")
-    except base64.binascii.Error as e:
-        logger.error(f"❌ Base64 decoding failed: {e}")
-    except ValueError as ve:
-        logger.error(f"❌ Invalid Firebase configuration: {ve}")
+        # 解码并写入临时 JSON 文件
+        decoded = base64.b64decode(b64)
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.json') as tf:
+            tf.write(decoded)
+            temp_file_path = tf.name
+
+        # 初始化 Admin SDK
+        cred = credentials.Certificate(temp_file_path)
+        app_firebase = firebase_admin.initialize_app(cred, {
+            'databaseURL': url
+        })
+        db_ref = firebase_db.reference(app=app_firebase)
+        logger.info("✅ Firebase initialized successfully")
     except Exception as e:
-        logger.error(f"❌ Firebase initialization failed: {e}")
-    finally:
-        if temp_file_path and os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
-    
-    
+        logger.error(f"🔥 Firebase initialization failed: {e}")
 
-# 清理臨時檔案
-@atexit.register
-def cleanup():
-    if temp_file_path and os.path.exists(temp_file_path):
-        os.remove(temp_file_path)
-    for fname in ['input.webm', 'temp.wav']:
-        if os.path.exists(fname):
-            os.remove(fname)
-
-# 加載模型
+# ─── 模型加载 ─────────────────────────────────
 def load_models():
     global model, labels, vosk_model, recognizer
     if model is None:
-        try:
-            model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-            with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-                labels = json.load(f)
-            logger.info("TensorFlow model and labels loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load model or labels: {e}")
-            raise
+        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        with open(LABELS_PATH, 'r', encoding='utf-8') as f:
+            labels = json.load(f)
+        logger.info("TensorFlow model loaded")
     if vosk_model is None:
-        try:
-            vosk_model = Model(VOSK_MODEL_PATH)
-            recognizer = KaldiRecognizer(vosk_model, 16000)
-            logger.info("Vosk model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load Vosk model: {e}")
-            raise
+        vosk_model = Model(VOSK_MODEL_PATH)
+        recognizer = KaldiRecognizer(vosk_model, 16000)
+        logger.info("Vosk model loaded")
 
-# 語音轉錄（非阻塞）
+# ─── 音频转录 ─────────────────────────────────
 def transcribe_audio(audio_data):
-    if db is None:
-        return "Database not initialized"
+    load_models()
     try:
-        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_input:
-            temp_input.write(audio_data)
-            temp_input_path = temp_input.name
-        logger.debug("Running ffmpeg version check")
-        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=10)
-        logger.debug("Converting input to temp.wav")
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_output:
-            timestamp = firebase_db.ServerValue.TIMESTAMP
-            result = subprocess.run(
-                ['ffmpeg', '-i', temp_input_path, '-ac', '1', '-ar', '16000', '-y', temp_output_path],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=60
-            )
-        logger.debug(f"FFmpeg output: {result.stderr.decode()}")
-        with wave.open(temp_output_path, "rb") as wf:
+        # 保存上传的 webm
+        in_path = tempfile.mktemp(suffix='.webm')
+        out_path = tempfile.mktemp(suffix='.wav')
+        with open(in_path, 'wb') as f:
+            f.write(audio_data)
+        # 转换
+        subprocess.run(
+            ['ffmpeg', '-i', in_path, '-ac', '1', '-ar', '16000', '-y', out_path],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
+        )
+        # 识别
+        with wave.open(out_path, 'rb') as wf:
             while True:
                 data = wf.readframes(4000)
-                if len(data) == 0:
+                if not data:
                     break
                 recognizer.AcceptWaveform(data)
-            result = json.loads(recognizer.FinalResult())
-            return result.get("text", "") or "Unable to recognize speech"
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"FFmpeg conversion timed out: {e}")
-        return "Transcription error: FFmpeg timeout"
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg error: {e.stderr.decode()}")
-        return "Transcription error: FFmpeg failed"
+        result = json.loads(recognizer.FinalResult())
+        return result.get('text', '') or 'Unable to recognize speech'
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
-        return "Transcription error"
+        return 'Transcription error'
     finally:
-        for fname in [temp_input_path, temp_output_path]:
-            if os.path.exists(fname):
-                os.remove(fname)
+        for p in (in_path, out_path):
+            if os.path.exists(p):
+                os.remove(p)
 
-# 手語預測（非阻塞）
+# ─── 手语预测（异步）──────────────────────────
 def predict_gesture_async(frames, room_id):
-    if db is None or not frames or not room_id:
+    if not db_ref:
         return
+    load_models()
     try:
-        load_models()
-        keypoints_sequence = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
-        keypoints_sequence = (keypoints_sequence - keypoints_sequence.mean(axis=(0, 1))) / (keypoints_sequence.std(axis=(0, 1)) + 1e-8)
-        keypoints_sequence = np.expand_dims(keypoints_sequence, axis=-1)
-        prediction = model.predict(keypoints_sequence, verbose=0)
-        pred_probs = prediction[0].tolist()
-        pred_index = np.argmax(prediction, axis=-1)[0]
-        gesture = labels.get(str(pred_index), 'Unknown')
-        timestamp = ServerValue.TIMESTAMP  # 使用 ServerValue.TIMESTAMP
-        db.child("rooms").child(room_id).child("messages").push({
-            "type": "gesture",
-            "data": gesture,
-            "probabilities": pred_probs,
-            "timestamp": timestamp
+        seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
+        seq = (seq - seq.mean((0,1))) / (seq.std((0,1)) + 1e-8)
+        seq = np.expand_dims(seq, -1)
+        pred = model.predict(seq, verbose=0)[0]
+        idx = int(np.argmax(pred))
+        gesture = labels.get(str(idx), 'Unknown')
+        db_ref.child('rooms').child(room_id).child('messages').push({
+            'type': 'gesture',
+            'data': gesture,
+            'probabilities': pred.tolist(),
+            'timestamp': firebase_admin.db.ServerValue.TIMESTAMP
         })
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
 
-# 路由
+# ─── 路由 ─────────────────────────────────────
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
@@ -182,132 +150,62 @@ def room_mode():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    try:
-        if 'audio' not in request.files:
-            return jsonify({'error': 'Missing audio file'}), 400
-        audio_data = request.files['audio'].read()
-        room_id = request.headers.get('X-Socket-ID')
-        if not room_id:
-            return jsonify({'error': 'Missing room ID'}), 400
-        transcription = transcribe_audio(audio_data)
-        if db:
-            timestamp = ServerValue.TIMESTAMP
-            db.child("rooms").child(room_id).child("messages").push({
-                "type": "transcription",
-                "data": transcription,
-                "timestamp": timestamp
-            })
-        return jsonify({'transcription': transcription})
-    except Exception as e:
-        logger.error(f"Transcribe error: {e}")
-        return jsonify({'error': str(e)}), 500
+    f = request.files.get('audio')
+    if not f:
+        return jsonify({'error': 'Missing audio'}), 400
+    text = transcribe_audio(f.read())
+    room_id = request.headers.get('X-Socket-ID')
+    if db_ref and room_id:
+        db_ref.child('rooms').child(room_id).child('messages').push({
+            'type': 'transcription',
+            'data': text,
+            'timestamp': firebase_admin.db.ServerValue.TIMESTAMP
+        })
+    return jsonify({'transcription': text})
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    try:
-        data = request.get_json()
-        frames = data.get("frames", [])
-        room_id = request.headers.get("X-Socket-ID")
-        if not frames or not room_id:
-            return jsonify({'error': 'Missing frames or session'}), 400
-        executor.submit(predict_gesture_async, frames, room_id)
-        return jsonify({'status': 'processing'})
-    except Exception as e:
-        logger.error(f"Prediction request error: {e}")
-        return jsonify({'error': str(e)}), 500
+    data = request.get_json() or {}
+    frames = data.get('frames', [])
+    room_id = request.headers.get('X-Socket-ID')
+    if not frames or not room_id:
+        return jsonify({'error': 'Missing frames or session'}), 400
+    executor.submit(predict_gesture_async, frames, room_id)
+    return jsonify({'status': 'processing'})
 
-@app.route('/create_room', methods=['POST'])
-def create_room():
-    if db is None:
-        return jsonify({'error': 'Firebase unavailable', 'status': 'failure'}), 500
-    try:
-        room_id = str(uuid4())[:8]
-        logger.info(f"Creating room: {room_id}")
-        timestamp = ServerValue.TIMESTAMP
-        db.child("rooms").child(room_id).set({
-            "users": [],
-            "messages": [],
-            "created_at": timestamp
-        })
-        return jsonify({'room_id': room_id, 'status': 'success'})
-    except Exception as e:
-        logger.error(f"Create room error: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
+@app.route('/list_rooms', methods=['GET'])
+def list_rooms():
+    if not db_ref:
+        return jsonify({'error': 'Firebase unavailable'}), 500
+    rooms = db_ref.child('rooms').get() or {}
+    return jsonify([
+        {'room_id': rid, 'user_count': len(info.get('users', []))}
+        for rid, info in rooms.items()
+    ])
 
 @app.route('/join_room', methods=['POST'])
 def join_room():
-    if db is None:
-        logger.error("Firebase not initialized")
-        return jsonify({'error': 'Firebase unavailable', 'status': 'failure'}), 500
-    try:
-        data = request.get_json()
-        room_id = data.get("room_id")
-        if not room_id:
-            logger.warning("No room_id provided in request")
-            return jsonify({'error': 'Missing room ID', 'status': 'failure'}), 400
+    if not db_ref:
+        return jsonify({'error': 'Firebase unavailable'}), 500
+    rid = (request.get_json() or {}).get('room_id')
+    if not rid:
+        return jsonify({'error': 'Missing room_id'}), 400
+    info = db_ref.child('rooms').child(rid).get()
+    if not info:
+        return jsonify({'error': 'Room not found'}), 404
+    count = len(info.get('users', []))
+    if count >= 2:
+        return jsonify({'error': 'Room full'}), 403
+    return jsonify({'status': 'success'})
 
-        # 嘗試取得資料
-        logger.info(f"Trying to join room: {room_id}")
-        room_data = db.child("rooms").child(room_id).get()
-        
-        # 安全地嘗試轉換為 dict
-        if hasattr(room_data, 'val'):
-            room_dict = room_data.val()
-        else:
-            room_dict = room_data
-
-        if not isinstance(room_dict, dict) or not room_dict:
-            logger.warning(f"Room {room_id} does not exist or is not a valid dict: {room_dict}")
-            return jsonify({'error': 'Room does not exist or is incomplete', 'status': 'failure'}), 404
-
-        # 確認使用者數量
-        users = room_dict.get("users", [])
-        if not isinstance(users, list):
-            logger.warning(f"Users field in room {room_id} is not a list: {users}")
-            users = []
-
-        if len(users) >= 2:
-            logger.info(f"Room {room_id} is full")
-            return jsonify({'error': 'Room full', 'status': 'failure'}), 403
-
-        logger.info(f"Successfully joined room: {room_id}")
-        return jsonify({'status': 'success'})
-
-    except Exception as e:
-        logger.exception(f"Join room error: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
-
-
-@app.route('/list_rooms')
-def list_rooms():
-    if db is None:
-        return jsonify({'error': 'Firebase unavailable', 'status': 'failure'}), 500
-    try:
-        rooms_data = db.child("rooms").get().val() or {}
-        result = [
-            {"room_id": room_id, "user_count": len(details.get("users", []))}
-            for room_id, details in rooms_data.items()
-        ]
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"List rooms error: {e}")
-        return jsonify({'error': str(e), 'status': 'failure'}), 500
-
+# ─── 启动 ─────────────────────────────────────
 if __name__ == '__main__':
-    try:
-        initialize_firebase()  # 獨立初始化 Firebase
-        load_models()
-        if db:
-            for _ in range(2):  # 創建 2 個房間
-                room_id = str(uuid4())[:8]
-                timestamp = ServerValue.TIMESTAMP
-                db.child("rooms").child(room_id).set({
-                    "users": [],
-                    "messages": [],
-                    "created_at": timestamp
-                })
-                logger.info(f"Pre-created room with ID: {room_id}")
-        logger.info("Starting Flask server")
-        app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-    except Exception as e:
-        logger.error(f"Server failed: {e}")
+    initialize_firebase()   # ← 一定要先调用
+    load_models()
+    # 预创建两个房间
+    if db_ref:
+        for _ in range(2):
+            rid = uuid4().hex[:8]
+            db_ref.child('rooms').child(rid).set({'users': [], 'messages': [], 'created_at': int(time.time()*1000)})
+            logger.info(f"Pre-created room: {rid}")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
