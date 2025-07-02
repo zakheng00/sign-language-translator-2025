@@ -26,9 +26,6 @@ logger = logging.getLogger(__name__)
 # ─── Flask ──────────────────────────────────
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-logger.info("Starting Firebase initialization...")
-logger.info(f"FIREBASE_SERVICE_ACCOUNT = {firebase_service_account_json[:100]}")  # 減少 log 長度
-logger.info(f"DATABASE_URL = {database_url}")
 
 
 # ─── 全局变量 ────────────────────────────────
