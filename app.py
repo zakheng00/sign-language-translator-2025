@@ -7,8 +7,9 @@ import subprocess
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
-from firebase_admin import credentials, db as firebase_db
-from firebase_admin.db import ServerValue  # 修正導入
+from firebase_admin import credentials, initialize_app
+from firebase_admin import db as firebase_db
+ # 直接導入，預設使用最新版本
 import tempfile
 import atexit
 import time
@@ -16,8 +17,6 @@ import numpy as np
 import tensorflow as tf
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-
-# 後續程式碼保持不變...
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -117,7 +116,7 @@ def transcribe_audio(audio_data):
         subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=10)
         logger.debug("Converting input to temp.wav")
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_output:
-            temp_output_path = temp_output.name
+            timestamp = firebase_db.ServerValue.TIMESTAMP
             result = subprocess.run(
                 ['ffmpeg', '-i', temp_input_path, '-ac', '1', '-ar', '16000', '-y', temp_output_path],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=60
