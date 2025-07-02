@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 import tempfile
 import logging
 import time
@@ -10,14 +11,13 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import firebase_admin
-from firebase_admin import credentials, db
+from firebase_admin import credentials, db as firebase_db
 
 import numpy as np
 import tensorflow as tf
 from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
-import json
 
 # ─── 日志 ───────────────────────────────────
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,57 +27,46 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-
 # ─── 全局变量 ────────────────────────────────
-db_ref = None             # Firebase database reference
+db_ref = None               # Firebase DatabaseReference，全局
 executor = ThreadPoolExecutor(max_workers=2)
 
 # ─── 模型路径 ───────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
-LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
-VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
+BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH     = os.path.join(BASE_DIR, 'models', 'model.h5')
+LABELS_PATH    = os.path.join(BASE_DIR, 'models', 'labels.json')
+VOSK_MODEL_PATH= os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 model = None
 labels = None
 vosk_model = None
 recognizer = None
-temp_file_path = None
 
 # ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    global db_ref  # <-- 這個要加上
-    firebase_service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
-    database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
+    global db_ref
+    # 从环境变量读取 base64 编码的 Service Account JSON
+    b64_json    = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
+    database_url= os.environ.get("FIREBASE_DATABASE_URL", "")
 
-    logger.info(f"FIREBASE_SERVICE_ACCOUNT starts with: {firebase_service_account_json[:50]}...")
-
-    if not firebase_service_account_json or not database_url:
-        logger.error("❌ Firebase config missing")
+    logger.info(f"FIREBASE_SERVICE_ACCOUNT begins with: {b64_json[:50]}...")
+    if not b64_json or not database_url:
+        logger.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_DATABASE_URL")
         return
 
     try:
-        service_account_info = json.loads(base64.b64decode(firebase_service_account_json))
+        service_account_info = json.loads(base64.b64decode(b64_json))
         cred = credentials.Certificate(service_account_info)
         firebase_admin.initialize_app(cred, {
             'databaseURL': database_url
         })
-        db_ref = db.reference("/")  # 現在會正確設到全局變數
-        db_ref.get()
+        db_ref = firebase_db.reference("/")
+        # 测试能否读到根节点
+        _ = db_ref.get()
         logger.info("✅ Firebase initialized successfully")
     except Exception as e:
         logger.error(f"❌ Firebase init failed: {e}")
-
-if __name__ == '__main__':
-    initialize_firebase()   # ← 一定要先调用
-    load_models()
-    # 预创建两个房间
-    if db_ref:
-        for _ in range(2):
-            rid = uuid4().hex[:8]
-            db_ref.child('rooms').child(rid).set({'users': [], 'messages': [], 'created_at': int(time.time()*1000)})
-            logger.info(f"Pre-created room: {rid}")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+        db_ref = None
 
 # ─── 模型加载 ─────────────────────────────────
 def load_models():
@@ -95,18 +84,15 @@ def load_models():
 # ─── 音频转录 ─────────────────────────────────
 def transcribe_audio(audio_data):
     load_models()
+    in_path  = tempfile.mktemp(suffix='.webm')
+    out_path = tempfile.mktemp(suffix='.wav')
     try:
-        # 保存上传的 webm
-        in_path = tempfile.mktemp(suffix='.webm')
-        out_path = tempfile.mktemp(suffix='.wav')
         with open(in_path, 'wb') as f:
             f.write(audio_data)
-        # 转换
         subprocess.run(
             ['ffmpeg', '-i', in_path, '-ac', '1', '-ar', '16000', '-y', out_path],
             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30
         )
-        # 识别
         with wave.open(out_path, 'rb') as wf:
             while True:
                 data = wf.readframes(4000)
@@ -133,7 +119,7 @@ def predict_gesture_async(frames, room_id):
         seq = (seq - seq.mean((0,1))) / (seq.std((0,1)) + 1e-8)
         seq = np.expand_dims(seq, -1)
         pred = model.predict(seq, verbose=0)[0]
-        idx = int(np.argmax(pred))
+        idx  = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
         db_ref.child('rooms').child(room_id).child('messages').push({
             'type': 'gesture',
@@ -155,12 +141,12 @@ def room_mode():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    f = request.files.get('audio')
-    if not f:
-        return jsonify({'error': 'Missing audio'}), 400
-    text = transcribe_audio(f.read())
+    f       = request.files.get('audio')
     room_id = request.headers.get('X-Socket-ID')
-    if db_ref and room_id:
+    if not f or not room_id:
+        return jsonify({'error': 'Missing audio or room ID'}), 400
+    text = transcribe_audio(f.read())
+    if db_ref:
         db_ref.child('rooms').child(room_id).child('messages').push({
             'type': 'transcription',
             'data': text,
@@ -170,8 +156,8 @@ def transcribe():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    data = request.get_json() or {}
-    frames = data.get('frames', [])
+    data    = request.get_json() or {}
+    frames  = data.get('frames', [])
     room_id = request.headers.get('X-Socket-ID')
     if not frames or not room_id:
         return jsonify({'error': 'Missing frames or session'}), 400
@@ -204,4 +190,18 @@ def join_room():
     return jsonify({'status': 'success'})
 
 # ─── 启动 ─────────────────────────────────────
+if __name__ == '__main__':
+    initialize_firebase()    # ← 一定要最先调用
+    load_models()
+    # 预创建两个房间
+    if db_ref:
+        for _ in range(2):
+            rid = uuid4().hex[:8]
+            db_ref.child('rooms').child(rid).set({
+                'users': [], 'messages': [], 'created_at': int(time.time()*1000)
+            })
+            logger.info(f"Pre-created room: {rid}")
+    else:
+        logger.warning("⚠️ Firebase not initialized; skipping room creation")
 
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
