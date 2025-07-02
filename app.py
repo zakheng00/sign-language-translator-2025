@@ -16,7 +16,7 @@ from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
 
-# ─── Flask ──────────────────────────────────
+# --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -31,18 +31,19 @@ executor = ThreadPoolExecutor(max_workers=2)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ─── 模型路径 ───────────────────────────────
+# --- 模型路徑 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
+# 全局模型變量
 model = None
 labels = None
 vosk_model = None
 recognizer = None
 
-# ─── 模型加载 ─────────────────────────────────
+# --- 模型加載（僅在啟動時執行一次） ---
 def load_models():
     global model, labels, vosk_model, recognizer
     if model is None:
@@ -55,9 +56,11 @@ def load_models():
         recognizer = KaldiRecognizer(vosk_model, 16000)
         logger.info("Vosk model loaded")
 
-# ─── 音频转录 ─────────────────────────────────
+# 應用啟動時加載模型
+load_models()
+
+# --- 音頻轉錄 ---
 def transcribe_audio(audio_data):
-    load_models()
     in_path = tempfile.mktemp(suffix='.webm')
     out_path = tempfile.mktemp(suffix='.wav')
     try:
@@ -83,9 +86,8 @@ def transcribe_audio(audio_data):
             if os.path.exists(p):
                 os.remove(p)
 
-# ─── 手语预测（异步）──────────────────────────
+# --- 手語預測（異步） ---
 def predict_gesture_async(frames, room_id, sid):
-    load_models()
     try:
         seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
         seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
@@ -93,7 +95,7 @@ def predict_gesture_async(frames, room_id, sid):
         pred = model.predict(seq, verbose=0)[0]
         idx = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
-        timestamp = time.time() * 1000  # 用當前時間戳替代 ServerValue.TIMESTAMP
+        timestamp = time.time() * 1000
         socketio.emit('gesture', {
             'type': 'gesture',
             'data': gesture,
@@ -104,7 +106,7 @@ def predict_gesture_async(frames, room_id, sid):
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
 
-# ─── 路由 ─────────────────────────────────────
+# --- 路由 ---
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
@@ -155,7 +157,7 @@ def http_join_room():
         return jsonify({"error": "Room full"}), 403
     return jsonify({"status": "success"})
 
-# ─── Socket.IO 事件 ───────────────────────────
+# --- Socket.IO 事件 ---
 @socketio.on('join')
 def on_join(data):
     rid = data.get("room_id")
@@ -166,6 +168,7 @@ def on_join(data):
     join_room(rid)
     rooms[rid]["users"].append(sid)
     emit('user_joined', {'sid': sid, 'timestamp': time.time() * 1000}, room=rid)
+    logger.info(f"User {sid} joined room {rid}")
 
 @socketio.on('message')
 def handle_message(data):
@@ -174,6 +177,8 @@ def handle_message(data):
     if rid in rooms and msg:
         timestamp = time.time() * 1000
         emit('message', {"sid": request.sid, "msg": msg, "timestamp": timestamp}, room=rid)
+    else:
+        logger.warning(f"Invalid message data: {data}")
 
 @socketio.on('leave')
 def on_leave(data):
@@ -183,7 +188,10 @@ def on_leave(data):
         leave_room(rid)
         rooms[rid]["users"].remove(sid)
         emit('user_left', {'sid': sid, 'timestamp': time.time() * 1000}, room=rid)
+    else:
+        logger.warning(f"Invalid leave request from {sid} for room {rid}")
 
 if __name__ == '__main__':
     print("Pre-created rooms:", list(rooms.keys()))
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), 
+                 worker_class='gevent', workers=2, timeout=120)
