@@ -113,6 +113,7 @@
       let signFrameCount = 0;
       const MAX_USERS = 2;
       let socket = null;
+      let heartbeatInterval = null;
 
       // 显示错误
       function showError(message) {
@@ -169,21 +170,22 @@
           roomsList.innerHTML = '';
           rooms.forEach(room => createRoomCard(room.room_id, room.user_count));
           if (rooms.length === 0) {
-            showError('No rooms available. Please try again later.');
+            showError('No rooms available. Please try again later or refresh the page.');
           }
         } catch (err) {
           console.error('Failed to fetch rooms:', err);
-          showError('Failed to load rooms. Check your network.');
+          showError('Failed to load rooms. Check your network or try refreshing.');
         }
       }
 
-      // 加入房间（添加重试逻辑）
+      // 加入房间（添加重试逻辑和更多反饋）
       async function joinRoom(roomId) {
         if (!roomId || typeof roomId !== 'string') {
-          showError('❗ Room ID is invalid.');
+          showError('❗ Room ID is invalid. Please select a valid room.');
           return;
         }
 
+        currentRoomDiv.textContent = `📶 Attempting to join: ${roomId}...`;
         console.log('🔗 Attempting to join room:', roomId);
 
         for (let attempt = 1; attempt <= 3; attempt++) {
@@ -207,23 +209,40 @@
               roomError.classList.add('hidden');
               chatContainer.classList.remove('hidden');
 
-              // Initialize Socket.IO with reconnection
+              // Initialize Socket.IO with reconnection and heartbeat
               socket = io(API_URL, { 
                 reconnection: true, 
                 reconnectionAttempts: 5, 
                 reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000
+                reconnectionDelayMax: 5000,
+                timeout: 10000 // 10秒超時
               });
-              socket.emit('join', { room_id: roomId });
 
+              // Handle connection events
               socket.on('connect', () => {
                 console.log('Socket.IO connected, re-joining room:', roomId);
                 socket.emit('join', { room_id: roomId });
+                // Start heartbeat
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+                heartbeatInterval = setInterval(() => {
+                  if (socket.connected) {
+                    socket.emit('ping', { room_id: roomId });
+                    setTimeout(() => {
+                      if (!socket.connected) {
+                        console.warn('Heartbeat timeout, attempting reconnect');
+                        socket.connect();
+                      }
+                    }, 5000); // 5秒內無回應則重連
+                  }
+                }, 10000); // 每10秒發送一次
+                socket.on('pong', () => console.log('Heartbeat received'));
               });
 
               socket.on('connect_error', (error) => {
                 console.error('Socket.IO connection error:', error);
-                showError('⚠️ Connection to server failed. Retrying...');
+                showError('⚠️ Connection to server failed. Retrying... Please wait.');
+                if (attempt < 3) return; // 繼續重試
+                currentRoomDiv.textContent = `📶 Failed to connect to ${roomId}. Refresh to try again.`;
               });
 
               socket.on('message', (data) => addChatMessage(data.msg, data.sid === socket.id));
@@ -236,7 +255,9 @@
 
               socket.on('disconnect', () => {
                 console.log('Socket.IO disconnected');
-                showError('⚠️ Disconnected from server. Attempting to reconnect...');
+                currentRoomDiv.textContent = `📶 Disconnected from ${roomId}. Reconnecting...`;
+                showError('⚠️ Disconnected. Attempting to reconnect automatically.');
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
               });
 
               console.log(`✅ Joined room: ${currentRoom}`);
@@ -244,12 +265,15 @@
               return; // 成功後退出循環
             } else {
               console.warn('Join room failed:', data);
-              showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
+              showError(`🚫 Failed to join room: ${data.error || 'Unknown error. Try again.'}`);
             }
           } catch (err) {
             console.error('Join room error:', err);
             showError(`⚠️ Network or server error: ${err.message} (Attempt ${attempt}/3)`);
-            if (attempt === 3) break;
+            if (attempt === 3) {
+              currentRoomDiv.textContent = `📶 Failed to join ${roomId}. Please try again or refresh.`;
+              break;
+            }
             await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 逐級增加重試間隔
           }
         }
@@ -326,7 +350,7 @@
         }
       }
 
-      // 捕获手语帧
+      // 捕获手语帧（保留高頻率）
       function captureSignFrame(results) {
         if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
           const keypoints = extractKeypoints(results);
@@ -335,7 +359,7 @@
           const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
           progressSignDiv.textContent = `Progress: ${progress}%`;
           if (signFrames.length < NUM_SIGN_FRAMES && capturingSign) {
-            requestAnimationFrame(() => holistic.send({ image: video }));
+            requestAnimationFrame(() => holistic.send({ image: video })); // 保持高頻率
           } else {
             stopSignRecording();
           }
@@ -514,6 +538,14 @@
       startWebcam();
       fetchRooms();
       setInterval(fetchRooms, 5000); // Refresh room list every 5 seconds
+
+      // 清理資源
+      window.addEventListener('beforeunload', () => {
+        if (socket) socket.disconnect();
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+        }
+      });
     });
   </script>
 </body>
