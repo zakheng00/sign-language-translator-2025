@@ -49,30 +49,29 @@ temp_file_path = None
 
 # ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    encoded = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
+    global db
+    firebase_service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
     database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
 
-    if not encoded or not database_url:
-        logger.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_DATABASE_URL")
+    # Debug log，確認內容有無空
+    logger.info(f"FIREBASE_SERVICE_ACCOUNT starts with: {firebase_service_account_json[:50]}...")
+
+    if not firebase_service_account_json or not database_url:
+        logger.error("❌ Firebase config missing")
         return
 
     try:
-        decoded = base64.b64decode(encoded).decode()
-        creds_dict = json.loads(decoded)
-
-        # 寫入暫存 JSON 檔
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as f:
-            json.dump(creds_dict, f)
-            f.flush()
-            cred = credentials.Certificate(f.name)
-        
+        service_account_info = json.loads(base64.b64decode(firebase_service_account_json))
+        cred = credentials.Certificate(service_account_info)
         firebase_admin.initialize_app(cred, {
             'databaseURL': database_url
         })
-
-        logger.info("✅ Firebase initialized")
+        db_ref = db.reference("/")
+        db_ref.get()  # test it works
+        db = db_ref
+        logger.info("✅ Firebase initialized successfully")
     except Exception as e:
-        logger.error(f"❌ Firebase init error: {e}")
+        logger.error(f"❌ Firebase init failed: {e}")
 
 if __name__ == '__main__':
     initialize_firebase()   # ← 一定要先调用
