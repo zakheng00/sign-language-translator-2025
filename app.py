@@ -9,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 import firebase_admin
 from firebase_admin import credentials, initialize_app
 from firebase_admin import db as firebase_db
- # 直接導入，預設使用最新版本
+import base64
+import tempfile
 import tempfile
 import atexit
 import time
@@ -45,17 +46,26 @@ temp_file_path = None
 
 # Firebase 初始化
 def initialize_firebase():
-    global db, temp_file_path
-    firebase_service_account_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT', '{}')
+    base64_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
     database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
-    
-    if not firebase_service_account_json or firebase_service_account_json == '{}':
-        logger.error("FIREBASE_SERVICE_ACCOUNT is invalid or empty")
+
+    if not base64_json or not database_url:
+        logger.error("Firebase credentials or databaseURL missing.")
         return
-    
-    if not database_url:
-        logger.error("FIREBASE_DATABASE_URL is not set or empty")
-        return
+
+    try:
+        decoded_json = base64.b64decode(base64_json).decode("utf-8")
+
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as temp_file:
+            temp_file.write(decoded_json)
+            temp_file.flush()
+            cred = credentials.Certificate(temp_file.name)
+            firebase_admin.initialize_app(cred, {"databaseURL": database_url})
+            global db_ref
+            db_ref = db.reference()
+            logger.info("Firebase initialized successfully.")
+    except Exception as e:
+        logger.error(f"Firebase init error: {e}")
     
     try:
         temp_dir = '/tmp'
