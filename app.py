@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-
 from flask_socketio import SocketIO, join_room, leave_room, emit
 import numpy as np
 import tensorflow as tf
@@ -28,18 +27,20 @@ rooms = {
 
 executor = ThreadPoolExecutor(max_workers=2)
 
+# 設置日誌
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ─── 模型路径 ───────────────────────────────
-BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH     = os.path.join(BASE_DIR, 'models', 'model.h5')
-LABELS_PATH    = os.path.join(BASE_DIR, 'models', 'labels.json')
-VOSK_MODEL_PATH= os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
+LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
+VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 model = None
 labels = None
 vosk_model = None
 recognizer = None
-
 
 # ─── 模型加载 ─────────────────────────────────
 def load_models():
@@ -57,7 +58,7 @@ def load_models():
 # ─── 音频转录 ─────────────────────────────────
 def transcribe_audio(audio_data):
     load_models()
-    in_path  = tempfile.mktemp(suffix='.webm')
+    in_path = tempfile.mktemp(suffix='.webm')
     out_path = tempfile.mktemp(suffix='.wav')
     try:
         with open(in_path, 'wb') as f:
@@ -83,23 +84,23 @@ def transcribe_audio(audio_data):
                 os.remove(p)
 
 # ─── 手语预测（异步）──────────────────────────
-def predict_gesture_async(frames, room_id):
-    if not db_ref:
-        return
+def predict_gesture_async(frames, room_id, sid):
     load_models()
     try:
         seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
-        seq = (seq - seq.mean((0,1))) / (seq.std((0,1)) + 1e-8)
+        seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
         seq = np.expand_dims(seq, -1)
         pred = model.predict(seq, verbose=0)[0]
-        idx  = int(np.argmax(pred))
+        idx = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
-        db_ref.child('rooms').child(room_id).child('messages').push({
+        timestamp = time.time() * 1000  # 用當前時間戳替代 ServerValue.TIMESTAMP
+        socketio.emit('gesture', {
             'type': 'gesture',
             'data': gesture,
             'probabilities': pred.tolist(),
-            'timestamp': firebase_admin.db.ServerValue.TIMESTAMP
-        })
+            'timestamp': timestamp,
+            'sid': sid
+        }, room=room_id)
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
 
@@ -114,27 +115,27 @@ def room_mode():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    f       = request.files.get('audio')
+    f = request.files.get('audio')
     room_id = request.headers.get('X-Socket-ID')
     if not f or not room_id:
         return jsonify({'error': 'Missing audio or room ID'}), 400
     text = transcribe_audio(f.read())
-    if db_ref:
-        db_ref.child('rooms').child(room_id).child('messages').push({
-            'type': 'transcription',
-            'data': text,
-            'timestamp': firebase_admin.db.ServerValue.TIMESTAMP
-        })
+    socketio.emit('transcription', {
+        'type': 'transcription',
+        'data': text,
+        'timestamp': time.time() * 1000,
+        'sid': request.sid
+    }, room=room_id)
     return jsonify({'transcription': text})
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    data    = request.get_json() or {}
-    frames  = data.get('frames', [])
+    data = request.get_json() or {}
+    frames = data.get('frames', [])
     room_id = request.headers.get('X-Socket-ID')
     if not frames or not room_id:
         return jsonify({'error': 'Missing frames or session'}), 400
-    executor.submit(predict_gesture_async, frames, room_id)
+    executor.submit(predict_gesture_async, frames, room_id, request.sid)
     return jsonify({'status': 'processing'})
 
 @app.route('/list_rooms', methods=['GET'])
@@ -154,31 +155,34 @@ def http_join_room():
         return jsonify({"error": "Room full"}), 403
     return jsonify({"status": "success"})
 
+# ─── Socket.IO 事件 ───────────────────────────
 @socketio.on('join')
 def on_join(data):
     rid = data.get("room_id")
     sid = request.sid
     if rid not in rooms or len(rooms[rid]["users"]) >= 2:
-        emit('error', {'msg': 'Cannot join room'})
+        emit('error', {'msg': 'Cannot join room'}, to=sid)
         return
     join_room(rid)
     rooms[rid]["users"].append(sid)
-    emit('user_joined', {'sid': sid}, room=rid)
+    emit('user_joined', {'sid': sid, 'timestamp': time.time() * 1000}, room=rid)
 
 @socketio.on('message')
 def handle_message(data):
     rid = data.get("room_id")
     msg = data.get("msg")
-    emit('message', {"sid": request.sid, "msg": msg}, room=rid)
+    if rid in rooms and msg:
+        timestamp = time.time() * 1000
+        emit('message', {"sid": request.sid, "msg": msg, "timestamp": timestamp}, room=rid)
 
 @socketio.on('leave')
 def on_leave(data):
     rid = data.get("room_id")
     sid = request.sid
-    leave_room(rid)
-    if sid in rooms[rid]["users"]:
+    if rid in rooms and sid in rooms[rid]["users"]:
+        leave_room(rid)
         rooms[rid]["users"].remove(sid)
-    emit('user_left', {'sid': sid}, room=rid)
+        emit('user_left', {'sid': sid, 'timestamp': time.time() * 1000}, room=rid)
 
 if __name__ == '__main__':
     print("Pre-created rooms:", list(rooms.keys()))
