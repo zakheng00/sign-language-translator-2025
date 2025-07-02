@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 import firebase_admin
-from firebase_admin import credentials, db as firebase_db
+from firebase_admin import credentials, db
 
 import numpy as np
 import tensorflow as tf
@@ -46,11 +46,10 @@ temp_file_path = None
 
 # ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    global db
+    global db_ref  # <-- 這個要加上
     firebase_service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
     database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
 
-    # Debug log，確認內容有無空
     logger.info(f"FIREBASE_SERVICE_ACCOUNT starts with: {firebase_service_account_json[:50]}...")
 
     if not firebase_service_account_json or not database_url:
@@ -63,9 +62,8 @@ def initialize_firebase():
         firebase_admin.initialize_app(cred, {
             'databaseURL': database_url
         })
-        db_ref = db.reference("/")
-        db_ref.get()  # test it works
-        db = db_ref
+        db_ref = db.reference("/")  # 現在會正確設到全局變數
+        db_ref.get()
         logger.info("✅ Firebase initialized successfully")
     except Exception as e:
         logger.error(f"❌ Firebase init failed: {e}")
