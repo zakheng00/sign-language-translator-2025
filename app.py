@@ -78,6 +78,9 @@ def transcribe_audio(audio_data):
                 recognizer.AcceptWaveform(data)
         result = json.loads(recognizer.FinalResult())
         return result.get('text', '') or 'Unable to recognize speech'
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Transcription failed: ffmpeg error - {e.stderr.decode()}")
+        return 'Transcription error: ffmpeg failed'
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return 'Transcription error'
@@ -122,11 +125,12 @@ def transcribe():
     if not f or not room_id:
         return jsonify({'error': 'Missing audio or room ID'}), 400
     text = transcribe_audio(f.read())
+    sid = request.headers.get('X-Socket-ID')  # 使用客戶端提供的 SID
     socketio.emit('transcription', {
         'type': 'transcription',
         'data': text,
         'timestamp': time.time() * 1000,
-        'sid': request.sid
+        'sid': sid
     }, room=room_id)
     return jsonify({'transcription': text})
 
@@ -137,7 +141,7 @@ def predict():
     room_id = request.headers.get('X-Socket-ID')
     if not frames or not room_id:
         return jsonify({'error': 'Missing frames or session'}), 400
-    executor.submit(predict_gesture_async, frames, room_id, request.sid)
+    executor.submit(predict_gesture_async, frames, room_id, request.headers.get('X-Socket-ID'))
     return jsonify({'status': 'processing'})
 
 @app.route('/list_rooms', methods=['GET'])

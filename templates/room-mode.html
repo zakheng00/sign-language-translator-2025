@@ -173,11 +173,11 @@
           }
         } catch (err) {
           console.error('Failed to fetch rooms:', err);
-          showError('Failed to load rooms.');
+          showError('Failed to load rooms. Check your network.');
         }
       }
 
-      // 加入房间
+      // 加入房间（添加重试逻辑）
       async function joinRoom(roomId) {
         if (!roomId || typeof roomId !== 'string') {
           showError('❗ Room ID is invalid.');
@@ -186,52 +186,72 @@
 
         console.log('🔗 Attempting to join room:', roomId);
 
-        try {
-          const response = await fetch(`${API_URL}/join_room`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ room_id: roomId })
-          });
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const response = await fetch(`${API_URL}/join_room`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ room_id: roomId })
+            });
 
-          if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Server responded with ${response.status}: ${errText}`);
+            if (!response.ok) {
+              const errText = await response.text();
+              throw new Error(`Server responded with ${response.status}: ${errText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+              currentRoom = roomId;
+              currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
+              roomError.classList.add('hidden');
+              chatContainer.classList.remove('hidden');
+
+              // Initialize Socket.IO with reconnection
+              socket = io(API_URL, { 
+                reconnection: true, 
+                reconnectionAttempts: 5, 
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
+              });
+              socket.emit('join', { room_id: roomId });
+
+              socket.on('connect', () => {
+                console.log('Socket.IO connected, re-joining room:', roomId);
+                socket.emit('join', { room_id: roomId });
+              });
+
+              socket.on('connect_error', (error) => {
+                console.error('Socket.IO connection error:', error);
+                showError('⚠️ Connection to server failed. Retrying...');
+              });
+
+              socket.on('message', (data) => addChatMessage(data.msg, data.sid === socket.id));
+              socket.on('transcription', (data) => addChatMessage(data.data, data.sid === socket.id));
+              socket.on('gesture', (data) => {
+                outputSign.textContent = `🤟 Other's Sign Result: ${data.data}`;
+                probabilitiesSign.textContent = `🎯 Other's Probs: ${data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
+                addChatMessage(data.data, data.sid === socket.id);
+              });
+
+              socket.on('disconnect', () => {
+                console.log('Socket.IO disconnected');
+                showError('⚠️ Disconnected from server. Attempting to reconnect...');
+              });
+
+              console.log(`✅ Joined room: ${currentRoom}`);
+              showSection('sign');
+              return; // 成功後退出循環
+            } else {
+              console.warn('Join room failed:', data);
+              showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
+            }
+          } catch (err) {
+            console.error('Join room error:', err);
+            showError(`⚠️ Network or server error: ${err.message} (Attempt ${attempt}/3)`);
+            if (attempt === 3) break;
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // 逐級增加重試間隔
           }
-
-          const data = await response.json();
-
-          if (data.status === 'success') {
-            currentRoom = roomId;
-            currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
-            roomError.classList.add('hidden');
-            chatContainer.classList.remove('hidden');
-
-            // Initialize Socket.IO
-            socket = io(API_URL);
-            socket.emit('join', { room_id: roomId });
-
-            // Listen for messages
-            socket.on('message', (data) => {
-              addChatMessage(data.msg, data.sid === socket.id);
-            });
-            socket.on('transcription', (data) => {
-              addChatMessage(data.data, data.sid === socket.id);
-            });
-            socket.on('gesture', (data) => {
-              outputSign.textContent = `🤟 Other's Sign Result: ${data.data}`;
-              probabilitiesSign.textContent = `🎯 Other's Probs: ${data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ')}`;
-              addChatMessage(data.data, data.sid === socket.id);
-            });
-
-            console.log(`✅ Joined room: ${currentRoom}`);
-            showSection('sign');
-          } else {
-            console.warn('Join room failed:', data);
-            showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
-          }
-        } catch (err) {
-          console.error('Join room error:', err);
-          showError(`⚠️ Network or server error: ${err.message}`);
         }
       }
 
