@@ -10,26 +10,24 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-import firebase_admin
-from firebase_admin import credentials, db as firebase_db
-
+from flask_socketio import SocketIO, join_room, leave_room, emit
 import numpy as np
 import tensorflow as tf
 from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
 
-# ─── 日志 ───────────────────────────────────
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 # ─── Flask ──────────────────────────────────
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
+rooms = {
+    "room1": {"users": []},
+    "room2": {"users": []},
+}
 
-# ─── 全局变量 ────────────────────────────────
-db_ref = None               # Firebase DatabaseReference，全局
 executor = ThreadPoolExecutor(max_workers=2)
+
 
 # ─── 模型路径 ───────────────────────────────
 BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
@@ -42,31 +40,6 @@ labels = None
 vosk_model = None
 recognizer = None
 
-# ─── Firebase 初始化 ─────────────────────────
-def initialize_firebase():
-    global db_ref
-    # 从环境变量读取 base64 编码的 Service Account JSON
-    b64_json    = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
-    database_url= os.environ.get("FIREBASE_DATABASE_URL", "")
-
-    logger.info(f"FIREBASE_SERVICE_ACCOUNT begins with: {b64_json[:50]}...")
-    if not b64_json or not database_url:
-        logger.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_DATABASE_URL")
-        return
-
-    try:
-        service_account_info = json.loads(base64.b64decode(b64_json))
-        cred = credentials.Certificate(service_account_info)
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': database_url
-        })
-        db_ref = firebase_db.reference("/")
-        # 测试能否读到根节点
-        _ = db_ref.get()
-        logger.info("✅ Firebase initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Firebase init failed: {e}")
-        db_ref = None
 
 # ─── 模型加载 ─────────────────────────────────
 def load_models():
@@ -166,42 +139,47 @@ def predict():
 
 @app.route('/list_rooms', methods=['GET'])
 def list_rooms():
-    if not db_ref:
-        return jsonify({'error': 'Firebase unavailable'}), 500
-    rooms = db_ref.child('rooms').get() or {}
     return jsonify([
-        {'room_id': rid, 'user_count': len(info.get('users', []))}
+        {"room_id": rid, "user_count": len(info["users"])}
         for rid, info in rooms.items()
     ])
 
 @app.route('/join_room', methods=['POST'])
-def join_room():
-    if not db_ref:
-        return jsonify({'error': 'Firebase unavailable'}), 500
-    rid = (request.get_json() or {}).get('room_id')
-    if not rid:
-        return jsonify({'error': 'Missing room_id'}), 400
-    info = db_ref.child('rooms').child(rid).get()
-    if not info:
-        return jsonify({'error': 'Room not found'}), 404
-    count = len(info.get('users', []))
-    if count >= 2:
-        return jsonify({'error': 'Room full'}), 403
-    return jsonify({'status': 'success'})
+def http_join_room():
+    data = request.get_json() or {}
+    rid = data.get("room_id")
+    if rid not in rooms:
+        return jsonify({"error": "Room not found"}), 404
+    if len(rooms[rid]["users"]) >= 2:
+        return jsonify({"error": "Room full"}), 403
+    return jsonify({"status": "success"})
 
-# ─── 启动 ─────────────────────────────────────
+@socketio.on('join')
+def on_join(data):
+    rid = data.get("room_id")
+    sid = request.sid
+    if rid not in rooms or len(rooms[rid]["users"]) >= 2:
+        emit('error', {'msg': 'Cannot join room'})
+        return
+    join_room(rid)
+    rooms[rid]["users"].append(sid)
+    emit('user_joined', {'sid': sid}, room=rid)
+
+@socketio.on('message')
+def handle_message(data):
+    rid = data.get("room_id")
+    msg = data.get("msg")
+    emit('message', {"sid": request.sid, "msg": msg}, room=rid)
+
+@socketio.on('leave')
+def on_leave(data):
+    rid = data.get("room_id")
+    sid = request.sid
+    leave_room(rid)
+    if sid in rooms[rid]["users"]:
+        rooms[rid]["users"].remove(sid)
+    emit('user_left', {'sid': sid}, room=rid)
+
 if __name__ == '__main__':
-    initialize_firebase()    # ← 一定要最先调用
-    load_models()
-    # 预创建两个房间
-    if db_ref:
-        for _ in range(2):
-            rid = uuid4().hex[:8]
-            db_ref.child('rooms').child(rid).set({
-                'users': [], 'messages': [], 'created_at': int(time.time()*1000)
-            })
-            logger.info(f"Pre-created room: {rid}")
-    else:
-        logger.warning("⚠️ Firebase not initialized; skipping room creation")
-
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    print("Pre-created rooms:", list(rooms.keys()))
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
   <div class="container mx-auto p-4">
@@ -18,8 +19,14 @@
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
 
-    <!-- Chat Box -->
-    <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto hidden"></div>
+    <!-- Chat Box and Input -->
+    <div id="chatContainer" class="mb-4 hidden">
+      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
+      <div class="flex gap-2">
+        <input id="chatInput" class="border p-2 w-full" placeholder="Type a message..." />
+        <button id="sendBtn" class="bg-primary text-white px-4 py-2 rounded">Send</button>
+      </div>
+    </div>
 
     <!-- Sign Language Section -->
     <div id="signSection" class="mb-4 hidden">
@@ -67,7 +74,7 @@
 
     // Initialize Firebase
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase, ref, onChildAdded, serverTimestamp, get, set } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { getDatabase, ref, onChildAdded, serverTimestamp, get, set, push } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
@@ -81,7 +88,10 @@
       const roomsList = document.getElementById('roomsList');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
+      const chatContainer = document.getElementById('chatContainer');
       const chatBox = document.getElementById('chatBox');
+      const chatInput = document.getElementById('chatInput');
+      const sendBtn = document.getElementById('sendBtn');
       const signSection = document.getElementById('signSection');
       const speechSection = document.getElementById('speechSection');
       const video = document.getElementById('video');
@@ -110,6 +120,7 @@
       const NUM_SIGN_FRAMES = 100;
       let signFrameCount = 0;
       const MAX_USERS = 2;
+      let socket = null;
 
       // 显示错误
       function showError(message) {
@@ -131,13 +142,13 @@
       function showSection(section) {
         signSection.classList.add('hidden');
         speechSection.classList.add('hidden');
-        chatBox.classList.add('hidden');
+        chatContainer.classList.add('hidden');
         if (section === 'sign') {
           signSection.classList.remove('hidden');
-          chatBox.classList.remove('hidden');
+          chatContainer.classList.remove('hidden');
         } else if (section === 'speech') {
           speechSection.classList.remove('hidden');
-          chatBox.classList.remove('hidden');
+          chatContainer.classList.remove('hidden');
         }
       }
 
@@ -178,74 +189,113 @@
 
       // 加入房间
       async function joinRoom(roomId) {
-  if (!database) {
-    showError('❌ Firebase database not initialized.');
-    return;
-  }
-
-  if (!roomId || typeof roomId !== 'string') {
-    showError('❗ Room ID is invalid.');
-    return;
-  }
-
-  console.log('🔗 Attempting to join room:', roomId);
-
-  try {
-    const response = await fetch(`${API_URL}/join_room`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room_id: roomId })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Server responded with ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-
-    if (data.status === 'success') {
-      currentRoom = roomId;
-      currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
-      roomError.classList.add('hidden');
-
-      const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-      onChildAdded(messagesRef, (snapshot) => {
-        const msg = snapshot.val();
-        if (msg.type === 'transcription' && msg.data) {
-          addChatMessage(msg.data, false);
-        } else if (msg.type === 'gesture' && msg.data) {
-          outputSign.textContent = `🤟 Other's Sign Result: ${msg.data}`;
-          probabilitiesSign.textContent = `🎯 Other's Probs: ${
-            msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'
-          }`;
-          addChatMessage(msg.data, false);
+        if (!database) {
+          showError('❌ Firebase database not initialized.');
+          return;
         }
-      });
 
-      console.log(`✅ Joined room: ${currentRoom}`);
-      showSection('sign');
-    } else {
-      console.warn('Join room failed:', data);
-      showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
-    }
-  } catch (err) {
-    console.error('Join room error:', err);
-    showError(`⚠️ Network or server error: ${err.message}`);
-  }
-}
+        if (!roomId || typeof roomId !== 'string') {
+          showError('❗ Room ID is invalid.');
+          return;
+        }
 
+        console.log('🔗 Attempting to join room:', roomId);
 
-      // 初始化 MediaPipe Holistic
+        try {
+          const response = await fetch(`${API_URL}/join_room`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room_id: roomId })
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Server responded with ${response.status}: ${errText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.status === 'success') {
+            currentRoom = roomId;
+            currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
+            roomError.classList.add('hidden');
+            chatContainer.classList.remove('hidden');
+
+            // Initialize Socket.IO
+            socket = io(API_URL);
+            socket.emit('join', { room_id: roomId });
+
+            // Listen for messages
+            socket.on('message', (data) => {
+              addChatMessage(data.msg, data.sid === socket.id);
+            });
+
+            // Sync with Firebase for sign/speech data
+            const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
+            onChildAdded(messagesRef, (snapshot) => {
+              const msg = snapshot.val();
+              if (msg.type === 'transcription' && msg.data) {
+                addChatMessage(msg.data, false);
+              } else if (msg.type === 'gesture' && msg.data) {
+                outputSign.textContent = `🤟 Other's Sign Result: ${msg.data}`;
+                probabilitiesSign.textContent = `🎯 Other's Probs: ${
+                  msg.probabilities ? msg.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'
+                }`;
+                addChatMessage(msg.data, false);
+              }
+            });
+
+            console.log(`✅ Joined room: ${currentRoom}`);
+            showSection('sign');
+          } else {
+            console.warn('Join room failed:', data);
+            showError(`🚫 Failed to join room: ${data.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          console.error('Join room error:', err);
+          showError(`⚠️ Network or server error: ${err.message}`);
+        }
+      }
+
+      // Send chat message
+      function sendMessage() {
+        const msg = chatInput.value.trim();
+        if (!msg || !currentRoom || !socket) return;
+        socket.emit('message', { room_id: currentRoom, msg });
+        chatInput.value = '';
+      }
+
+      // Initialize MediaPipe Holistic
       const holistic = new Holistic({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}` });
       holistic.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
       // 绘制关键点
       function drawLandmarks(results) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (results.poseLandmarks) for (const landmark of results.poseLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'blue'; ctx.fill(); }
-        if (results.leftHandLandmarks) for (const landmark of results.leftHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'red'; ctx.fill(); }
-        if (results.rightHandLandmarks) for (const landmark of results.rightHandLandmarks) { ctx.beginPath(); ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI); ctx.fillStyle = 'green'; ctx.fill(); }
+        if (results.poseLandmarks) {
+          for (const landmark of results.poseLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'blue';
+            ctx.fill();
+          }
+        }
+        if (results.leftHandLandmarks) {
+          for (const landmark of results.leftHandLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+          }
+        }
+        if (results.rightHandLandmarks) {
+          for (const landmark of results.rightHandLandmarks) {
+            ctx.beginPath();
+            ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = 'green';
+            ctx.fill();
+          }
+        }
       }
 
       // 提取关键点
@@ -253,9 +303,9 @@
         const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
         const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
         const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-        if (results.poseLandmarks) results.poseLandmarks.forEach((landmark, i) => pose[i] = [landmark.x, landmark.y, landmark.z]);
-        if (results.leftHandLandmarks) results.leftHandLandmarks.forEach((landmark, i) => leftHand[i] = [landmark.x, landmark.y, landmark.z]);
-        if (results.rightHandLandmarks) results.rightHandLandmarks.forEach((landmark, i) => rightHand[i] = [landmark.x, landmark.y, landmark.z]);
+        if (results.poseLandmarks) results.poseLandmarks.forEach((landmark, i) => (pose[i] = [landmark.x, landmark.y, landmark.z]));
+        if (results.leftHandLandmarks) results.leftHandLandmarks.forEach((landmark, i) => (leftHand[i] = [landmark.x, landmark.y, landmark.z]));
+        if (results.rightHandLandmarks) results.rightHandLandmarks.forEach((landmark, i) => (rightHand[i] = [landmark.x, landmark.y, landmark.z]));
         return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
       }
 
@@ -264,7 +314,11 @@
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           video.srcObject = stream;
-          const camera = new Camera(video, { onFrame: async () => await holistic.send({ image: video }), width: 480, height: 360 });
+          const camera = new Camera(video, {
+            onFrame: async () => await holistic.send({ image: video }),
+            width: 480,
+            height: 360
+          });
           await camera.start();
           console.log('MediaPipe camera started');
         } catch (err) {
@@ -399,7 +453,7 @@
             outputSpeech.textContent = `Your Speech Result: ${result.transcription}`;
             addChatMessage(result.transcription, true);
             const messagesRef = ref(database, `rooms/${currentRoom}/messages`);
-            const newMessageRef = messagesRef.push(); // 修正: 獨立生成新參考點
+            const newMessageRef = push(messagesRef); // Use push to generate a new key
             await set(newMessageRef, {
               type: 'transcription',
               data: result.transcription,
@@ -453,6 +507,8 @@
       stopSpeechBtn.addEventListener('click', stopSpeechRecording);
       submitSpeechBtn.addEventListener('click', transcribeSpeech);
 
+      sendBtn.addEventListener('click', sendMessage);
+
       // 事件委託處理 Join Room 點擊
       roomsList.addEventListener('click', (event) => {
         const button = event.target.closest('.join-btn');
@@ -466,6 +522,7 @@
       showSection('sign');
       startWebcam();
       fetchRooms();
+      setInterval(fetchRooms, 5000); // Refresh room list every 5 seconds
     });
   </script>
 </body>
