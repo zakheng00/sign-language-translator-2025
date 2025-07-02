@@ -46,43 +46,37 @@ temp_file_path = None
 
 # Firebase 初始化
 def initialize_firebase():
-    base64_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64")
+    global db
+    firebase_b64 = os.environ.get("FIREBASE_SERVICE_ACCOUNT_BASE64", "")
     database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
-
-    if not base64_json or not database_url:
-        logger.error("Firebase credentials or databaseURL missing.")
+    
+    if not firebase_b64:
+        logger.error("❌ FIREBASE_SERVICE_ACCOUNT_BASE64 is missing or empty.")
+        return
+    if not database_url:
+        logger.error("❌ FIREBASE_DATABASE_URL is missing or empty.")
         return
 
     try:
-        decoded_json = base64.b64decode(base64_json).decode("utf-8")
-
+        decoded = base64.b64decode(firebase_b64).decode("utf-8")
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as temp_file:
-            temp_file.write(decoded_json)
+            temp_file.write(decoded)
             temp_file.flush()
             cred = credentials.Certificate(temp_file.name)
-            firebase_admin.initialize_app(cred, {"databaseURL": database_url})
-            global db_ref
-            db_ref = db.reference()
-            logger.info("Firebase initialized successfully.")
-    except Exception as e:
-        logger.error(f"Firebase init error: {e}")
-    
-    try:
-        temp_dir = '/tmp'
-        os.makedirs(temp_dir, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=temp_dir) as temp_file:
-            temp_file.write(firebase_service_account_json)
-            temp_file_path = temp_file.name
-        logger.info(f"Temporary Firebase key file created at: {temp_file_path}")
-        
-        cred = credentials.Certificate(temp_file_path)
-        firebase_app = firebase_admin.initialize_app(cred, {'databaseURL': database_url})
-        db = firebase_db.reference(app=firebase_app)
-        logger.info("Firebase Admin connected successfully")
+            firebase_app = initialize_app(cred, {"databaseURL": database_url})
+            db = firebase_db.reference(app=firebase_app)
+            logger.info("✅ Firebase initialized successfully.")
+    except base64.binascii.Error as e:
+        logger.error(f"❌ Base64 decoding failed: {e}")
     except ValueError as ve:
-        logger.error(f"Invalid Firebase configuration: {ve}")
+        logger.error(f"❌ Invalid Firebase configuration: {ve}")
     except Exception as e:
-        logger.error(f"Firebase initialization failed: {e}")
+        logger.error(f"❌ Firebase initialization failed: {e}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+    
+    
 
 # 清理臨時檔案
 @atexit.register
