@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 # ─── Flask ──────────────────────────────────
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+logger.info("Starting Firebase initialization...")
+logger.info(f"FIREBASE_SERVICE_ACCOUNT = {firebase_service_account_json[:100]}")  # 減少 log 長度
+logger.info(f"DATABASE_URL = {database_url}")
+
 
 # ─── 全局变量 ────────────────────────────────
 db_ref = None             # Firebase database reference
@@ -45,27 +49,30 @@ temp_file_path = None
 
 # ─── Firebase 初始化 ─────────────────────────
 def initialize_firebase():
-    global db
-    firebase_service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "{}")
+    encoded = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "")
     database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
 
-    if not firebase_service_account_json or firebase_service_account_json == "{}":
-        logger.error("FIREBASE_SERVICE_ACCOUNT is invalid or empty")
+    if not encoded or not database_url:
+        logger.error("❌ Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_DATABASE_URL")
         return
 
     try:
-        parsed_json = json.loads(firebase_service_account_json)
-        # 使用安全的方式寫入 temp file
-        temp_path = os.path.join(tempfile.gettempdir(), "firebase.json")
-        with open(temp_path, "w") as f:
-            json.dump(parsed_json, f)
+        decoded = base64.b64decode(encoded).decode()
+        creds_dict = json.loads(decoded)
 
-        cred = credentials.Certificate(temp_path)
-        initialize_app(cred, {"databaseURL": database_url})
-        db = firebase_db
-        logger.info("✅ Firebase initialized successfully")
+        # 寫入暫存 JSON 檔
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as f:
+            json.dump(creds_dict, f)
+            f.flush()
+            cred = credentials.Certificate(f.name)
+        
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': database_url
+        })
+
+        logger.info("✅ Firebase initialized")
     except Exception as e:
-        logger.error(f"❌ Firebase initialization failed: {e}")
+        logger.error(f"❌ Firebase init error: {e}")
 
 if __name__ == '__main__':
     initialize_firebase()   # ← 一定要先调用
