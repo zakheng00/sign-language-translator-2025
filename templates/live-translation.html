@@ -102,34 +102,19 @@
 
     // Extract keypoints
     function extractKeypoints(results) {
-      const pose = new Array(33).fill(0).map(() => [0, 0, 0]);
-      const leftHand = new Array(21).fill(0).map(() => [0, 0, 0]);
-      const rightHand = new Array(21).fill(0).map(() => [0, 0, 0]);
+  const leftHand = results.leftHandLandmarks 
+    ? results.leftHandLandmarks.map(l => [l.x, l.y]) 
+    : Array.from({ length: 21 }, () => [0, 0]);
 
-      if (results.poseLandmarks) {
-        results.poseLandmarks.forEach((landmark, i) => {
-          pose[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('No pose landmarks detected');
-      }
-      if (results.leftHandLandmarks) {
-        results.leftHandLandmarks.forEach((landmark, i) => {
-          leftHand[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('No left hand landmarks detected');
-      }
-      if (results.rightHandLandmarks) {
-        results.rightHandLandmarks.forEach((landmark, i) => {
-          rightHand[i] = [landmark.x, landmark.y, landmark.z];
-        });
-      } else {
-        console.warn('No right hand landmarks detected');
-      }
-      return [...pose, ...leftHand, ...rightHand.slice(0, 20)].flat();
-    }
+  const rightHand = results.rightHandLandmarks 
+    ? results.rightHandLandmarks.map(l => [l.x, l.y]) 
+    : Array.from({ length: 21 }, () => [0, 0]);
 
+  // 合併並攤平成 84 維向量（21 * 2 * 2）
+  const keypoints = [...leftHand, ...rightHand].flat();
+
+  return keypoints; // 共 84 維
+}
     // Start webcam
     async function startWebcam() {
       try {

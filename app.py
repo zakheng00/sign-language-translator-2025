@@ -92,10 +92,28 @@ def transcribe_audio(audio_data):
 # --- 手語預測（異步） ---
 def predict_gesture_async(frames, room_id, sid):
     try:
-        seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
+        # 調試輸入數據
+        logger.info(f"Received frames: length={len(frames)}, first frame shape={len(frames[0]) if frames else 0}")
+        if len(frames) != 300 or any(len(f) != 84 for f in frames):
+            raise ValueError("Invalid frame data: expected 300 frames of 84 features each")
+        
+        seq = np.array(frames, dtype=np.float32).reshape(1, 300, 84)  # 調整為 (1, 300, 126)
+        logger.info(f"Processed seq shape: {seq.shape}, dtype: {seq.dtype}")
+        
+        # 檢查 interpreter 輸入要求
+        interpreter = model  # 假設 model 是 interpreter 實例
+        input_details = interpreter.get_input_details()
+        logger.info(f"Interpreter input details: {input_details}")
+        
+        # 標準化數據
         seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
-        seq = np.expand_dims(seq, -1)
-        pred = model.predict(seq, verbose=0)[0]
+        seq = np.expand_dims(seq, -1).astype(np.float32)  # 增加通道維度 (1, 300, 126, 1)
+        logger.info(f"Normalized seq shape: {seq.shape}")
+        
+        # 設置輸入張量
+        interpreter.set_tensor(input_details[0]['index'], seq)
+        interpreter.invoke()
+        pred = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0]
         idx = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
         timestamp = time.time() * 1000
@@ -108,11 +126,13 @@ def predict_gesture_async(frames, room_id, sid):
         }, room=room_id)
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
-
 # --- 路由 ---
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
+@app.route('/live-translation')
+def room_mode():
+    return send_from_directory('templates', 'live-translation.html')
 
 @app.route('/room-mode')
 def room_mode():
