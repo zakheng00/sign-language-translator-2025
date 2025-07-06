@@ -130,8 +130,9 @@ def predict_gesture_async(frames, room_id, sid):
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
+
 @app.route('/live-translation')
-def room_mode():
+def live_translation():
     return send_from_directory('templates', 'live-translation.html')
 
 @app.route('/room-mode')
