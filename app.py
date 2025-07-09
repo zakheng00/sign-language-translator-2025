@@ -1,6 +1,7 @@
 import os
 import base64
 import json
+import cv2
 import tempfile
 import logging
 import time
