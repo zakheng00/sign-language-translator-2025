@@ -40,6 +40,9 @@ labels = None
 vosk_model = None
 recognizer = None
 
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(static_image_mode=True, max_num_hands=2)
+
 # --- 模型加載（僅在啟動時執行一次） ---
 def load_models():
     global interpreter, labels, vosk_model, recognizer
@@ -100,35 +103,79 @@ def transcribe_audio(audio_data):
 
 # --- 手語預測（異步） ---
 def predict_gesture_async(frames, room_id, sid):
+    """
+    frames: 前端传来的完整帧列表（任意帧数）
+    本函数会等距抽取 30 帧，然后对中间 18 帧做形态分类，多数表决
+    """
     start_time = time.time()
     try:
-        if len(frames) < 100:  # 確保至少 100 幀
-            raise ValueError(f"Insufficient frames: expected 100, got {len(frames)}")
-        seq = np.array(frames, dtype=np.float32)
-        # 調整為 TFLite 預期輸入形狀 (1, 100, 74, 3)
-        seq = seq.reshape(1, 100, 74, 3)  # 假設前端提供正確形狀
-        seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
-        input_details = interpreter.get_input_details()
-        interpreter.set_tensor(input_details[0]['index'], seq)
-        interpreter.invoke()
-        pred = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0]
-        idx = int(np.argmax(pred))
-        gesture = labels.get(str(idx), 'Unknown')
-        logger.info(f"Prediction completed for {sid} in {time.time() - start_time:.2f} seconds")
+        total = len(frames)
+        if total < 30:
+            raise ValueError(f"Insufficient frames: got {total}, need >=30")
+
+        # 1. 等距抽取 30 帧
+        idxs = np.linspace(0, total-1, 30, dtype=int)
+        sampled = [frames[i] for i in idxs]
+
+        # 2. 取中间 18 帧（index 6~23）
+        mid = sampled[6:24]
+
+        preds = []
+        for f in mid:
+            # f 是一个三通道 numpy array
+            kps = extract_keypoints_from_frame(f)            # 42 dim
+            kps = normalize_keypoints(kps)                   # normalize
+            inp = np.tile(kps, 10).reshape(1, 420).astype(np.float32)
+
+            # TFLite 预测
+            input_detail = interpreter.get_input_details()[0]
+            output_detail = interpreter.get_output_details()[0]
+            interpreter.set_tensor(input_detail['index'], inp)
+            interpreter.invoke()
+            out = interpreter.get_tensor(output_detail['index'])[0]
+            preds.append(int(np.argmax(out)))
+
+        # 多数表决
+        final_label, count = Counter(preds).most_common(1)[0]
+
+
+        # 返回并通过 SocketIO 广播
         if room_id and sid:
-            timestamp = time.time() * 1000
             socketio.emit('gesture', {
                 'type': 'gesture',
-                'data': gesture,
-                'probabilities': pred.tolist(),
-                'timestamp': timestamp,
+                'data': final_label,
+                'predictions': preds,
+                'timestamp': time.time() * 1000,
                 'sid': sid
             }, room=room_id)
-        return {'gesture': gesture, 'probabilities': pred.tolist()}
+
+        logger.info(f"Predicted {final_label} from {len(preds)} frames in {time.time()-start_time:.2f}s")
+        return {'gesture': final_label, 'predictions': preds}
+
     except Exception as e:
         logger.error(f"Prediction failed for {sid}: {e}")
         return {'error': str(e)}
 
+def extract_keypoints_from_frame(frame):
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    res = hands.process(rgb)
+    kps = []
+    if res.multi_hand_landmarks:
+        for hl in res.multi_hand_landmarks[:2]:
+            for lm in hl.landmark:
+                kps += [lm.x, lm.y]
+    while len(kps) < 42:
+        kps += [0.0, 0.0]
+    return kps[:42]
+
+def normalize_keypoints(kps):
+    arr = np.array(kps).reshape(-1,2)
+    ctr = arr[0]
+    arr -= ctr
+    scale = np.linalg.norm(arr,axis=1).max()
+    if scale>0:
+        arr /= scale
+    return arr.flatten()
 # --- 路由 ---
 @app.route('/')
 def index():
