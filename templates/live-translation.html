@@ -110,23 +110,23 @@
     }
 
     // Start webcam
-    async function startWebcam() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        const camera = new Camera(video, {
-          onFrame: async () => await holistic.send({ image: video }),
-          width: 640,
-          height: 480
-        });
-        await camera.start();
-        console.log('MediaPipe camera started');
-      } catch (err) {
-        console.error('Failed to start webcam:', err);
-        output.textContent = 'Error: Unable to access camera - ' + err.message';
-        alert('Please allow camera access to continue!');
-      }
-    }
+   async function startWebcam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    const camera = new Camera(video, {
+      onFrame: async () => await holistic.send({ image: video }),
+      width: 640,
+      height: 480
+    });
+    await camera.start();
+    console.log('MediaPipe camera started');
+  } catch (err) {
+    console.error('Failed to start webcam:', err);
+    output.textContent = 'Error: Unable to access camera - ' + err.message; // 修正這裡
+    alert('Please allow camera access to continue!');
+  }
+}
 
     // Capture frames with dynamic interval
     function captureFrame(results) {
