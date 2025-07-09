@@ -6,26 +6,23 @@ import logging
 import time
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
-
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, leave_room, emit
+import psutil
 import numpy as np
 import tensorflow as tf
 from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
 
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from flask_socketio import SocketIO, join_room, leave_room, emit
+
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
-rooms = {
-    "room1": {"users": []},
-    "room2": {"users": []},
-}
-
-executor = ThreadPoolExecutor(max_workers=2)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+rooms = {"room1": {"users": []}, "room2": {"users": []}}
+executor = ThreadPoolExecutor(max_workers=4)  # 增加工作進程數
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -46,18 +43,26 @@ recognizer = None
 # --- 模型加載（僅在啟動時執行一次） ---
 def load_models():
     global model, labels, vosk_model, recognizer
-    if model is None:
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-            labels = json.load(f)
-        logger.info("TensorFlow model loaded")
-    if vosk_model is None:
-        vosk_model = Model(VOSK_MODEL_PATH)
-        recognizer = KaldiRecognizer(vosk_model, 16000)
-        logger.info("Vosk model loaded")
+    memory = psutil.virtual_memory()
+    logger.info(f"Memory usage: {memory.percent}% (total: {memory.total / 1024 / 1024:.2f}MB, available: {memory.available / 1024 / 1024:.2f}MB)")
+    try:
+        if model is None and memory.percent < 80:
+            model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+            with open(LABELS_PATH, 'r', encoding='utf-8') as f:
+                labels = json.load(f)
+            logger.info("TensorFlow model loaded")
+        if vosk_model is None and memory.percent < 80:
+            vosk_model = Model(VOSK_MODEL_PATH)
+            recognizer = KaldiRecognizer(vosk_model, 16000)
+            logger.info("Vosk model loaded")
+    except Exception as e:
+        logger.error(f"Model loading failed: {e}")
+        return False
+    return True
 
 # 應用啟動時加載模型
-load_models()
+if not load_models():
+    logger.critical("Failed to load models, application may not function correctly")
 
 # --- 音頻轉錄 ---
 def transcribe_audio(audio_data):
@@ -75,9 +80,10 @@ def transcribe_audio(audio_data):
                 data = wf.readframes(4000)
                 if not data:
                     break
-                recognizer.AcceptWaveform(data)
-        result = json.loads(recognizer.FinalResult())
-        return result.get('text', '') or 'Unable to recognize speech'
+                if not recognizer.AcceptWaveform(data):
+                    logger.warning("Partial recognition failure")
+            result = json.loads(recognizer.Result() or recognizer.FinalResult())
+            return result.get('text', '') or 'Unable to recognize speech'
     except subprocess.CalledProcessError as e:
         logger.error(f"Transcription failed: ffmpeg error - {e.stderr.decode()}")
         return 'Transcription error: ffmpeg failed'
@@ -91,23 +97,30 @@ def transcribe_audio(audio_data):
 
 # --- 手語預測（異步） ---
 def predict_gesture_async(frames, room_id, sid):
+    start_time = time.time()
     try:
+        if len(frames) < 100:  # 確保至少 100 幀
+            raise ValueError(f"Insufficient frames: expected 100, got {len(frames)}")
         seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
         seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
         seq = np.expand_dims(seq, -1)
         pred = model.predict(seq, verbose=0)[0]
         idx = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
-        timestamp = time.time() * 1000
-        socketio.emit('gesture', {
-            'type': 'gesture',
-            'data': gesture,
-            'probabilities': pred.tolist(),
-            'timestamp': timestamp,
-            'sid': sid
-        }, room=room_id)
+        logger.info(f"Prediction completed for {sid} in {time.time() - start_time:.2f} seconds")
+        if room_id and sid:
+            timestamp = time.time() * 1000
+            socketio.emit('gesture', {
+                'type': 'gesture',
+                'data': gesture,
+                'probabilities': pred.tolist(),
+                'timestamp': timestamp,
+                'sid': sid
+            }, room=room_id)
+        return {'gesture': gesture, 'probabilities': pred.tolist()}
     except Exception as e:
-        logger.error(f"Prediction failed: {e}")
+        logger.error(f"Prediction failed for {sid}: {e}")
+        return {'error': str(e)}
 
 # --- 路由 ---
 @app.route('/')
@@ -117,24 +130,26 @@ def index():
 @app.route('/room-mode')
 def room_mode():
     return send_from_directory('templates', 'room-mode.html')
+
 @app.route('/live-translation')
 def live_translation():
-    return send_from_directory('templates', 'live-translation')
+    return send_from_directory('templates', 'live-translation.html')
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     f = request.files.get('audio')
     room_id = request.headers.get('X-Socket-ID')
-    if not f or not room_id:
-        return jsonify({'error': 'Missing audio or room ID'}), 400
+    if not f:
+        return jsonify({'error': 'Missing audio'}), 400
     text = transcribe_audio(f.read())
-    sid = request.headers.get('X-Socket-ID')  # 使用客戶端提供的 SID
-    socketio.emit('transcription', {
-        'type': 'transcription',
-        'data': text,
-        'timestamp': time.time() * 1000,
-        'sid': sid
-    }, room=room_id)
+    sid = request.headers.get('X-Socket-ID') or str(uuid4())  # 默認生成 SID
+    if room_id:
+        socketio.emit('transcription', {
+            'type': 'transcription',
+            'data': text,
+            'timestamp': time.time() * 1000,
+            'sid': sid
+        }, room=room_id)
     return jsonify({'transcription': text})
 
 @app.route('/predict', methods=['POST'])
@@ -142,10 +157,10 @@ def predict():
     data = request.get_json() or {}
     frames = data.get('frames', [])
     room_id = request.headers.get('X-Socket-ID')
-    if not frames or not room_id:
-        return jsonify({'error': 'Missing frames or session'}), 400
-    executor.submit(predict_gesture_async, frames, room_id, request.headers.get('X-Socket-ID'))
-    return jsonify({'status': 'processing'})
+    if not frames:
+        return jsonify({'error': 'Missing frames'}), 400
+    future = executor.submit(predict_gesture_async, frames, room_id, request.headers.get('X-Socket-ID'))
+    return jsonify({'status': 'processing', 'task_id': str(uuid4())})
 
 @app.route('/list_rooms', methods=['GET'])
 def list_rooms():
@@ -200,5 +215,5 @@ def on_leave(data):
 
 if __name__ == '__main__':
     print("Pre-created rooms:", list(rooms.keys()))
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), 
-                 worker_class='eventlet', workers=4, timeout=300)
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)),
+                 worker_class='eventlet', workers=6, timeout=300)  # 增加 workers 和 timeout

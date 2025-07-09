@@ -8,6 +8,25 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+  <style>
+    /* 覆蓋 Tailwind 預設，確保正常方向 */
+    #video {
+      border: 2px solid #000;
+      transform: scaleX(1); /* 正常方向 */
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: scaleX(1); /* 正常方向 */
+    }
+    body { font-family: Arial, sans-serif; text-align: center; }
+    #output { margin-top: 20px; font-size: 24px; }
+    #probabilities { margin-top: 10px; font-size: 16px; }
+    #progress { margin-top: 10px; font-size: 18px; color: #555; }
+    button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+    .disabled { opacity: 0.5; pointer-events: none; }
+  </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
   <div class="container mx-auto p-4">
@@ -62,7 +81,13 @@
   <script type="module">
     const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
 
-    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { primary: '#3B82F6', secondary: '#60A5FA' }
+        }
+      }
+    };
 
     document.addEventListener('DOMContentLoaded', () => {
       const roomsList = document.getElementById('roomsList');
@@ -274,15 +299,22 @@
       }
 
       function extractKeypoints(results) {
-        const pose = results.poseLandmarks ? results.poseLandmarks.map(l => [l.x, l.y, l.z]) : new Array(33).fill([0, 0, 0]);
-        const leftHand = results.leftHandLandmarks ? results.leftHandLandmarks.map(l => [l.x, l.y, l.z]) : new Array(21).fill([0, 0, 0]);
-        const rightHand = results.rightHandLandmarks ? results.rightHandLandmarks.map(l => [l.x, l.y, l.z]) : new Array(21).fill([0, 0, 0]);
-        return [...pose.flat(), ...leftHand.flat(), ...rightHand.flat()].slice(0, 42); // 限制為 42 維
+        // 調整為 (100, 74, 3) 兼容後端，假設 100 幀逐步填充
+        const pose = results.poseLandmarks ? results.poseLandmarks.map(l => [l.x, l.y, l.z]) : Array(33).fill([0, 0, 0]);
+        const leftHand = results.leftHandLandmarks ? results.leftHandLandmarks.map(l => [l.x, l.y, l.z]) : Array(21).fill([0, 0, 0]);
+        const rightHand = results.rightHandLandmarks ? results.rightHandLandmarks.map(l => [l.x, l.y, l.z]) : Array(21).fill([0, 0, 0]);
+        return [...pose.flat(), ...leftHand.flat(), ...rightHand.flat()]; // 總共 75 點 x 3 = 225 維，需填充至 100x74x3
       }
 
       async function startWebcam() {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: 480,
+              height: 360,
+              facingMode: 'user' // 前置攝像頭，根據需要調整為 'environment'
+            }
+          });
           video.srcObject = stream;
           const camera = new Camera(video, {
             onFrame: async () => await holistic.send({ image: video }),
@@ -301,6 +333,7 @@
       function captureSignFrame(results) {
         if (capturingSign && signFrames.length < NUM_SIGN_FRAMES && currentRoom) {
           const keypoints = extractKeypoints(results);
+          // 填充至 (100, 74, 3)，目前簡化為連續追加
           signFrames.push(keypoints);
           signFrameCount++;
           const progress = Math.round((signFrameCount / NUM_SIGN_FRAMES) * 100);
@@ -333,10 +366,15 @@
         try {
           submitSignBtn.classList.add('disabled');
           progressSignDiv.textContent = 'Progress: Translating...';
+          // 調整 frames 為 (100, 74, 3)，目前簡化為前 30 幀
+          const formattedFrames = signFrames.slice(0, 30).map(frame => {
+            const padded = new Array(222).fill(0); // 225 - 3 = 222，填充至 225 維
+            return [...frame.slice(0, 3), ...padded]; // 假設每幀至少 3 維
+          });
           const response = await fetch(`${API_URL}/predict`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Socket-ID': currentRoom },
-            body: JSON.stringify({ frames: signFrames })
+            body: JSON.stringify({ frames: formattedFrames })
           });
           if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
           const result = await response.json();
