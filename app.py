@@ -285,5 +285,4 @@ def on_leave(data):
 
 if __name__ == '__main__':
     print("Pre-created rooms:", list(rooms.keys()))
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)),
-                 worker_class='eventlet', workers=6, timeout=300)  # 增加 workers 和 timeout
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
