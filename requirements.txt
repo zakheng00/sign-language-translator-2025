@@ -12,3 +12,4 @@ pyrebase4
 flask_socketio  
 eventlet
 psutil
+tflite-runtime
