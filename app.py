@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # --- 模型路徑 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.h5')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'H.h5')
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
