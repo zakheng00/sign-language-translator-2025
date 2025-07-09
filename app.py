@@ -12,6 +12,8 @@ import tflite_runtime.interpreter as tflite  # 使用 TFLite 運行時
 from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
+import numpy as np
+import mediapipe as mp        # ← 新增这一行
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
