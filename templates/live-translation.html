@@ -6,7 +6,7 @@
   <title>Real-Time Sign Language Translations</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script> <!-- Add Socket.IO client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; }
     #video { border: 2px solid #000; transform: scaleX(-1); }
@@ -16,13 +16,10 @@
     #progress { margin-top: 10px; font-size: 18px; color: #555; }
     button { padding: 10px 20px; margin: 10px; font-size: 16px; }
     .disabled { opacity: 0.5; pointer-events: none; }
-    #roomInput { margin: 10px; padding: 5px; }
   </style>
 </head>
 <body>
   <h1>Real-Time Sign Language Translator</h1>
-  <input type="text" id="roomInput" placeholder="Enter Room ID (e.g., room1)">
-  <button id="joinRoomBtn">Join Room</button>
   <video id="video" width="640" height="480" autoplay></video>
   <canvas id="canvas" width="640" height="480"></canvas>
   <br>
@@ -44,16 +41,14 @@
     const progressDiv = document.getElementById('progress');
     const output = document.getElementById('output');
     const probabilitiesDiv = document.getElementById('probabilities');
-    const roomInput = document.getElementById('roomInput');
-    const joinRoomBtn = document.getElementById('joinRoomBtn');
     let frames = [];
     let capturing = false;
-    const NUM_FRAMES = 100;
+    const NUM_FRAMES = 30; // 保持 30 幀
     let frameCount = 0;
-    let socket = io(); // Connect to Socket.IO server
+    let socket = io(); // Connect to Socket.IO server (optional if not using rooms)
 
     // Backend URL (adjust based on environment)
-    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000/predict' : '/predict';
+    const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://sign-language-translator-2025.onrender.com';
 
     // Initialize MediaPipe Holistic
     const holistic = new Holistic({
@@ -100,30 +95,27 @@
       }
     }
 
-    // Extract keypoints
+    // Extract keypoints (adjusted to 42 dimensions from hands only)
     function extractKeypoints(results) {
-  const leftHand = results.leftHandLandmarks 
-    ? results.leftHandLandmarks.map(l => [l.x, l.y]) 
-    : Array.from({ length: 21 }, () => [0, 0]);
+      const leftHand = results.leftHandLandmarks 
+        ? results.leftHandLandmarks.map(l => [l.x, l.y]).slice(0, 21) // 確保最多 21 個點
+        : Array(21).fill([0, 0]);
+      const rightHand = results.rightHandLandmarks 
+        ? results.rightHandLandmarks.map(l => [l.x, l.y]).slice(0, 21) // 確保最多 21 個點
+        : Array(21).fill([0, 0]);
+      const keypoints = [...leftHand.flat(), ...rightHand.flat()];
+      // 限制為 42 維（21 * 2），若不足補 0
+      while (keypoints.length < 42) keypoints.push(0.0);
+      return keypoints.slice(0, 42);
+    }
 
-  const rightHand = results.rightHandLandmarks 
-    ? results.rightHandLandmarks.map(l => [l.x, l.y]) 
-    : Array.from({ length: 21 }, () => [0, 0]);
-
-  // 合併並攤平成 84 維向量（21 * 2 * 2）
-  const keypoints = [...leftHand, ...rightHand].flat();
-
-  return keypoints; // 共 84 維
-}
     // Start webcam
     async function startWebcam() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
         const camera = new Camera(video, {
-          onFrame: async () => {
-            await holistic.send({ image: video });
-          },
+          onFrame: async () => await holistic.send({ image: video }),
           width: 640,
           height: 480
         });
@@ -131,7 +123,7 @@
         console.log('MediaPipe camera started');
       } catch (err) {
         console.error('Failed to start webcam:', err);
-        output.textContent = 'Error: Unable to access camera - ' + err.message;
+        output.textContent = 'Error: Unable to access camera - ' + err.message';
         alert('Please allow camera access to continue!');
       }
     }
@@ -144,7 +136,7 @@
         frameCount++;
         const progress = Math.round((frameCount / NUM_FRAMES) * 100);
         progressDiv.textContent = `Progress: ${progress}%`;
-        console.log(`Captured frame ${frames.length}, keypoints: ${keypoints.length}`);
+        console.log(`Captured frame ${frames.length}, keypoints length: ${keypoints.length}`);
 
         if (frames.length < NUM_FRAMES) {
           requestAnimationFrame(() => holistic.send({ image: video }));
@@ -171,21 +163,19 @@
     async function predict() {
       try {
         submitBtn.classList.add('disabled');
-        const room = roomInput.value || 'default_room';
-        console.log('Sending to backend, frames:', frames.length, 'Room:', room);
-        const response = await fetch(`${API_URL}?room=${room}`, {
+        progressDiv.textContent = 'Progress: Translating...';
+        console.log('Sending to backend, frames:', frames.length);
+        const response = await fetch(`${API_URL}/predict`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ frames })
         });
-        if (!response.ok) {
-          throw new Error(`Backend error, status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Backend error, status: ${response.status}`);
         const result = await response.json();
         if (result.error) {
           output.textContent = `Error: ${result.error}`;
         } else {
-          output.textContent = `Result: ${result.gesture || 'Unknown'}`;
+          output.textContent = `Your Result: ${result.gesture || 'Unknown'}`;
           probabilitiesDiv.textContent = `Probs: ${result.probabilities ? result.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
         }
         frames = [];
@@ -196,6 +186,7 @@
       } finally {
         submitBtn.classList.add('disabled');
         stopBtn.classList.add('disabled');
+        progressDiv.textContent = 'Progress: 0%';
       }
     }
 
@@ -205,19 +196,6 @@
       if (capturing) {
         captureFrame(results);
       }
-    });
-
-    // Join room
-    joinRoomBtn.addEventListener('click', () => {
-      const room = roomInput.value || 'default_room';
-      socket.emit('join_room', { room: room });
-      console.log(`Joined room: ${room}`);
-    });
-
-    // Receive translation result
-    socket.on('translation_result', (data) => {
-      output.textContent = `Other's Result: ${data.gesture || 'Unknown'}`;
-      probabilitiesDiv.textContent = `Other's Probs: ${data.probabilities ? data.probabilities.map((p, i) => `${i}: ${p.toFixed(4)}`).join(', ') : 'N/A'}`;
     });
 
     // Button events
