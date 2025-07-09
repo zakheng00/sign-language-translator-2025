@@ -8,7 +8,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import psutil
 import numpy as np
-import tensorflow as tf
+import tflite_runtime.interpreter as tflite  # 使用 TFLite 運行時
 from vosk import Model, KaldiRecognizer
 import wave
 import subprocess
@@ -30,28 +30,31 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # --- 模型路徑 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'H.h5')
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'H.tflite')  # 更新為 TFLite 模型
 LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
 VOSK_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vosk-model-small-en-us-0.15')
 
 # 全局模型變量
-model = None
+interpreter = None
 labels = None
 vosk_model = None
 recognizer = None
 
 # --- 模型加載（僅在啟動時執行一次） ---
 def load_models():
-    global model, labels, vosk_model, recognizer
+    global interpreter, labels, vosk_model, recognizer
     memory = psutil.virtual_memory()
     logger.info(f"Memory usage: {memory.percent}% (total: {memory.total / 1024 / 1024:.2f}MB, available: {memory.available / 1024 / 1024:.2f}MB)")
     try:
-        if model is None and memory.percent < 80:
-            model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        if interpreter is None and memory.percent < 70:
+            interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+            interpreter.allocate_tensors()
+            input_details = interpreter.get_input_details()
+            output_details = interpreter.get_output_details()
+            logger.info(f"TFLite model loaded. Input shape: {input_details[0]['shape']}, Output shape: {output_details[0]['shape']}")
             with open(LABELS_PATH, 'r', encoding='utf-8') as f:
                 labels = json.load(f)
-            logger.info("TensorFlow model loaded")
-        if vosk_model is None and memory.percent < 80:
+        if vosk_model is None and memory.percent < 70:
             vosk_model = Model(VOSK_MODEL_PATH)
             recognizer = KaldiRecognizer(vosk_model, 16000)
             logger.info("Vosk model loaded")
@@ -101,10 +104,14 @@ def predict_gesture_async(frames, room_id, sid):
     try:
         if len(frames) < 100:  # 確保至少 100 幀
             raise ValueError(f"Insufficient frames: expected 100, got {len(frames)}")
-        seq = np.array(frames, dtype=np.float32).reshape(1, 100, 74, 3)
+        seq = np.array(frames, dtype=np.float32)
+        # 調整為 TFLite 預期輸入形狀 (1, 100, 74, 3)
+        seq = seq.reshape(1, 100, 74, 3)  # 假設前端提供正確形狀
         seq = (seq - seq.mean((0, 1))) / (seq.std((0, 1)) + 1e-8)
-        seq = np.expand_dims(seq, -1)
-        pred = model.predict(seq, verbose=0)[0]
+        input_details = interpreter.get_input_details()
+        interpreter.set_tensor(input_details[0]['index'], seq)
+        interpreter.invoke()
+        pred = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0]
         idx = int(np.argmax(pred))
         gesture = labels.get(str(idx), 'Unknown')
         logger.info(f"Prediction completed for {sid} in {time.time() - start_time:.2f} seconds")

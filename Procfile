@@ -1,1 +1,1 @@
-web: gunicorn --worker-class eventlet --workers 4 --timeout 300 app:app
+web: gunicorn --workers 6 --timeout 300 --worker-class eventlet app:app
