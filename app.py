@@ -19,6 +19,8 @@ import mediapipe as mp        # ← 新增这一行
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit
+import eventlet
+eventlet.monkey_patch()
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -27,6 +29,13 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 rooms = {"room1": {"users": []}, "room2": {"users": []}}
 executor = ThreadPoolExecutor(max_workers=4)  # 增加工作進程數
 
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='eventlet',
+    ping_interval=25,     # 客户端心跳间隔（秒）
+    ping_timeout=300      # 心跳超时（秒），要大于 Gunicorn timeout
+)
 # 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -124,10 +133,15 @@ def predict_gesture_async(frames, room_id, sid):
         mid = sampled[6:24]
 
         preds = []
-        for f in mid:
-            # f 是一个三通道 numpy array
-            kps = extract_keypoints_from_frame(f)            # 42 dim
-            kps = normalize_keypoints(kps)                   # normalize
+        for raw in mid:
+            # --- 新增：把 JSON list 转成 numpy array ---
+            frame = np.array(raw, dtype=np.uint8)
+            # 如果前端传的是扁平数组，你还需要 reshape 成 (H, W, 3)，
+            # 例如： frame = frame.reshape((height, width, 3))
+
+            # 然后再调用提取函数
+            kps = extract_keypoints_from_frame(frame)
+            kps = normalize_keypoints(kps)
             inp = np.tile(kps, 10).reshape(1, 420).astype(np.float32)
 
             # TFLite 预测
