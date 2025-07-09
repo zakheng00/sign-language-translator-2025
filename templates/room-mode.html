@@ -194,7 +194,7 @@
           showError('Failed to load rooms. Check your network or try refreshing.');
         }
       }
-
+      
       async function joinRoom(roomId) {
         if (!roomId || typeof roomId !== 'string') {
           showError('❗ Room ID is invalid. Please select a valid room.');
@@ -215,7 +215,17 @@
               currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
               roomError.classList.add('hidden');
               chatContainer.classList.remove('hidden');
-              socket = io(API_URL, { reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000, reconnectionDelayMax: 5000, timeout: 10000 });
+              socket = io(API_URL, {
+  transports: ['websocket'],
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 10000,
+  pingInterval: 25000,    // 客戶端發送 ping 的頻率（毫秒）
+  pingTimeout: 300000     // 伺服器等待 pong 的最大時間（毫秒）
+});
+
               socket.emit('join', { room_id: roomId });
               socket.on('connect', () => {
                 console.log('Socket.IO connected, re-joining room:', roomId);

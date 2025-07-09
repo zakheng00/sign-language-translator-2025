@@ -1,1 +1,5 @@
-web: gunicorn --workers 6 --timeout 300 --worker-class eventlet app:app
+web: gunicorn app:app \
+     --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+     --workers 1 \
+     --timeout 0 \
+     --log-level debug

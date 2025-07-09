@@ -13,3 +13,5 @@ pyrebase4
 flask_socketio  
 eventlet
 psutil
+gevent
+gevent-websocket

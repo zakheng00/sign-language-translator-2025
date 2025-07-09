@@ -1,3 +1,5 @@
+import eventlet
+eventlet.monkey_patch()
 import os
 import base64
 import json
@@ -19,8 +21,7 @@ import mediapipe as mp        # ← 新增这一行
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit
-import eventlet
-eventlet.monkey_patch()
+
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
