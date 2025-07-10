@@ -1,1 +1,1 @@
-web: gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --timeout 0
+web: gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:$PORT app:app

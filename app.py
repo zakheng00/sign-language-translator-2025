@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psutil
 import numpy as np
 import tflite_runtime.interpreter as tflite
-import json  # 添加這一行
+import json
 from collections import Counter
 import cv2
 import mediapipe as mp
@@ -86,13 +86,19 @@ def normalize_keypoints(kps):
     return arr.flatten()
 
 def predict_100frames_middle20(video_path):
+    memory = psutil.virtual_memory()
+    if memory.percent > 80:
+        raise ValueError("Insufficient memory available")
+
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     logger.info(f"Total frames in video: {total}")
     if total == 0:
         raise ValueError("Video file is empty or unreadable")
 
-    # 確保提取至少 30 幀
+    # 優化：降低分辨率並限制幀數
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     step = max(1, total // 30)
     frames = []
     i = 0
@@ -149,9 +155,10 @@ def predict():
     converted_path = in_path + '.converted.mp4'
     try:
         video_file.save(in_path)
-        # 轉換為標準 MP4 格式
-        subprocess.run(['ffmpeg', '-i', in_path, '-c:v', 'libx264', '-c:a', 'aac', '-y', converted_path], 
-                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        # 優化 ffmpeg 轉換，增加超時並降低品質
+        subprocess.run(['ffmpeg', '-i', in_path, '-c:v', 'libx264', '-crf', '23', '-c:a', 'aac', '-y', converted_path],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+        logger.info(f"FFmpeg conversion completed for {in_path}")
         result = executor.submit(predict_100frames_middle20, converted_path).result(timeout=300)
         return jsonify(result)
     except subprocess.CalledProcessError as e:
