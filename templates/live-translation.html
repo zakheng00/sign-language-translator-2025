@@ -38,7 +38,10 @@
     startBtn.onclick = async () => {
       recordedBlobs = [];
       const stream = await initCamera();
-      mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      // 尝试使用 mp4 格式，若不支持则回退到 webm
+      const mimeTypes = ["video/mp4", "video/webm"];
+      let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) recordedBlobs.push(event.data);
@@ -57,25 +60,29 @@
       uploadBtn.disabled = false;
     };
 
-   uploadBtn.onclick = async () => {
-  const blob = new Blob(recordedBlobs, { type: "video/webm" });
-  const formData = new FormData();
-  formData.append("video", blob, "recorded.webm");
+    uploadBtn.onclick = async () => {
+      const blob = new Blob(recordedBlobs, { type: mediaRecorder.mimeType });
+      const formData = new FormData();
+      formData.append("video", blob, "recorded." + (mediaRecorder.mimeType.split('/')[1]));
 
-  result.innerText = "⏳ 正在翻译，请稍候...";
-  try {
-    const response = await fetch("https://20c5722d0838.ngrok-free.app/predict", {
-      method: "POST",
-      body: formData,
-    });
+      result.innerText = "⏳ 正在翻译，请稍候...";
+      try {
+        const response = await fetch("https://1a154b191aaa.ngrok-free.app/predict", { // 替換為您的 Colab NGROK URL
+          method: "POST",
+          body: formData,
+        });
 
-    const data = await response.json();
-    result.innerText = "✅ 翻译结果：" + (data.prediction ?? data.error);
-  } catch (err) {
-    result.innerText = "❌ 无法连接服务器";
-    console.error(err);
-  }
-};
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        result.innerText = "✅ 翻译结果：" + (data.gesture ?? data.error ?? "未知结果");
+      } catch (err) {
+        result.innerText = `❌ 翻译失败: ${err.message}`;
+        console.error(err);
+      }
+    };
   </script>
 </body>
 </html>
