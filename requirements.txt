@@ -7,3 +7,4 @@ gunicorn
 pyngrok
 flask-cors
 psutil
+flask_socketio
