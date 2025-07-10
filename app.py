@@ -14,7 +14,7 @@ from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={r"/predict_colab": {"origins": "*"}})  # 允許所有來源
+CORS(app, resources={r"/predict_colab": {"origins":"https://sign-language-translator-2025.onrender.com" "*"}})  # 允許所有來源
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_interval=25, ping_timeout=300)
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://54c55a081ea2.ngrok-free.app/predict_colab"  # 需替換為您的 NGROK URL
+COLAB_URL = "https://d7eed30228fc.ngrok-free.app/predict_colab"  # 需替換為您的 NGROK URL
 
 # --- 路由 ---
 @app.route('/')
