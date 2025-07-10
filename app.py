@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://1a154b191aaa.ngrok-free.app"  # 需替換為您的 NGROK URL
+COLAB_URL = "https://1a154b191aaa.ngrok-free.app/predict_colab"  # 需替換為您的 NGROK URL
 
 # --- 路由 ---
 @app.route('/')

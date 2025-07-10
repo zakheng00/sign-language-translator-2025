@@ -38,7 +38,6 @@
     startBtn.onclick = async () => {
       recordedBlobs = [];
       const stream = await initCamera();
-      // 尝试使用 mp4 格式，若不支持则回退到 webm
       const mimeTypes = ["video/mp4", "video/webm"];
       let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
       mediaRecorder = new MediaRecorder(stream, { mimeType });
@@ -67,10 +66,10 @@
 
       result.innerText = "⏳ 正在翻译，请稍候...";
       try {
-        const response = await fetch("https://1a154b191aaa.ngrok-free.app/predict", { // 替換為您的 Colab NGROK URL
-          method: "POST",
-          body: formData,
-        });
+        const response = await fetch("https://1a154b191aaa.ngrok-free.app/predict_colab", {
+  method: "POST",
+  body: formData,
+});
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
