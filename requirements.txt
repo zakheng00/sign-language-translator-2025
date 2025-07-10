@@ -6,3 +6,4 @@ mediapipe
 gunicorn
 pyngrok
 flask-cors
+psutil
