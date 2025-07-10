@@ -7,6 +7,8 @@ from collections import Counter
 from tensorflow.keras.models import load_model
 import mediapipe as mp
 import gc
+import threading
+from pyngrok import ngrok
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 限制上传大小为10MB
@@ -57,7 +59,6 @@ def predict_from_video():
 
     cap = cv2.VideoCapture(temp_path)
 
-    # 尝试最多取 30 帧
     frames = []
     while True:
         ret, frame = cap.read()
@@ -70,7 +71,6 @@ def predict_from_video():
         os.remove(temp_path)
         return jsonify({"error": f"视频帧数太少（仅 {len(frames)} 帧）"}), 400
 
-    # 取中间 20 帧（容错处理）
     mid_start = max(0, len(frames) // 2 - 10)
     mid_end = min(len(frames), mid_start + 20)
     mid_frames = frames[mid_start:mid_end]
@@ -80,35 +80,36 @@ def predict_from_video():
     for f in mid_frames:
         kps = extract_keypoints_from_frame(f)
         kps = normalize_keypoints(kps)
-        input_vector = np.tile(kps, 10).reshape(1, -1)  # 420维输入
+        input_vector = np.tile(kps, 10).reshape(1, -1)
         pred = get_model().predict(input_vector, verbose=0)[0]
         label = int(np.argmax(pred))
         predictions.append(label)
 
     final_label, count = Counter(predictions).most_common(1)[0]
 
-    # 清理内存
     del frames, predictions
     gc.collect()
     os.remove(temp_path)
 
     return jsonify({"prediction": final_label})
 
-# 首页（可选）
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
 
-# 你自定义的翻译页面
 @app.route('/live-translation')
 def live_translation():
     return send_from_directory('templates', 'live-translation.html')
 
-# 静态资源
 @app.route("/<path:path>")
 def static_proxy(path):
     return send_from_directory(".", path)
 
-# 启动服务（开发调试时用）
+# 启动服务 + ngrok
 if __name__ == "__main__":
-    app.run(debug=True)
+    def run():
+        app.run(port=5001)
+
+    threading.Thread(target=run).start()
+    public_url = ngrok.connect(5001)
+    print("\U0001f680 ngrok 公网地址:", public_url)

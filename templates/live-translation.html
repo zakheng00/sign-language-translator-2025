@@ -2,21 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>手语翻译系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h2>🎥 手语录制</h2>
-  <video id="preview" autoplay muted></video>
-  <br>
-  <button id="startBtn">开始录制</button>
-  <button id="stopBtn" disabled>停止</button>
-  <button id="uploadBtn" disabled>翻译</button>
-  <p id="result"></p>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️</h1>
+    <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
+
+    <div class="flex justify-between items-center mb-4">
+      <button id="startBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Recording</button>
+      <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop</button>
+      <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
+    </div>
+
+    <div id="result" class="mt-4 text-center text-lg font-medium"></div>
+  </div>
 
   <script>
     let mediaRecorder;
-    let recordedBlobs;
-
+    let recordedBlobs = [];
     const preview = document.getElementById("preview");
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
@@ -41,6 +47,7 @@
       mediaRecorder.start();
       startBtn.disabled = true;
       stopBtn.disabled = false;
+      uploadBtn.disabled = true;
     };
 
     stopBtn.onclick = () => {
@@ -56,13 +63,18 @@
       formData.append("video", blob, "recorded.webm");
 
       result.innerText = "⏳ 正在翻译，请稍候...";
-      const response = await fetch("/predict", {
-        method: "POST",
-        body: formData,
-      });
+      try {
+        const response = await fetch("https://beddfc03ff64.ngrok-free.app", {
+          method: "POST",
+          body: formData,
+        });
 
-      const data = await response.json();
-      result.innerText = "✅ 翻译结果：" + (data.prediction ?? data.error);
+        const data = await response.json();
+        result.innerText = "✅ 翻译结果：" + (data.prediction ?? data.error);
+      } catch (err) {
+        result.innerText = "❌ 无法连接服务器";
+        console.error(err);
+      }
     };
   </script>
 </body>
