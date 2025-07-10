@@ -64,7 +64,7 @@
 
   result.innerText = "⏳ 正在翻译，请稍候...";
   try {
-    const response = await fetch("https://74753cbb82cc.ngrok-free.app", {
+    const response = await fetch("https://74753cbb82cc.ngrok-free.app/predict", {
       method: "POST",
       body: formData,
     });
