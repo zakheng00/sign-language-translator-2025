@@ -99,9 +99,9 @@ def predict_from_video():
 def index():
     return send_from_directory(".", "index.html")
 
-@app.route("live-translation")
+@app.route('/live-translation')
 def live_translation():
-    return send_from_directory(".", "live-translation.html")
+    return send_from_directory('templates', 'live-translation.html')
 
 # 静态资源（JS/CSS）
 @app.route("/<path:path>")
