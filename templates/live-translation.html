@@ -14,7 +14,7 @@
     <h1>Live Sign Language Translation</h1>
     <video id="video" width="640" height="480" autoplay muted></video>
     <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
-    <div id="progress">Progress: 0%</div>
+    <div id="progress">Status: Ready</div>
     <button id="startRecording">Start Recording</button>
     <button id="stopRecording" style="display:none;">Stop Recording</button>
     <button id="translate" style="display:none;">Translate</button>
@@ -39,8 +39,6 @@
         let stream;
         let recorder;
         let chunks = [];
-        const NUM_FRAMES = 100; // 目標 100 幀
-        let frameCount = 0;
         let recording = false;
 
         // 初始化攝像頭
@@ -62,35 +60,33 @@
         holistic.onResults(onResults);
 
         function onResults(results) {
-            if (recording && frameCount < NUM_FRAMES) {
+            if (recording) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                frameCount++;
-                progressDiv.textContent = `Progress: ${(frameCount / NUM_FRAMES * 100).toFixed(0)}%`;
-                if (frameCount < NUM_FRAMES) {
-                    requestAnimationFrame(() => holistic.send({ image: video }));
-                }
+                progressDiv.textContent = 'Status: Recording...';
+                requestAnimationFrame(() => holistic.send({ image: video }));
             }
         }
 
         startBtn.onclick = () => {
             recording = true;
-            frameCount = 0;
             chunks = [];
             startBtn.style.display = 'none';
             stopBtn.style.display = 'inline';
             translateBtn.style.display = 'none';
             recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
             recorder.ondataavailable = (e) => chunks.push(e.data);
-            recorder.start(1000 / 30); // 約 30 FPS
+            recorder.start(1000 / 30); // 30 FPS
             holistic.send({ image: video });
         };
 
         stopBtn.onclick = () => {
-            recording = false;
-            recorder.stop();
-            stopBtn.style.display = 'none';
-            translateBtn.style.display = 'inline';
-            progressDiv.textContent = 'Progress: 100% (Ready to Translate)';
+            if (recording) {
+                recording = false;
+                recorder.stop();
+                stopBtn.style.display = 'none';
+                translateBtn.style.display = 'inline';
+                progressDiv.textContent = 'Status: Ready to Translate';
+            }
         };
 
         translateBtn.onclick = () => {
@@ -110,6 +106,7 @@
 
             translateBtn.style.display = 'none';
             startBtn.style.display = 'inline';
+            progressDiv.textContent = 'Status: Ready';
         };
 
         // 啟動攝像頭處理
