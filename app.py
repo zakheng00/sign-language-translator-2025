@@ -12,6 +12,7 @@ from collections import Counter
 import cv2
 import mediapipe as mp
 import subprocess
+import gc
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -65,6 +66,7 @@ if not load_models():
 
 # --- 手語預測（異步） ---
 def extract_keypoints_from_frame(frame):
+    start_time = time.time()
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     res = hands.process(rgb)
     kps = []
@@ -74,6 +76,7 @@ def extract_keypoints_from_frame(frame):
                 kps.extend([lm.x, lm.y])
     while len(kps) < 42:
         kps += [0.0, 0.0]
+    logger.debug(f"Keypoint extraction time: {time.time() - start_time:.2f}s")
     return kps[:42]
 
 def normalize_keypoints(kps):
@@ -86,6 +89,7 @@ def normalize_keypoints(kps):
     return arr.flatten()
 
 def predict_100frames_middle20(video_path):
+    start_time = time.time()
     memory = psutil.virtual_memory()
     if memory.percent > 80:
         raise ValueError("Insufficient memory available")
@@ -96,26 +100,26 @@ def predict_100frames_middle20(video_path):
     if total == 0:
         raise ValueError("Video file is empty or unreadable")
 
-    # 優化：降低分辨率並限制幀數
+    # 優化：降低分辨率並減少幀數
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-    step = max(1, total // 30)
+    step = max(1, total // 15)  # 減少到 15 幀
     frames = []
     i = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        if i % step == 0 and len(frames) < 30:
+        if i % step == 0 and len(frames) < 15:
             frames.append(frame.copy())
         i += 1
     cap.release()
 
-    if len(frames) < 30:
-        raise ValueError(f"Insufficient frames: got {len(frames)}, need >=30")
+    if len(frames) < 15:
+        raise ValueError(f"Insufficient frames: got {len(frames)}, need >=15")
 
-    # 中間 20 幀（索引 5 到 24）
-    mid_frames = frames[5:25]
+    # 中間 10 幀（索引 2 到 11）
+    mid_frames = frames[2:12]  # 調整為 10 幀
     predictions = []
 
     for f in mid_frames:
@@ -131,10 +135,13 @@ def predict_100frames_middle20(video_path):
         pred_label = int(np.argmax(out))
         predictions.append(pred_label)
 
+    # 释放内存
+    gc.collect()
+
     # 多数投票得出最终预测
     final_label = Counter(predictions).most_common(1)[0][0]
 
-    logger.info(f"Predicted {final_label} from {len(predictions)} frames")
+    logger.info(f"Predicted {final_label} from {len(predictions)} frames in {time.time() - start_time:.2f}s")
     return {'gesture': final_label, 'predictions': predictions}
 
 # --- 路由 ---
@@ -159,7 +166,7 @@ def predict():
         subprocess.run(['ffmpeg', '-i', in_path, '-c:v', 'libx264', '-crf', '23', '-c:a', 'aac', '-y', converted_path],
                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         logger.info(f"FFmpeg conversion completed for {in_path}")
-        result = executor.submit(predict_100frames_middle20, converted_path).result(timeout=300)
+        result = executor.submit(predict_100frames_middle20, converted_path).result(timeout=600)  # 增加超時
         return jsonify(result)
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
