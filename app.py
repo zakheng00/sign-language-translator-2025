@@ -10,6 +10,7 @@ import tflite_runtime.interpreter as tflite
 from collections import Counter
 import cv2
 import mediapipe as mp
+import subprocess
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -86,15 +87,19 @@ def normalize_keypoints(kps):
 def predict_100frames_middle20(video_path):
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    idxs = np.linspace(0, total - 1, 30, dtype=int)  # 提取 30 幀
+    logger.info(f"Total frames in video: {total}")
+    if total == 0:
+        raise ValueError("Video file is empty or unreadable")
 
+    # 確保提取至少 30 幀
+    step = max(1, total // 30)
     frames = []
     i = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        if i in idxs:
+        if i % step == 0 and len(frames) < 30:
             frames.append(frame.copy())
         i += 1
     cap.release()
@@ -140,16 +145,24 @@ def predict():
         return jsonify({'error': 'Missing video file'}), 400
     video_file = request.files['video']
     in_path = tempfile.mktemp(suffix='.mp4')
+    converted_path = in_path + '.converted.mp4'
     try:
         video_file.save(in_path)
-        result = executor.submit(predict_100frames_middle20, in_path).result(timeout=300)
+        # 轉換為標準 MP4 格式
+        subprocess.run(['ffmpeg', '-i', in_path, '-c:v', 'libx264', '-c:a', 'aac', '-y', converted_path], 
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        result = executor.submit(predict_100frames_middle20, converted_path).result(timeout=300)
         return jsonify(result)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
+        return jsonify({'error': 'Video conversion failed'}), 500
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        if os.path.exists(in_path):
-            os.remove(in_path)
+        for path in [in_path, converted_path]:
+            if os.path.exists(path):
+                os.remove(path)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)

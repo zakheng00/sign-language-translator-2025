@@ -35,8 +35,8 @@
 
         let stream;
         let recorder;
-        let frames = [];
-        const NUM_FRAMES = 100; // 錄製 100 幀
+        let chunks = [];
+        const NUM_FRAMES = 100; // 目標 100 幀
         let frameCount = 0;
         let recording = false;
 
@@ -58,24 +58,13 @@
 
         holistic.onResults(onResults);
 
-        function extractKeypoints(results) {
-            const pose = results.poseLandmarks ? results.poseLandmarks.map(l => [l.x, l.y, l.z]).slice(0, 24) : Array(24).fill([0, 0, 0]);
-            const leftHand = results.leftHandLandmarks ? results.leftHandLandmarks.map(l => [l.x, l.y, l.z]).slice(0, 21) : Array(21).fill([0, 0, 0]);
-            const rightHand = results.rightHandLandmarks ? results.rightHandLandmarks.map(l => [l.x, l.y, l.z]).slice(0, 21) : Array(21).fill([0, 0, 0]);
-            return [...pose.flat(), ...leftHand.flat(), ...rightHand.flat()];
-        }
-
         function onResults(results) {
             if (recording && frameCount < NUM_FRAMES) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                frames.push(imageData.data); // 儲存圖像數據
                 frameCount++;
                 progressDiv.textContent = `Progress: ${(frameCount / NUM_FRAMES * 100).toFixed(0)}%`;
                 if (frameCount < NUM_FRAMES) {
                     requestAnimationFrame(() => holistic.send({ image: video }));
-                } else {
-                    stopRecording();
                 }
             }
         }
@@ -83,37 +72,37 @@
         startBtn.onclick = () => {
             recording = true;
             frameCount = 0;
-            frames = [];
+            chunks = [];
             startBtn.style.display = 'none';
             stopBtn.style.display = 'inline';
+            recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+            recorder.ondataavailable = (e) => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/mp4' });
+                const formData = new FormData();
+                formData.append('video', blob, 'recording.mp4');
+
+                fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    resultDiv.textContent = `Result: ${data.gesture}`;
+                })
+                .catch(error => console.error('Error:', error));
+            };
+            recorder.start(1000 / 30); // 約 30 FPS
             holistic.send({ image: video });
         };
 
         stopBtn.onclick = () => {
-            stopRecording();
-        };
-
-        function stopRecording() {
             recording = false;
+            recorder.stop();
             stopBtn.style.display = 'none';
             startBtn.style.display = 'inline';
             progressDiv.textContent = 'Progress: 0%';
-
-            // 將 frames 轉為視頻並上傳
-            const blob = new Blob(frames, { type: 'video/mp4' });
-            const formData = new FormData();
-            formData.append('video', blob, 'recording.mp4');
-
-            fetch('/predict', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                resultDiv.textContent = `Result: ${data.gesture}`;
-            })
-            .catch(error => console.error('Error:', error));
-        }
+        };
 
         // 啟動攝像頭處理
         const camera = new Camera(video, {
