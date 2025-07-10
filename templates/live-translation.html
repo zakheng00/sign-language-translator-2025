@@ -7,6 +7,7 @@
     <style>
         video, canvas { border: 1px solid black; }
         #progress { font-size: 18px; }
+        button { margin: 5px; padding: 10px; }
     </style>
 </head>
 <body>
@@ -16,6 +17,7 @@
     <div id="progress">Progress: 0%</div>
     <button id="startRecording">Start Recording</button>
     <button id="stopRecording" style="display:none;">Stop Recording</button>
+    <button id="translate" style="display:none;">Translate</button>
     <div id="result">Result: </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -32,6 +34,7 @@
         const resultDiv = document.getElementById('result');
         const startBtn = document.getElementById('startRecording');
         const stopBtn = document.getElementById('stopRecording');
+        const translateBtn = document.getElementById('translate');
 
         let stream;
         let recorder;
@@ -75,23 +78,9 @@
             chunks = [];
             startBtn.style.display = 'none';
             stopBtn.style.display = 'inline';
+            translateBtn.style.display = 'none';
             recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
             recorder.ondataavailable = (e) => chunks.push(e.data);
-            recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'video/mp4' });
-                const formData = new FormData();
-                formData.append('video', blob, 'recording.mp4');
-
-                fetch('/predict', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    resultDiv.textContent = `Result: ${data.gesture}`;
-                })
-                .catch(error => console.error('Error:', error));
-            };
             recorder.start(1000 / 30); // 約 30 FPS
             holistic.send({ image: video });
         };
@@ -100,8 +89,27 @@
             recording = false;
             recorder.stop();
             stopBtn.style.display = 'none';
+            translateBtn.style.display = 'inline';
+            progressDiv.textContent = 'Progress: 100% (Ready to Translate)';
+        };
+
+        translateBtn.onclick = () => {
+            const blob = new Blob(chunks, { type: 'video/mp4' });
+            const formData = new FormData();
+            formData.append('video', blob, 'recording.mp4');
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.textContent = `Result: ${data.gesture}`;
+            })
+            .catch(error => console.error('Error:', error));
+
+            translateBtn.style.display = 'none';
             startBtn.style.display = 'inline';
-            progressDiv.textContent = 'Progress: 0%';
         };
 
         // 啟動攝像頭處理

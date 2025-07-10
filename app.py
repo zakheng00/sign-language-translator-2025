@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psutil
 import numpy as np
 import tflite_runtime.interpreter as tflite
+import json  # 添加這一行
 from collections import Counter
 import cv2
 import mediapipe as mp
