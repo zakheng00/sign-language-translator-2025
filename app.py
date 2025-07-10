@@ -10,10 +10,11 @@ import gc
 import threading
 from pyngrok import ngrok
 from flask_cors import CORS
-CORS(app)
+
 
 
 app = Flask(__name__)
+CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 限制上传大小为10MB
 
 # 初始化 MediaPipe
