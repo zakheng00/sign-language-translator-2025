@@ -16,7 +16,7 @@ import gc
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO
+
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
