@@ -1,72 +1,30 @@
-import os
-import tempfile
-import logging
-import time
-from uuid import uuid4
-from concurrent.futures import ThreadPoolExecutor
-import psutil
-import numpy as np
-import tflite_runtime.interpreter as tflite
-import json
-from collections import Counter
+from flask import Flask, request, jsonify, send_from_directory
 import cv2
+import numpy as np
+import os
+import uuid
+from collections import Counter
+from tensorflow.keras.models import load_model
 import mediapipe as mp
-import subprocess
 import gc
 
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 限制上传大小为10MB
 
-
-# --- Flask 設置 ---
-app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_interval=25, ping_timeout=300)
-executor = ThreadPoolExecutor(max_workers=4)
-
-# 設置日誌
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- 模型路徑 ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'models', 'H.tflite')
-LABELS_PATH = os.path.join(BASE_DIR, 'models', 'labels.json')
-
-# 全局模型變量
-interpreter = None
-labels = None
+# 初始化 MediaPipe
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=True, max_num_hands=2)
 
-# --- 模型加載（僅在啟動時執行一次） ---
-def load_models():
-    global interpreter, labels
-    memory = psutil.virtual_memory()
-    logger.info(f"Memory usage: {memory.percent}% (total: {memory.total / 1024 / 1024:.2f}MB, available: {memory.available / 1024 / 1024:.2f}MB)")
-    try:
-        if memory.percent > 70:
-            logger.warning("Memory usage exceeds 70%, consider optimizing or upgrading instance")
-        if interpreter is None and memory.percent < 70:
-            interpreter = tflite.Interpreter(model_path=MODEL_PATH)
-            interpreter.allocate_tensors()
-            input_details = interpreter.get_input_details()
-            output_details = interpreter.get_output_details()
-            logger.info(f"TFLite model loaded. Input shape: {input_details[0]['shape']}, Output shape: {output_details[0]['shape']}")
-            with open(LABELS_PATH, 'r', encoding='utf-8') as f:
-                labels = json.load(f)
-    except Exception as e:
-        logger.error(f"Model loading failed: {e}")
-        return False
-    return True
+# 模型懒加载
+model = None
+def get_model():
+    global model
+    if model is None:
+        model = load_model("2.h5")  # 请确保 H.h5 与 app.py 同目录
+    return model
 
-# 應用啟動時加載模型
-if not load_models():
-    logger.critical("Failed to load models, application may not function correctly")
-
-# --- 手語預測（異步） ---
+# 关键点提取 + 归一化
 def extract_keypoints_from_frame(frame):
-    start_time = time.time()
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     res = hands.process(rgb)
     kps = []
@@ -76,7 +34,6 @@ def extract_keypoints_from_frame(frame):
                 kps.extend([lm.x, lm.y])
     while len(kps) < 42:
         kps += [0.0, 0.0]
-    logger.debug(f"Keypoint extraction time: {time.time() - start_time:.2f}s")
     return kps[:42]
 
 def normalize_keypoints(kps):
@@ -88,96 +45,65 @@ def normalize_keypoints(kps):
         arr /= scale
     return arr.flatten()
 
-def predict_100frames_middle20(video_path):
-    start_time = time.time()
-    memory = psutil.virtual_memory()
-    if memory.percent > 80:
-        raise ValueError("Insufficient memory available")
+# 预测接口
+@app.route("/predict", methods=["POST"])
+def predict_from_video():
+    if 'video' not in request.files:
+        return jsonify({"error": "未找到视频文件"}), 400
 
-    cap = cv2.VideoCapture(video_path)
+    video_file = request.files["video"]
+    temp_path = f"/tmp/{uuid.uuid4()}.webm"
+    video_file.save(temp_path)
+
+    cap = cv2.VideoCapture(temp_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    logger.info(f"Total frames in video: {total}")
-    if total == 0:
-        raise ValueError("Video file is empty or unreadable")
+    idxs = np.linspace(0, total - 1, 30, dtype=int)
 
-    # 優化：降低分辨率並減少幀數
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-    step = max(1, total // 15)  # 減少到 15 幀
     frames = []
     i = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        if i % step == 0 and len(frames) < 15:
+        if i in idxs:
             frames.append(frame.copy())
         i += 1
     cap.release()
 
-    if len(frames) < 15:
-        raise ValueError(f"Insufficient frames: got {len(frames)}, need >=15")
+    if len(frames) < 30:
+        os.remove(temp_path)
+        return jsonify({"error": "视频帧数不足 30 帧"}), 400
 
-    # 中間 10 幀（索引 2 到 11）
-    mid_frames = frames[2:12]  # 調整為 10 幀
+    mid_frames = frames[5:25]
     predictions = []
 
     for f in mid_frames:
         kps = extract_keypoints_from_frame(f)
         kps = normalize_keypoints(kps)
-        input_vector = np.tile(kps, 10).reshape(1, 420)  # (1, 420)
+        input_vector = np.tile(kps, 10).reshape(1, -1)  # 420维输入
+        pred = get_model().predict(input_vector, verbose=0)[0]
+        label = int(np.argmax(pred))
+        predictions.append(label)
 
-        input_detail = interpreter.get_input_details()[0]
-        output_detail = interpreter.get_output_details()[0]
-        interpreter.set_tensor(input_detail['index'], input_vector)
-        interpreter.invoke()
-        out = interpreter.get_tensor(output_detail['index'])[0]
-        pred_label = int(np.argmax(out))
-        predictions.append(pred_label)
+    final_label, count = Counter(predictions).most_common(1)[0]
 
-    # 释放内存
+    # 清理内存
+    del frames, predictions
     gc.collect()
+    os.remove(temp_path)
 
-    # 多数投票得出最终预测
-    final_label = Counter(predictions).most_common(1)[0][0]
+    return jsonify({"prediction": final_label})
 
-    logger.info(f"Predicted {final_label} from {len(predictions)} frames in {time.time() - start_time:.2f}s")
-    return {'gesture': final_label, 'predictions': predictions}
-
-# --- 路由 ---
-@app.route('/')
+# 主页（可选）
+@app.route("/")
 def index():
-    return send_from_directory('templates', 'index.html')
+    return send_from_directory(".", "index.html")
 
-@app.route('/live-translation')
-def live_translation():
-    return send_from_directory('templates', 'live-translation.html')
+# 静态资源（JS/CSS）
+@app.route("/<path:path>")
+def static_proxy(path):
+    return send_from_directory(".", path)
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    if 'video' not in request.files:
-        return jsonify({'error': 'Missing video file'}), 400
-    video_file = request.files['video']
-    in_path = tempfile.mktemp(suffix='.mp4')
-    converted_path = in_path + '.converted.mp4'
-    try:
-        video_file.save(in_path)
-        # 優化 ffmpeg 轉換，增加超時並降低品質
-        subprocess.run(['ffmpeg', '-i', in_path, '-c:v', 'libx264', '-crf', '23', '-c:a', 'aac', '-y', converted_path],
-                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
-        logger.info(f"FFmpeg conversion completed for {in_path}")
-        result = executor.submit(predict_100frames_middle20, converted_path).result(timeout=600)  # 增加超時
-        return jsonify(result)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg conversion failed: {e.stderr.decode()}")
-        return jsonify({'error': 'Video conversion failed'}), 500
-    except Exception as e:
-        logger.error(f"Prediction failed: {e}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        for path in [in_path, converted_path]:
-            if os.path.exists(path):
-                os.remove(path)
-
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+# 启动服务（Render 使用 gunicorn 启动）
+if __name__ == "__main__":
+    app.run(debug=True)

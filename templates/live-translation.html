@@ -1,123 +1,69 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Translation</title>
-    <style>
-        video, canvas { border: 1px solid black; }
-        #progress { font-size: 18px; }
-        button { margin: 5px; padding: 10px; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>手语翻译系统</title>
 </head>
 <body>
-    <h1>Live Sign Language Translation</h1>
-    <video id="video" width="640" height="480" autoplay muted></video>
-    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
-    <div id="progress">Status: Ready</div>
-    <button id="startRecording">Start Recording</button>
-    <button id="stopRecording" style="display:none;">Stop Recording</button>
-    <button id="translate" style="display:none;">Translate</button>
-    <div id="result">Result: </div>
+  <h2>🎥 手语录制</h2>
+  <video id="preview" autoplay muted></video>
+  <br>
+  <button id="startBtn">开始录制</button>
+  <button id="stopBtn" disabled>停止</button>
+  <button id="uploadBtn" disabled>翻译</button>
+  <p id="result"></p>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script>
+    let mediaRecorder;
+    let recordedBlobs;
 
-    <script type="module">
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const progressDiv = document.getElementById('progress');
-        const resultDiv = document.getElementById('result');
-        const startBtn = document.getElementById('startRecording');
-        const stopBtn = document.getElementById('stopRecording');
-        const translateBtn = document.getElementById('translate');
+    const preview = document.getElementById("preview");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const result = document.getElementById("result");
 
-        let stream;
-        let recorder;
-        let chunks = [];
-        let recording = false;
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      preview.srcObject = stream;
+      return stream;
+    }
 
-        // 初始化攝像頭
-        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-            .then(s => {
-                stream = s;
-                video.srcObject = stream;
-            })
-            .catch(err => console.error('Error accessing camera:', err));
+    startBtn.onclick = async () => {
+      recordedBlobs = [];
+      const stream = await initCamera();
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
 
-        const holistic = new Holistic({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`});
-        holistic.setOptions({
-            upperBodyOnly: false,
-            smoothLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedBlobs.push(event.data);
+      };
 
-        holistic.onResults(onResults);
+      mediaRecorder.start();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    };
 
-        function onResults(results) {
-            if (recording) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                progressDiv.textContent = 'Status: Recording...';
-                requestAnimationFrame(() => holistic.send({ image: video }));
-            }
-        }
+    stopBtn.onclick = () => {
+      mediaRecorder.stop();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      uploadBtn.disabled = false;
+    };
 
-        startBtn.onclick = () => {
-            recording = true;
-            chunks = [];
-            startBtn.style.display = 'none';
-            stopBtn.style.display = 'inline';
-            translateBtn.style.display = 'none';
-            recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
-            recorder.ondataavailable = (e) => chunks.push(e.data);
-            recorder.start(1000 / 30); // 30 FPS
-            holistic.send({ image: video });
-        };
+    uploadBtn.onclick = async () => {
+      const blob = new Blob(recordedBlobs, { type: "video/webm" });
+      const formData = new FormData();
+      formData.append("video", blob, "recorded.webm");
 
-        stopBtn.onclick = () => {
-            if (recording) {
-                recording = false;
-                recorder.stop();
-                stopBtn.style.display = 'none';
-                translateBtn.style.display = 'inline';
-                progressDiv.textContent = 'Status: Ready to Translate';
-            }
-        };
+      result.innerText = "⏳ 正在翻译，请稍候...";
+      const response = await fetch("/predict", {
+        method: "POST",
+        body: formData,
+      });
 
-        translateBtn.onclick = () => {
-            const blob = new Blob(chunks, { type: 'video/mp4' });
-            const formData = new FormData();
-            formData.append('video', blob, 'recording.mp4');
-
-            fetch('/predict', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                resultDiv.textContent = `Result: ${data.gesture}`;
-            })
-            .catch(error => console.error('Error:', error));
-
-            translateBtn.style.display = 'none';
-            startBtn.style.display = 'inline';
-            progressDiv.textContent = 'Status: Ready';
-        };
-
-        // 啟動攝像頭處理
-        const camera = new Camera(video, {
-            onFrame: async () => {
-                await holistic.send({ image: video });
-            },
-            width: 640,
-            height: 480
-        });
-        camera.start();
-    </script>
+      const data = await response.json();
+      result.innerText = "✅ 翻译结果：" + (data.prediction ?? data.error);
+    };
+  </script>
 </body>
 </html>
