@@ -5,3 +5,4 @@ numpy
 mediapipe
 gunicorn
 pyngrok
+flask-cors
