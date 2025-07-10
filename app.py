@@ -20,7 +20,7 @@ model = None
 def get_model():
     global model
     if model is None:
-        model = load_model("2.h5")  # 请确保 H.h5 与 app.py 同目录
+        model = load_model("2.h5")  # 请确保模型名正确
     return model
 
 # 关键点提取 + 归一化
@@ -56,25 +56,25 @@ def predict_from_video():
     video_file.save(temp_path)
 
     cap = cv2.VideoCapture(temp_path)
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    idxs = np.linspace(0, total - 1, 30, dtype=int)
 
+    # 尝试最多取 30 帧
     frames = []
-    i = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        if i in idxs:
-            frames.append(frame.copy())
-        i += 1
+        frames.append(frame.copy())
     cap.release()
 
-    if len(frames) < 30:
+    if len(frames) < 10:
         os.remove(temp_path)
-        return jsonify({"error": "视频帧数不足 30 帧"}), 400
+        return jsonify({"error": f"视频帧数太少（仅 {len(frames)} 帧）"}), 400
 
-    mid_frames = frames[5:25]
+    # 取中间 20 帧（容错处理）
+    mid_start = max(0, len(frames) // 2 - 10)
+    mid_end = min(len(frames), mid_start + 20)
+    mid_frames = frames[mid_start:mid_end]
+
     predictions = []
 
     for f in mid_frames:
@@ -94,20 +94,21 @@ def predict_from_video():
 
     return jsonify({"prediction": final_label})
 
-# 主页（可选）
+# 首页（可选）
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
 
+# 你自定义的翻译页面
 @app.route('/live-translation')
 def live_translation():
     return send_from_directory('templates', 'live-translation.html')
 
-# 静态资源（JS/CSS）
+# 静态资源
 @app.route("/<path:path>")
 def static_proxy(path):
     return send_from_directory(".", path)
 
-# 启动服务（Render 使用 gunicorn 启动）
+# 启动服务（开发调试时用）
 if __name__ == "__main__":
     app.run(debug=True)
