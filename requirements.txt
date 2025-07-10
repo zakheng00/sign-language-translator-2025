@@ -2,6 +2,7 @@ flask
 opencv-python-headless
 tensorflow
 numpy
+requests==2.31.0
 mediapipe
 gunicorn
 pyngrok
