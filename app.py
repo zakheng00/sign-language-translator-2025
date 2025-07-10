@@ -14,7 +14,7 @@ from flask_cors import CORS
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://sign-language-translator-2025.onrender.com"])
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 限制上传大小为10MB
 
 # 初始化 MediaPipe
