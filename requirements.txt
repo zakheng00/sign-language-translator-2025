@@ -8,3 +8,4 @@ pyngrok
 flask-cors
 psutil
 flask_socketio
+eventlet==0.33.3
