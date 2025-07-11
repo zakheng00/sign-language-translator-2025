@@ -37,7 +37,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://7fb51dc30f83.ngrok-free.app/predict_colab"; // 根據 Colab 實際運行更新
+    const COLAB_URL = "https://c2375d7bca99.ngrok-free.app/predict_colab"; // 請根據 Colab 最新 URL 更新
 
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
@@ -92,12 +92,16 @@
       // 自動生成兩個房間
       rooms.forEach(roomId => createRoomCard(roomId));
 
-      async function joinRoom(roomId) {
+      async function joinRoom(roomId, attempt = 1) {
+        if (attempt > 3) {
+          showError('❌ 无法连接到服务器，尝试已达上限。');
+          return;
+        }
         if (!roomId || typeof roomId !== 'string') {
           showError('❗ Room ID is invalid.');
           return;
         }
-        currentRoomDiv.textContent = `📶 Attempting to join: ${roomId}...`;
+        currentRoomDiv.textContent = `📶 Attempting to join: ${roomId} (Attempt ${attempt}/3)...`;
         try {
           socket = io(COLAB_URL, { 
             path: '/socket.io',
@@ -129,7 +133,8 @@
           });
           socket.on('connect_error', (error) => {
             console.error('Socket.IO connection error:', error);
-            showError('⚠️ Connection to server failed. Retrying...');
+            showError(`⚠️ 连接失败: ${error.message}. 正在重试 (${attempt}/3)...`);
+            setTimeout(() => joinRoom(roomId, attempt + 1), 1000 * attempt);
           });
           socket.on('disconnect', () => {
             console.log('Socket.IO disconnected');
@@ -139,7 +144,8 @@
           });
         } catch (err) {
           console.error('Join room error:', err);
-          showError(`⚠️ Network or server error: ${err.message}`);
+          showError(`⚠️ Network or server error: ${err.message} (Attempt ${attempt}/3)`);
+          setTimeout(() => joinRoom(roomId, attempt + 1), 1000 * attempt);
         }
       }
 
