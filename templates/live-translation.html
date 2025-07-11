@@ -5,15 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>手语翻译系统 - Room Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️ - Room Mode</h1>
     <div class="text-center mb-4">
-      <p>Click to join a room (max 2 users per room).</p>
+      <input id="roomInput" class="border p-2 w-full mb-2" placeholder="Enter Room ID (e.g., room1)" />
+      <button id="joinRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Join Room</button>
     </div>
-    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"></div>
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
 
@@ -42,7 +44,8 @@
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
-      const roomsList = document.getElementById('roomsList');
+      const roomInput = document.getElementById('roomInput');
+      const joinRoomBtn = document.getElementById('joinRoomBtn');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
@@ -58,8 +61,6 @@
       let recordedBlobs = [];
       let socket = null;
       let heartbeatInterval = null;
-      const MAX_USERS = 2;
-      const rooms = ['room1', 'room2'];
 
       function showError(message) {
         roomError.textContent = message;
@@ -75,26 +76,9 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
-      function createRoomCard(roomId, userCount = 0) {
-        const full = userCount >= MAX_USERS;
-        const btnText = full ? 'Room Full' : 'Join Room';
-        const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
-        const card = document.createElement('div');
-        card.className = 'p-4 border rounded shadow';
-        card.innerHTML = `
-          <h2 class="text-xl font-bold mb-2">Room ${roomId}</h2>
-          <p class="mb-2">Users: ${userCount} / ${MAX_USERS}</p>
-          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass} join-btn" data-room-id="${roomId}">${btnText}</button>
-        `;
-        roomsList.appendChild(card);
-      }
-
-      // 自動生成兩個房間
-      rooms.forEach(roomId => createRoomCard(roomId));
-
       async function joinRoom(roomId) {
         if (!roomId || typeof roomId !== 'string') {
-          showError('❗ Room ID is invalid.');
+          showError('❗ Room ID is invalid. Please enter a valid room ID.');
           return;
         }
         currentRoomDiv.textContent = `📶 Attempting to join: ${roomId}...`;
@@ -123,10 +107,6 @@
           socket.on('prediction', (data) => {
             result.innerText = `✅ 翻译结果: ${data.gesture ?? data.error ?? '未知结果'}`;
             addChatMessage(data.gesture ?? data.error ?? '未知结果', data.sid === socket.id);
-            // 更新房間用戶數（假設 Colab 返回）
-            if (data.user_count !== undefined) {
-              updateRoomUserCount(roomId, data.user_count);
-            }
           });
           socket.on('connect_error', (error) => {
             console.error('Socket.IO connection error:', error);
@@ -144,31 +124,10 @@
         }
       }
 
-      function updateRoomUserCount(roomId, userCount) {
-        const cards = roomsList.getElementsByClassName('join-btn');
-        for (let card of cards) {
-          if (card.getAttribute('data-room-id') === roomId) {
-            const parent = card.parentElement;
-            const userCountElement = parent.getElementsByTagName('p')[0];
-            userCountElement.textContent = `Users: ${userCount} / ${MAX_USERS}`;
-            if (userCount >= MAX_USERS) {
-              card.disabled = true;
-              card.className = 'text-white px-4 py-2 rounded bg-gray-400 cursor-not-allowed';
-              card.textContent = 'Room Full';
-            } else {
-              card.disabled = false;
-              card.className = 'text-white px-4 py-2 rounded bg-primary hover:bg-secondary';
-              card.textContent = 'Join Room';
-            }
-            break;
-          }
-        }
-      }
-
       function sendMessage() {
         const msg = chatInput.value.trim();
         if (!msg || !socket) return;
-        socket.emit('message', { room: currentRoomDiv.textContent.split(': ')[1], msg });
+        socket.emit('message', { room: roomInput.value, msg });
         chatInput.value = '';
       }
 
@@ -221,20 +180,14 @@
 
       translateBtn.onclick = () => {
         if (socket) {
-          socket.emit('submit_sign', { room: currentRoomDiv.textContent.split(': ')[1] });
+          socket.emit('submit_sign', { room: roomInput.value });
           result.innerText = "⏳ 正在翻译，请稍候...";
         } else {
           result.innerText = "❌ 请先加入房间！";
         }
       };
 
-      roomsList.addEventListener('click', (event) => {
-        const button = event.target.closest('.join-btn');
-        if (button && !button.disabled) {
-          const roomId = button.getAttribute('data-room-id');
-          joinRoom(roomId);
-        }
-      });
+      joinRoomBtn.addEventListener('click', () => joinRoom(roomInput.value));
       sendBtn.addEventListener('click', sendMessage);
       initCamera(); // 初始化摄像头
       window.addEventListener('beforeunload', () => {
