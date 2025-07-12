@@ -6,6 +6,9 @@
   <title>手语翻译系统 - Room Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
@@ -29,9 +32,9 @@
     <!-- Sign Language Section -->
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
     <div class="flex justify-between items-center mb-4">
-      <button id="startBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Recording</button>
-      <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop</button>
-      <button id="translateBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
+      <button id="startLiveBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Live Translation</button>
+      <button id="stopLiveBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Live</button>
+      <button id="translateBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate Recording</button>
     </div>
     <div id="result" class="mt-4 text-center text-lg font-medium"></div>
   </div>
@@ -50,13 +53,13 @@
       const chatInput = document.getElementById('chatInput');
       const sendBtn = document.getElementById('sendBtn');
       const preview = document.getElementById('preview');
-      const startBtn = document.getElementById('startBtn');
-      const stopBtn = document.getElementById('stopBtn');
+      const startLiveBtn = document.getElementById('startLiveBtn');
+      const stopLiveBtn = document.getElementById('stopLiveBtn');
       const translateBtn = document.getElementById('translateBtn');
       const result = document.getElementById('result');
+      let stream;
       let mediaRecorder;
       let recordedBlobs = [];
-      let stream;
       let socket = io(COLAB_URL, {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
@@ -64,8 +67,10 @@
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 30000 // 增加至 30 秒
+        timeout: 30000
       });
+      let hands;
+      let camera;
 
       function showError(message) {
         roomError.textContent = message;
@@ -146,13 +151,60 @@
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           preview.srcObject = stream;
           console.log('Camera started');
+          const camera = new cam.Camera(preview, {
+            onFrame: async () => {
+              await hands.send({ image: preview });
+            },
+            width: 640,
+            height: 480
+          });
+          camera.start();
         } catch (err) {
           console.error('Failed to start webcam:', err);
           result.innerText = `❌ 无法访问摄像头: ${err.message}`;
           alert('请允许摄像头访问以继续！');
         }
       }
-      initCamera();
+
+      hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+      }});
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      hands.onResults(onResults);
+
+      function onResults(results) {
+        if (results.multiHandLandmarks) {
+          const landmarks = results.multiHandLandmarks[0]; // 使用第一隻手
+          if (landmarks) {
+            const data = landmarks.map(p => [p.x, p.y, p.z]);
+            if (socket.connected) {
+              socket.emit('live_translation', { data: JSON.stringify(data), user: 'User' });
+            }
+          }
+        }
+      }
+
+      startLiveBtn.onclick = async () => {
+        await initCamera();
+        startLiveBtn.disabled = true;
+        stopLiveBtn.disabled = false;
+        result.innerText = "⏳ 正在进行实时翻译...";
+      };
+
+      stopLiveBtn.onclick = () => {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          preview.srcObject = null;
+          startLiveBtn.disabled = false;
+          stopLiveBtn.disabled = true;
+          result.innerText = "✅ 实时翻译已停止";
+        }
+      };
 
       startBtn.onclick = () => {
         if (stream && !mediaRecorder) {

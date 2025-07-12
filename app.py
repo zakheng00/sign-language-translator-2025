@@ -6,6 +6,7 @@ from io import BytesIO
 import logging
 import os
 from eventlet import Timeout
+import json
 
 # 初始化 Flask 應用
 app = Flask(__name__, static_folder='templates')
@@ -91,6 +92,22 @@ async def handle_video(data):
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
         emit('translation', {'error': f"Processing error: {str(e)}", 'user': user}, broadcast=True)
+
+@socketio.on('live_translation')
+async def handle_live_translation(data):
+    user = data.get('user', 'Anonymous')
+    logger.info(f"Received live translation data from user: {user}")
+    try:
+        with Timeout(30, False):
+            landmarks = json.loads(data['data'])
+            # 這裡應將 landmarks 發送到 Colab API 進行即時翻譯
+            # 模擬回應（需替換為實際 API 調用）
+            result = {'gesture': 'Test Live Gesture', 'error': None}
+            logger.info(f"Live translation result: {result}")
+            emit('translation', {'gesture': result['gesture'], 'user': user, 'error': result.get('error')}, broadcast=True)
+    except Exception as e:
+        logger.error(f"Error processing live translation: {str(e)}")
+        emit('translation', {'error': f"Live translation error: {str(e)}", 'user': user}, broadcast=True)
 
 if __name__ == '__main__':
     logger.info("Starting server...")
