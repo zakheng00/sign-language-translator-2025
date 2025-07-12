@@ -38,6 +38,7 @@ def live_translation():
 @app.route('/room-mode')
 def room_mode():
     return send_from_directory('templates', 'room-mode.html')
+
 @app.route('/speech-to-text')
 def speech_to_text():
     return send_from_directory('templates', 'speech-to-text.html')
@@ -59,8 +60,8 @@ def predict():
         logger.error(f"Failed to connect to Colab: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
-# --- 語音轉文字路由 (新增) ---
-@app.route('/speech_to_text', methods=['POST'])
+# --- 語音轉文字路由 (新增，指定唯一端點名稱) ---
+@app.route('/speech_to_text', methods=['POST'], endpoint='stt')
 def speech_to_text():
     if 'audio' not in request.files:
         return jsonify({'error': 'Missing audio file'}), 400
