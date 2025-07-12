@@ -3,85 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>手语翻译系统</title>
+  <title>手语翻译系统 - Live Translation</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️</h1>
+    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️ - Live Translation</h1>
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
-
     <div class="flex justify-between items-center mb-4">
       <button id="startBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Recording</button>
       <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop</button>
-      <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
+      <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Upload & Translate</button>
     </div>
-
     <div id="result" class="mt-4 text-center text-lg font-medium"></div>
   </div>
 
   <script>
+    const COLAB_URL = "https://f031a69fe931.ngrok-free.app/predict_colab"; // 請替換為最新的 ngrok URL
+    let stream;
     let mediaRecorder;
     let recordedBlobs = [];
-    const preview = document.getElementById("preview");
-    const startBtn = document.getElementById("startBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const uploadBtn = document.getElementById("uploadBtn");
-    const result = document.getElementById("result");
 
     async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      preview.srcObject = stream;
-      return stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('preview').srcObject = stream;
+        console.log('Camera started');
+      } catch (err) {
+        document.getElementById('result').innerText = `❌ 无法访问摄像头: ${err.message}`;
+        alert('请允许摄像头访问以继续！');
+      }
     }
 
-    startBtn.onclick = async () => {
-      recordedBlobs = [];
-      const stream = await initCamera();
-      const mimeTypes = ["video/mp4", "video/webm"];
-      let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
-      mediaRecorder = new MediaRecorder(stream, { mimeType });
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordedBlobs.push(event.data);
-      };
-
-      mediaRecorder.start();
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      uploadBtn.disabled = true;
-    };
-
-    stopBtn.onclick = () => {
-      mediaRecorder.stop();
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      uploadBtn.disabled = false;
-    };
-
-    uploadBtn.onclick = async () => {
-      const blob = new Blob(recordedBlobs, { type: mediaRecorder.mimeType });
-      const formData = new FormData();
-      formData.append("video", blob, "recorded." + (mediaRecorder.mimeType.split('/')[1]));
-
-      result.innerText = "⏳ 正在翻译，请稍候...";
-      try {
-        const response = await fetch("https://574fa12359f8.ngrok-free.app/predict_colab", {
-  method: "POST",
-  body: formData,
-});
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        result.innerText = "✅ 翻译结果：" + (data.gesture ?? data.error ?? "未知结果");
-      } catch (err) {
-        result.innerText = `❌ 翻译失败: ${err.message}`;
-        console.error(err);
+    document.getElementById('startBtn').onclick = () => {
+      if (stream && !mediaRecorder) {
+        recordedBlobs = [];
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordedBlobs.push(event.data);
+        };
+        mediaRecorder.start(1000);
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('uploadBtn').disabled = true;
+        document.getElementById('result').innerText = "⏳ 正在录制...";
+        console.log('Recording started');
+      } else if (!stream) {
+        initCamera().then(() => document.getElementById('startBtn').onclick());
       }
     };
+
+    document.getElementById('stopBtn').onclick = () => {
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('result').innerText = "✅ 录制完成，准备上传...";
+        console.log('Recording stopped, blobs length:', recordedBlobs.length);
+      }
+    };
+
+    document.getElementById('uploadBtn').onclick = async () => {
+      if (recordedBlobs.length) {
+        const blob = new Blob(recordedBlobs, { type: 'video/webm' });
+        const formData = new FormData();
+        formData.append('video', blob, 'recording.mp4');
+        document.getElementById('result').innerText = "⏳ 正在上传并翻译...";
+        try {
+          const response = await fetch(`${COLAB_URL}/predict_colab`, {
+            method: 'POST',
+            body: formData,
+            mode: 'cors' // 明確設置 CORS 模式
+          });
+          const result = await response.json();
+          document.getElementById('result').innerText = `✅ 翻译结果: ${result.gesture || result.error || '未知结果'}`;
+        } catch (error) {
+          console.error('Upload failed:', error);
+          document.getElementById('result').innerText = `❌ 上传失败: ${error.message}`;
+        }
+      } else {
+        document.getElementById('result').innerText = "❌ 请先录制视频！";
+      }
+    };
+
+    window.addEventListener('beforeunload', () => {
+      if (stream) stream.getTracks().forEach(track => track.stop());
+    });
+
+    initCamera();
   </script>
 </body>
 </html>

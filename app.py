@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # 根據 Colab ngrok URL 更新
-COLAB_URL = "https://574fa12359f8.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
+COLAB_URL = "https://f031a69fe931.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
 
 # 靜態路由
 @app.route('/')
