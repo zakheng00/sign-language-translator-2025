@@ -34,6 +34,10 @@ def index():
 def live_translation():
     return send_from_directory('templates', 'live-translation.html')
 
+@app.route('/room-mode')
+def room_mode():
+    return send_from_directory('templates', 'room-mode.html')
+
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'video' not in request.files:
