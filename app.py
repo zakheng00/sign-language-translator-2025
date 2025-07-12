@@ -64,14 +64,14 @@ def predict():
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
 @app.route('/speech_to_text', methods=['POST'])
-def speech_to_text():
+def predict():
     if 'audio' not in request.files:
         return jsonify({'error': 'Missing audio file'}), 400
     audio_file = request.files['audio']
     try:
         logger.info(f"Processing audio file: {audio_file.filename}")
         files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
-        response = requests.post(COLAB_STT_URL, files=files, timeout=600)
+        response = requests.post(COLAB_URL, files=files, timeout=600)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
