@@ -6,8 +6,6 @@
   <title>手语翻译系统 - Room Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-  <!-- 可選：添加 favicon（若需要） -->
-  <!-- <link rel="icon" type="image/x-icon" href="/static/favicon.ico"> -->
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
@@ -39,7 +37,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://sign-language-translator-2025.onrender.com"; // 替換為您的 Render URL
+    const COLAB_URL = "https://sign-language-translator-2025.onrender.com"; // 確保這是正確的 Render URL
 
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
@@ -66,7 +64,7 @@
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 20000 // 增加連線超時為 20 秒
+        timeout: 30000 // 增加至 30 秒
       });
 
       function showError(message) {
@@ -84,7 +82,7 @@
       }
 
       function createRoomCard(roomId, userCount = 0) {
-        const full = userCount >= 2; // 模擬最大 2 人
+        const full = userCount >= 2;
         const btnText = full ? 'Room Full' : 'Join Room';
         const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
         const card = document.createElement('div');
@@ -97,21 +95,18 @@
         roomsList.appendChild(card);
       }
 
-      // 自動生成兩個假房間
       ['room1', 'room2'].forEach(roomId => createRoomCard(roomId));
 
-      // 模擬加入房間（僅 UI 更新）
       roomsList.addEventListener('click', (event) => {
         const button = event.target.closest('.join-btn');
         if (button && !button.disabled) {
           const roomId = button.getAttribute('data-room-id');
           currentRoomDiv.textContent = `Current Room: ${roomId}`;
-          chatContainer.classList.remove('hidden'); // 顯示聊天框
+          chatContainer.classList.remove('hidden');
           showError('✅ Joined room (simulated)!');
         }
       });
 
-      // 連線事件
       socket.on('connect', () => {
         console.log('Connected to server');
         addChatMessage('Connected to chat room', true);
@@ -136,19 +131,16 @@
         showError(`⚠️ Disconnected: ${reason}. 尝试自动重连...`);
       });
 
-      // 發送消息
       sendBtn.addEventListener('click', () => {
         const msg = chatInput.value.trim();
         if (msg && socket.connected) {
           socket.emit('message', { msg });
           addChatMessage(msg, true);
           chatInput.value = '';
-          // 模擬回應
           setTimeout(() => addChatMessage(`${msg} (translated)`, false), 1000);
         }
       });
 
-      // 初始化攝像頭
       async function initCamera() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -162,13 +154,12 @@
       }
       initCamera();
 
-      // 開始錄製
       startBtn.onclick = () => {
         if (stream && !mediaRecorder) {
           recordedBlobs = [];
           mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
           mediaRecorder.ondataavailable = (event) => recordedBlobs.push(event.data);
-          mediaRecorder.start(1000); // 每 1 秒收集數據
+          mediaRecorder.start(1000);
           startBtn.disabled = true;
           stopBtn.disabled = false;
           translateBtn.disabled = true;
@@ -176,7 +167,6 @@
         }
       };
 
-      // 停止錄製
       stopBtn.onclick = () => {
         if (mediaRecorder) {
           mediaRecorder.stop();
@@ -187,7 +177,6 @@
         }
       };
 
-      // 發送翻譯
       translateBtn.onclick = () => {
         if (recordedBlobs.length && socket.connected) {
           const blob = new Blob(recordedBlobs, { type: 'video/webm' });
@@ -203,7 +192,6 @@
         }
       };
 
-      // 清理
       window.addEventListener('beforeunload', () => {
         if (socket) socket.disconnect();
         if (stream) stream.getTracks().forEach(track => track.stop());

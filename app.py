@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # 根據 Colab ngrok URL 更新
-COLAB_URL = "https://77279c3e3907.ngrok-free.app/predict"  # 請確保這是有效的 ngrok URL
+COLAB_URL = "https://77279c3e3907.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
 
 # 靜態路由
 @app.route('/')
@@ -72,7 +72,7 @@ async def handle_video(data):
     user = data.get('user', 'Anonymous')
     logger.info(f"Received video from user: {user}")
     try:
-        with Timeout(120, False):  # 增加超時為 120 秒
+        with Timeout(120, False):
             video_data = data['video']
             files = {'video': ('video.mp4', base64.b64decode(video_data), 'video/mp4')}
             logger.info(f"Sending request to Colab: {COLAB_URL}")
