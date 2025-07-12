@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
   <script type="module">
-    // 根據 Render URL 更新
+    // 根據實際 Render URL 更新
     const COLAB_URL = "https://sign-language-translator-2025.onrender.com";
 
     tailwind.config = {
@@ -33,12 +33,15 @@
       const userInput = document.getElementById('userInput');
       let mediaRecorder;
       let recordedBlobs = [];
-      let currentRoom = null;
+      let currentRoom = "Default Room"; // 假定默認房間，不需真實加入
       let socket = io(COLAB_URL, { path: '/socket.io' });
 
       // 連線事件
       socket.on('connect', () => {
         console.log('Connected to server');
+        currentRoomDiv.innerText = `Current Room: ${currentRoom}`;
+        chatBox.innerHTML = `<p>Welcome to ${currentRoom}!</p>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
       });
 
       socket.on('message', (data) => {
@@ -51,24 +54,16 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       });
 
-      socket.on('room_users', (data) => {
-        currentRoomDiv.innerText = `Current Room: ${currentRoom} (Users: ${data.users})`;
-      });
-
-      // 加入房間
+      // 模擬加入房間（僅 UI 更新）
       joinRoomBtn.onclick = () => {
         currentRoom = roomSelect.value;
-        socket.emit('join_room', { room: currentRoom });
-        chatBox.innerHTML = `<p>Welcome to room ${currentRoom}!</p>`;
+        currentRoomDiv.innerText = `Current Room: ${currentRoom}`;
+        chatBox.innerHTML = `<p>Welcome to ${currentRoom}!</p>`;
         chatBox.scrollTop = chatBox.scrollHeight;
       };
 
       // 開始錄製
       startBtn.onclick = () => {
-        if (!currentRoom) {
-          alert('Please join a room first!');
-          return;
-        }
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
           .then(stream => {
             preview.srcObject = stream;
@@ -90,8 +85,8 @@
 
       // 發送翻譯
       translateBtn.onclick = () => {
-        if (!currentRoom || !recordedBlobs.length) {
-          alert('Please join a room and record a video first!');
+        if (!recordedBlobs.length) {
+          alert('Please record a video first!');
           return;
         }
         const blob = new Blob(recordedBlobs, { type: 'video/mp4' });
@@ -99,7 +94,6 @@
         reader.onloadend = () => {
           socket.emit('send_video', {
             video: reader.result,
-            room: currentRoom,
             user: userInput.value || 'Anonymous'
           });
         };
@@ -109,11 +103,11 @@
 
       // 模擬假聊天
       sendBtn.onclick = () => {
-        if (!currentRoom || !chatInput.value) {
-          alert('Please join a room and enter a message!');
+        const msg = chatInput.value;
+        if (!msg) {
+          alert('Please enter a message!');
           return;
         }
-        const msg = chatInput.value;
         chatBox.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
         chatBox.scrollTop = chatBox.scrollHeight;
         chatInput.value = '';
@@ -130,9 +124,9 @@
     <h1 class="text-2xl font-bold mb-4 text-center">Sign Language Chat</h1>
     <div class="mb-4">
       <select id="roomSelect" class="border p-2 rounded w-full">
-        <option value="room1">Room 1</option>
-        <option value="room2">Room 2</option>
-        <option value="room3">Room 3</option>
+        <option value="Room 1">Room 1</option>
+        <option value="Room 2">Room 2</option>
+        <option value="Room 3">Room 3</option>
       </select>
       <button id="joinRoomBtn" class="mt-2 bg-primary text-white p-2 rounded w-full">Join Room</button>
     </div>
