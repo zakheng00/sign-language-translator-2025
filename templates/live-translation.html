@@ -65,7 +65,8 @@
         reconnectionDelayMax: 5000,
         timeout: 45000
       });
-      let processedTranslations = new Set(); // 防止重複顯示
+      let processedMessages = new Set(); // 防止消息重複顯示
+      let processedTranslations = new Set(); // 防止翻譯重複顯示
 
       // 激活 Chatbox 和 Input
       chatContainer.style.display = 'block';
@@ -118,7 +119,11 @@
       });
 
       socket.on('message', (data) => {
-        addChatMessage(data.msg, data.sid === socket.id);
+        const key = `${data.sid}-${data.msg}`; // 唯一標識符
+        if (!processedMessages.has(key)) {
+          processedMessages.add(key);
+          addChatMessage(data.msg, data.sid === socket.id);
+        }
       });
 
       socket.on('translation', (data) => {
@@ -145,8 +150,7 @@
         const msg = chatInput.value.trim();
         if (msg && socket.connected) {
           socket.emit('message', { msg, sid: socket.id });
-          addChatMessage(msg, true);
-          chatInput.value = '';
+          chatInput.value = ''; // 清空輸入框
         }
       });
 

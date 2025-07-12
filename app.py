@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://236040286881.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
+COLAB_URL = "https://02ce7d4bd14c.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
+COLAB_STT_URL = "https://02ce7d4bd14c.ngrok-free.app/speech_to_text"  # 語音轉文字端點
 
 # --- 路由 ---
 @app.route('/')
@@ -37,6 +38,9 @@ def live_translation():
 @app.route('/room-mode')
 def room_mode():
     return send_from_directory('templates', 'room-mode.html')
+@app.route('/speech-to-text')
+def speech_to_text():
+    return send_from_directory('templates', 'speech-to-text.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -54,6 +58,24 @@ def predict():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
+
+# --- 語音轉文字路由 (新增) ---
+@app.route('/speech_to_text', methods=['POST'])
+def speech_to_text():
+    if 'audio' not in request.files:
+        return jsonify({'error': 'Missing audio file'}), 400
+    audio_file = request.files['audio']
+    try:
+        # 將語音發送到 Colab
+        files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
+        response = requests.post(COLAB_STT_URL, files=files, timeout=600)
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"Received speech to text result from Colab: {result}")
+        return jsonify(result)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to connect to Colab for speech to text: {e}")
+        return jsonify({'error': 'Failed to process audio on Colab'}), 500
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
