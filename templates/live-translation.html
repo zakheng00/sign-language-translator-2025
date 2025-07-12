@@ -19,7 +19,7 @@
   </div>
 
   <script>
-    const COLAB_URL = "https://f031a69fe931.ngrok-free.app/predict_colab"; // 請替換為最新的 ngrok URL
+    const COLAB_URL = "https://388d970cfce2.ngrok-free.app/predict_colab"; // 請確保這是最新的 ngrok URL
     let stream;
     let mediaRecorder;
     let recordedBlobs = [];
@@ -71,11 +71,12 @@
         formData.append('video', blob, 'recording.mp4');
         document.getElementById('result').innerText = "⏳ 正在上传并翻译...";
         try {
-          const response = await fetch(`${COLAB_URL}/predict_colab`, {
+          const response = await fetch(`${COLAB_URL}/predict_colab`, { // 修正 URL
             method: 'POST',
             body: formData,
-            mode: 'cors' // 明確設置 CORS 模式
+            mode: 'cors'
           });
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const result = await response.json();
           document.getElementById('result').innerText = `✅ 翻译结果: ${result.gesture || result.error || '未知结果'}`;
         } catch (error) {
