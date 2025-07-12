@@ -24,6 +24,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # Colab API 端點 (替換為實際 NGROK URL)
 COLAB_URL = "https://4fe696e97fec.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
+COLAB_STT_URL = "https://4fe696e97fec.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
 
 # --- 路由 ---
 @app.route('/')
@@ -39,7 +40,7 @@ def room_mode():
     return send_from_directory('templates', 'room-mode.html')
 
 @app.route('/speech-to-text')
-def speech_to_text():
+def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
 
 @app.route('/favicon.ico')
@@ -64,14 +65,14 @@ def predict():
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
 @app.route('/speech_to_text', methods=['POST'])
-def predict():
+def speech_to_text():
     if 'audio' not in request.files:
         return jsonify({'error': 'Missing audio file'}), 400
     audio_file = request.files['audio']
     try:
         logger.info(f"Processing audio file: {audio_file.filename}")
         files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
-        response = requests.post(COLAB_URL, files=files, timeout=600)
+        response = requests.post(COLAB_STT_URL, files=files, timeout=600)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
