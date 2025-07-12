@@ -68,10 +68,10 @@
         path: '/socket.io',
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: 15,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 30000
+        timeout: 45000
       });
       let hands;
       let camera;
@@ -117,7 +117,7 @@
       });
 
       socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('Connected to server, socket.connected:', socket.connected);
         addChatMessage('Connected to chat room', true);
       });
 
@@ -162,7 +162,7 @@
         }
       }
 
-      hands = new Hands({locateFile: (file) => {
+      hands = new Hands({ locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
       }});
       hands.setOptions({
@@ -185,17 +185,21 @@
 
       startLiveBtn.onclick = async () => {
         await initCamera();
-        camera = new cam.Camera(preview, {
-          onFrame: async () => {
-            await hands.send({ image: preview });
-          },
-          width: 640,
-          height: 480
-        });
-        camera.start();
-        startLiveBtn.disabled = true;
-        stopLiveBtn.disabled = false;
-        result.innerText = "⏳ 正在进行实时翻译...";
+        if (stream) {
+          camera = new Camera(preview, {
+            onFrame: async () => {
+              await hands.send({ image: preview });
+            },
+            width: 640,
+            height: 480
+          });
+          camera.start();
+          startLiveBtn.disabled = true;
+          stopLiveBtn.disabled = false;
+          result.innerText = "⏳ 正在进行实时翻译...";
+        } else {
+          showError('❌ 摄像头初始化失败，请重试！');
+        }
       };
 
       stopLiveBtn.onclick = () => {
@@ -213,7 +217,25 @@
       };
 
       startRecordBtn.onclick = () => {
-        if (stream && !mediaRecorder) {
+        if (!stream) {
+          initCamera().then(() => {
+            if (stream && !mediaRecorder) {
+              recordedBlobs = [];
+              mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+              mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) recordedBlobs.push(event.data);
+              };
+              mediaRecorder.start(1000);
+              startRecordBtn.disabled = true;
+              stopRecordBtn.disabled = false;
+              translateBtn.disabled = true;
+              result.innerText = "⏳ 正在录制...";
+              console.log('Recording started');
+            }
+          }).catch(err => {
+            showError(`❌ 录制初始化失败: ${err.message}`);
+          });
+        } else if (!mediaRecorder) {
           recordedBlobs = [];
           mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
           mediaRecorder.ondataavailable = (event) => {
@@ -247,7 +269,7 @@
             const base64data = reader.result.split(',')[1];
             socket.emit('send_video', { video: base64data, user: 'User' });
             result.innerText = "⏳ 正在翻译，请稍候...";
-            console.log('Video sent to server');
+            console.log('Video sent to server, size:', blob.size);
           };
           reader.readAsDataURL(blob);
         } else {

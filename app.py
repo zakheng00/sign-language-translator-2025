@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # 根據 Colab ngrok URL 更新
-COLAB_URL = "https://22431c3fa21c.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
+COLAB_URL = "https://574fa12359f8.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
 
 # 靜態路由
 @app.route('/')
@@ -71,9 +71,9 @@ def on_connect():
 @socketio.on('send_video')
 async def handle_video(data):
     user = data.get('user', 'Anonymous')
-    logger.info(f"Received video from user: {user}")
+    logger.info(f"Received video from user: {user}, size: {len(data['video'])}")
     try:
-        with Timeout(180, False):  # 增加超時為 180 秒
+        with Timeout(180, False):
             video_data = data['video']
             files = {'video': ('video.mp4', base64.b64decode(video_data), 'video/mp4')}
             logger.info(f"Sending request to Colab: {COLAB_URL}")

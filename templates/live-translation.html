@@ -3,198 +3,85 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>手语翻译系统 - Room Mode</title>
+  <title>手语翻译系统</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️ - Room Mode</h1>
-    <div class="text-center mb-4">
-      <input id="roomInput" class="border p-2 w-full mb-2" placeholder="Enter Room ID (e.g., room1)" />
-      <button id="joinRoomBtn" class="bg-primary text-white px-4 py-2 rounded hover:bg-secondary">Join Room</button>
-    </div>
-    <div id="currentRoom" class="text-center mb-4"></div>
-    <div id="roomError" class="text-red-500 text-center hidden"></div>
-
-    <!-- Chat Box and Input -->
-    <div id="chatContainer" class="mb-4 hidden">
-      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
-      <div class="flex gap-2">
-        <input id="chatInput" class="border p-2 w-full" placeholder="Type a message..." />
-        <button id="sendBtn" class="bg-primary text-white px-4 py-2 rounded">Send</button>
-      </div>
-    </div>
-
-    <!-- Sign Language Section -->
+    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️</h1>
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
+
     <div class="flex justify-between items-center mb-4">
       <button id="startBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Recording</button>
       <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop</button>
-      <button id="translateBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
+      <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
     </div>
+
     <div id="result" class="mt-4 text-center text-lg font-medium"></div>
   </div>
 
-  <script type="module">
-    const COLAB_URL = "https://22431c3fa21c.ngrok-free.app/predict_colab"; // 根據 Colab 實際運行更新
+  <script>
+    let mediaRecorder;
+    let recordedBlobs = [];
+    const preview = document.getElementById("preview");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const result = document.getElementById("result");
 
-    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      preview.srcObject = stream;
+      return stream;
+    }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const roomInput = document.getElementById('roomInput');
-      const joinRoomBtn = document.getElementById('joinRoomBtn');
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
-      const chatContainer = document.getElementById('chatContainer');
-      const chatBox = document.getElementById('chatBox');
-      const chatInput = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendBtn');
-      const preview = document.getElementById('preview');
-      const startBtn = document.getElementById('startBtn');
-      const stopBtn = document.getElementById('stopBtn');
-      const translateBtn = document.getElementById('translateBtn');
-      const result = document.getElementById('result');
-      let mediaRecorder;
-      let recordedBlobs = [];
-      let socket = null;
-      let heartbeatInterval = null;
+    startBtn.onclick = async () => {
+      recordedBlobs = [];
+      const stream = await initCamera();
+      const mimeTypes = ["video/mp4", "video/webm"];
+      let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
 
-      function showError(message) {
-        roomError.textContent = message;
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
-      }
-
-      function addChatMessage(message, isSelf) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
-        chatBox.appendChild(messageDiv);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      }
-
-      async function joinRoom(roomId) {
-        if (!roomId || typeof roomId !== 'string') {
-          showError('❗ Room ID is invalid. Please enter a valid room ID.');
-          return;
-        }
-        currentRoomDiv.textContent = `📶 Attempting to join: ${roomId}...`;
-        try {
-          socket = io(COLAB_URL, { 
-            path: '/socket.io',
-            reconnection: true, 
-            reconnectionAttempts: 5, 
-            reconnectionDelay: 1000, 
-            reconnectionDelayMax: 5000, 
-            timeout: 10000 
-          });
-          socket.emit('join_room', { room: roomId });
-          socket.on('connect', () => {
-            console.log('Socket.IO connected, joined room:', roomId);
-            currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
-            roomError.classList.add('hidden');
-            chatContainer.classList.remove('hidden');
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            heartbeatInterval = setInterval(() => {
-              if (socket.connected) socket.emit('ping', { room: roomId });
-            }, 10000);
-            socket.on('pong', () => console.log('Heartbeat received'));
-          });
-          socket.on('message', (data) => addChatMessage(data.msg, data.sid === socket.id));
-          socket.on('prediction', (data) => {
-            result.innerText = `✅ 翻译结果: ${data.gesture ?? data.error ?? '未知结果'}`;
-            addChatMessage(data.gesture ?? data.error ?? '未知结果', data.sid === socket.id);
-          });
-          socket.on('connect_error', (error) => {
-            console.error('Socket.IO connection error:', error);
-            showError('⚠️ Connection to server failed. Retrying...');
-          });
-          socket.on('disconnect', () => {
-            console.log('Socket.IO disconnected');
-            currentRoomDiv.textContent = `📶 Disconnected from ${roomId}. Reconnecting...`;
-            showError('⚠️ Disconnected. Attempting to reconnect automatically.');
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-          });
-        } catch (err) {
-          console.error('Join room error:', err);
-          showError(`⚠️ Network or server error: ${err.message}`);
-        }
-      }
-
-      function sendMessage() {
-        const msg = chatInput.value.trim();
-        if (!msg || !socket) return;
-        socket.emit('message', { room: roomInput.value, msg });
-        chatInput.value = '';
-      }
-
-      async function initCamera() {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          preview.srcObject = stream;
-          return stream;
-        } catch (err) {
-          console.error('Failed to start webcam:', err);
-          result.innerText = `❌ 无法访问摄像头: ${err.message}`;
-          alert('请允许摄像头访问以继续！');
-        }
-      }
-
-      startBtn.onclick = async () => {
-        recordedBlobs = [];
-        const stream = await initCamera();
-        const mimeTypes = ["video/mp4", "video/webm"];
-        let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedBlobs.push(event.data);
-        };
-
-        mediaRecorder.start(1000); // 每 1 秒觸發一次 ondataavailable
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        translateBtn.disabled = true;
-        result.innerText = "⏳ 正在录制...";
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedBlobs.push(event.data);
       };
 
-      stopBtn.onclick = () => {
-        if (mediaRecorder && socket) {
-          mediaRecorder.stop();
-          startBtn.disabled = false;
-          stopBtn.disabled = true;
-          translateBtn.disabled = false;
-          result.innerText = "✅ 录制完成，准备翻译...";
-          const blob = new Blob(recordedBlobs, { type: mediaRecorder.mimeType });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result.split(',')[1]; // 獲取 base64 數據
-            socket.emit('video_frame', base64data); // 發送到 Colab
-          };
-          reader.readAsDataURL(blob);
-        }
-      };
+      mediaRecorder.start();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      uploadBtn.disabled = true;
+    };
 
-      translateBtn.onclick = () => {
-        if (socket) {
-          socket.emit('submit_sign', { room: roomInput.value });
-          result.innerText = "⏳ 正在翻译，请稍候...";
-        } else {
-          result.innerText = "❌ 请先加入房间！";
-        }
-      };
+    stopBtn.onclick = () => {
+      mediaRecorder.stop();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      uploadBtn.disabled = false;
+    };
 
-      joinRoomBtn.addEventListener('click', () => joinRoom(roomInput.value));
-      sendBtn.addEventListener('click', sendMessage);
-      initCamera(); // 初始化摄像头
-      window.addEventListener('beforeunload', () => {
-        if (socket) socket.disconnect();
-        if (preview.srcObject) preview.srcObject.getTracks().forEach(track => track.stop());
-      });
-    });
+    uploadBtn.onclick = async () => {
+      const blob = new Blob(recordedBlobs, { type: mediaRecorder.mimeType });
+      const formData = new FormData();
+      formData.append("video", blob, "recorded." + (mediaRecorder.mimeType.split('/')[1]));
+
+      result.innerText = "⏳ 正在翻译，请稍候...";
+      try {
+        const response = await fetch("https://574fa12359f8.ngrok-free.app/predict_colab", {
+  method: "POST",
+  body: formData,
+});
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        result.innerText = "✅ 翻译结果：" + (data.gesture ?? data.error ?? "未知结果");
+      } catch (err) {
+        result.innerText = `❌ 翻译失败: ${err.message}`;
+        console.error(err);
+      }
+    };
   </script>
 </body>
 </html>
