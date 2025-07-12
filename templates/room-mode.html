@@ -26,7 +26,13 @@
       </div>
     </div>
 
-    <!-- Sign Language Section -->
+    <!-- Translation Mode Selection -->
+    <div class="text-center mb-4">
+      <button id="signLanguageBtn" class="bg-blue-500 text-white px-4 py-2 rounded mr-2 hover:bg-blue-600">手语翻译</button>
+      <button id="speechToTextBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">语音翻译</button>
+    </div>
+
+    <!-- Sign Language and Speech Section -->
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
     <div class="flex justify-between items-center mb-4">
       <button id="startRecordBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
@@ -37,7 +43,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://sign-language-translator-2025.onrender.com"; // 更新為最新的 ngrok URL
+    const COLAB_URL = "https://sign-language-translator-2025.onrender.com"; // 更新為您的 Render URL
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -53,6 +59,8 @@
       const stopRecordBtn = document.getElementById('stopRecordBtn');
       const uploadBtn = document.getElementById('uploadBtn');
       const result = document.getElementById('result');
+      const signLanguageBtn = document.getElementById('signLanguageBtn');
+      const speechToTextBtn = document.getElementById('speechToTextBtn');
       let stream;
       let mediaRecorder;
       let recordedBlobs = [];
@@ -65,11 +73,11 @@
         reconnectionDelayMax: 5000,
         timeout: 45000
       });
-      let processedTranslations = new Set(); // 用於防止重複顯示
+      let processedTranslations = new Set(); // 防止重複顯示
 
       // 激活 Chatbox 和 Input
-      chatContainer.style.display = 'block'; // 確保聊天框可見
-      chatInput.disabled = false; // 確保輸入框可輸入
+      chatContainer.style.display = 'block';
+      chatInput.disabled = false;
 
       function showError(message) {
         roomError.textContent = message;
@@ -122,11 +130,11 @@
       });
 
       socket.on('translation', (data) => {
-        const key = `${data.user}-${data.gesture || data.error}`; // 唯一標識符
+        const key = `${data.user}-${data.gesture || data.error}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
           const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
-          addChatMessage(message, data.sid === socket.id, true); // 根據 sid 判斷是否為自己
+          addChatMessage(message, data.sid === socket.id, true);
           result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
         }
       });
@@ -207,29 +215,56 @@
         }
       };
 
+      // 模式選擇和上傳邏輯
+      let isSignLanguageMode = true; // 預設為手語模式
+
+      signLanguageBtn.onclick = () => {
+        isSignLanguageMode = true;
+        signLanguageBtn.classList.add('bg-blue-600');
+        signLanguageBtn.classList.remove('bg-blue-500');
+        speechToTextBtn.classList.remove('bg-green-600');
+        speechToTextBtn.classList.add('bg-green-500');
+        result.innerText = "当前模式: 手语翻译";
+      };
+
+      speechToTextBtn.onclick = () => {
+        isSignLanguageMode = false;
+        speechToTextBtn.classList.add('bg-green-600');
+        speechToTextBtn.classList.remove('bg-green-500');
+        signLanguageBtn.classList.remove('bg-blue-600');
+        signLanguageBtn.classList.add('bg-blue-500');
+        result.innerText = "当前模式: 语音翻译";
+      };
+
       uploadBtn.onclick = async () => {
         if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: 'video/webm' });
+          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
           const formData = new FormData();
-          formData.append('video', blob, 'recording.mp4');
-          result.innerText = "⏳ 正在上传并翻译...";
+          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
+          result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
           try {
-            const response = await fetch(`${COLAB_URL}/predict`, {
+            const endpoint = isSignLanguageMode ? '/predict' : '/speech_to_text';
+            const response = await fetch(`${COLAB_URL}${endpoint}`, {
               method: 'POST',
               body: formData,
               mode: 'cors'
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const resultData = await response.json();
-            const translatedMessage = `User: ${resultData.gesture || resultData.error || '未知结果'}`;
-            socket.emit('translation', { gesture: resultData.gesture, user: 'User', error: resultData.error, sid: socket.id });
-            // 移除手動 addChatMessage，依賴 socket.on('translation')
+            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
+            socket.emit('translation', {
+              gesture: resultData.gesture,
+              text: resultData.text,
+              user: 'User',
+              error: resultData.error,
+              sid: socket.id
+            });
           } catch (error) {
-            console.error('Upload failed:', error);
-            result.innerText = `❌ 上传失败: ${error.message}`;
+            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+            result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
           }
         } else {
-          result.innerText = "❌ 请先录制视频！";
+          result.innerText = "❌ 请先录制视频或音频！";
         }
       };
 

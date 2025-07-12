@@ -14,8 +14,11 @@ from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)  # 啟用 CORS，允許所有來源（可根據需要限制）
-socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
+CORS(app, resources={
+    r"/predict": {"origins": "https://sign-language-translator-2025.onrender.com"},
+    r"/speech_to_text": {"origins": "https://sign-language-translator-2025.onrender.com"}
+})  # 精確限制 CORS 來源
+socketio = SocketIO(app, async_mode='eventlet', ping_timeout=20, ping_interval=25, cors_allowed_origins="https://sign-language-translator-2025.onrender.com") # 限制 Socket.IO 來源
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -46,10 +49,11 @@ def speech_to_text():
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'video' not in request.files:
+        logger.error("Missing video file in request")
         return jsonify({'error': 'Missing video file'}), 400
     video_file = request.files['video']
     try:
-        # 將視頻發送到 Colab
+        logger.info(f"Processing video file: {video_file.filename}")
         files = {'video': (video_file.filename, video_file, 'video/mp4')}
         response = requests.post(COLAB_URL, files=files, timeout=600)
         response.raise_for_status()
@@ -64,10 +68,11 @@ def predict():
 @app.route('/speech_to_text', methods=['POST'], endpoint='stt')
 def speech_to_text():
     if 'audio' not in request.files:
+        logger.error("Missing audio file in request")
         return jsonify({'error': 'Missing audio file'}), 400
     audio_file = request.files['audio']
     try:
-        # 將語音發送到 Colab
+        logger.info(f"Processing audio file: {audio_file.filename}")
         files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
         response = requests.post(COLAB_STT_URL, files=files, timeout=600)
         response.raise_for_status()

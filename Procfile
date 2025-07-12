@@ -1,1 +1,1 @@
-gunicorn -w 2 -t 360 -k eventlet --bind 0.0.0.0:5000 app:socketio
+gunicorn --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:5000 app:app
