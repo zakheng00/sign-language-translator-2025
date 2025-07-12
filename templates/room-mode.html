@@ -6,8 +6,6 @@
   <title>手语翻译系统 - Room Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
@@ -19,9 +17,9 @@
     <div id="currentRoom" class="text-center mb-4"></div>
     <div id="roomError" class="text-red-500 text-center hidden"></div>
 
-    <!-- Chat Box and Input -->
-    <div id="chatContainer" class="mb-4 hidden">
-      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
+    <!-- Chat Box and Input (已激活) -->
+    <div id="chatContainer" class="mb-4">
+      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto bg-white"></div>
       <div class="flex gap-2">
         <input id="chatInput" class="border p-2 w-full" placeholder="Type a message..." />
         <button id="sendBtn" class="bg-primary text-white px-4 py-2 rounded">Send</button>
@@ -31,8 +29,6 @@
     <!-- Sign Language Section -->
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
     <div class="flex justify-between items-center mb-4">
-      <button id="startLiveBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Live Translation</button>
-      <button id="stopLiveBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Live</button>
       <button id="startRecordBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
       <button id="stopRecordBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Recording</button>
       <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Upload & Translate</button>
@@ -41,7 +37,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://e093575b509f.ngrok-free.app/predict_colab"; // 請確保這是最新的 ngrok URL
+    const COLAB_URL = "https://511844897b4f.ngrok-free.app"; // 更新為最新的 ngrok URL
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -53,8 +49,6 @@
       const chatInput = document.getElementById('chatInput');
       const sendBtn = document.getElementById('sendBtn');
       const preview = document.getElementById('preview');
-      const startLiveBtn = document.getElementById('startLiveBtn');
-      const stopLiveBtn = document.getElementById('stopLiveBtn');
       const startRecordBtn = document.getElementById('startRecordBtn');
       const stopRecordBtn = document.getElementById('stopRecordBtn');
       const uploadBtn = document.getElementById('uploadBtn');
@@ -71,8 +65,10 @@
         reconnectionDelayMax: 5000,
         timeout: 45000
       });
-      let hands;
-      let camera;
+
+      // 激活 Chatbox 和 Input
+      chatContainer.style.display = 'block'; // 確保聊天框可見
+      chatInput.disabled = false; // 確保輸入框可輸入
 
       function showError(message) {
         roomError.textContent = message;
@@ -80,10 +76,11 @@
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      function addChatMessage(message, isSelf = false) {
+      function addChatMessage(message, isSelf = false, isTranslated = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
+        const spanClass = isSelf ? 'bg-primary text-white' : isTranslated ? 'bg-green-200' : 'bg-gray-200';
+        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${spanClass}">${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
@@ -124,8 +121,9 @@
       });
 
       socket.on('translation', (data) => {
+        const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
+        addChatMessage(message, false, true); // 翻譯消息以綠色背景顯示
         result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
-        addChatMessage(`${data.user}: ${data.gesture || data.error || '未知结果'}`, data.sid === socket.id);
       });
 
       socket.on('connect_error', (error) => {
@@ -141,10 +139,9 @@
       sendBtn.addEventListener('click', () => {
         const msg = chatInput.value.trim();
         if (msg && socket.connected) {
-          socket.emit('message', { msg });
+          socket.emit('message', { msg, sid: socket.id });
           addChatMessage(msg, true);
           chatInput.value = '';
-          setTimeout(() => addChatMessage(`${msg} (translated)`, false), 1000);
         }
       });
 
@@ -159,60 +156,6 @@
           alert('请允许摄像头访问以继续！');
         }
       }
-
-      hands = new Hands({ locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
-      }});
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-      hands.onResults(onResults);
-
-      function onResults(results) {
-        if (results.multiHandLandmarks) {
-          const landmarks = results.multiHandLandmarks[0]; // 使用第一隻手
-          if (landmarks && socket.connected) {
-            const data = landmarks.map(p => [p.x, p.y, p.z]);
-            socket.emit('live_translation', { data: JSON.stringify(data), user: 'User' });
-          }
-        }
-      }
-
-      startLiveBtn.onclick = async () => {
-        await initCamera();
-        if (stream) {
-          camera = new Camera(preview, {
-            onFrame: async () => {
-              await hands.send({ image: preview });
-            },
-            width: 640,
-            height: 480
-          });
-          camera.start();
-          startLiveBtn.disabled = true;
-          stopLiveBtn.disabled = false;
-          result.innerText = "⏳ 正在进行实时翻译...";
-        } else {
-          showError('❌ 摄像头初始化失败，请重试！');
-        }
-      };
-
-      stopLiveBtn.onclick = () => {
-        if (camera) {
-          camera.stop();
-          camera = null;
-        }
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-          preview.srcObject = null;
-        }
-        startLiveBtn.disabled = false;
-        stopLiveBtn.disabled = true;
-        result.innerText = "✅ 实时翻译已停止";
-      };
 
       startRecordBtn.onclick = () => {
         if (!stream) {
@@ -266,14 +209,16 @@
           formData.append('video', blob, 'recording.mp4');
           result.innerText = "⏳ 正在上传并翻译...";
           try {
-            const response = await fetch(`${COLAB_URL}`, {
+            const response = await fetch(`${COLAB_URL}/predict_colab`, {
               method: 'POST',
               body: formData,
               mode: 'cors'
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const resultData = await response.json();
-            result.innerText = `✅ 翻译结果: ${resultData.gesture || resultData.error || '未知结果'}`;
+            const translatedMessage = `User: ${resultData.gesture || resultData.error || '未知结果'}`;
+            socket.emit('translation', { gesture: resultData.gesture, user: 'User', error: resultData.error });
+            addChatMessage(translatedMessage, false, true); // 模擬聊天，顯示翻譯結果
           } catch (error) {
             console.error('Upload failed:', error);
             result.innerText = `❌ 上传失败: ${error.message}`;
@@ -286,7 +231,6 @@
       window.addEventListener('beforeunload', () => {
         if (socket) socket.disconnect();
         if (stream) stream.getTracks().forEach(track => track.stop());
-        if (camera) camera.stop();
       });
     });
   </script>
