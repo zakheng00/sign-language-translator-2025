@@ -10,14 +10,14 @@ import json
 
 # 初始化 Flask 應用
 app = Flask(__name__, static_folder='templates')
-socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True, async_mode='eventlet', ping_timeout=120, ping_interval=30)
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True, async_mode='eventlet', ping_timeout=180, ping_interval=45)
 
 # 配置日誌
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # 根據 Colab ngrok URL 更新
-COLAB_URL = "https://77279c3e3907.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
+COLAB_URL = "https://22431c3fa21c.ngrok-free.app/predict_colab"  # 請確認此 URL 有效
 
 # 靜態路由
 @app.route('/')
@@ -73,12 +73,12 @@ async def handle_video(data):
     user = data.get('user', 'Anonymous')
     logger.info(f"Received video from user: {user}")
     try:
-        with Timeout(120, False):
+        with Timeout(180, False):  # 增加超時為 180 秒
             video_data = data['video']
             files = {'video': ('video.mp4', base64.b64decode(video_data), 'video/mp4')}
             logger.info(f"Sending request to Colab: {COLAB_URL}")
             async with aiohttp.ClientSession() as session:
-                async with session.post(COLAB_URL, data=files, timeout=aiohttp.ClientTimeout(total=120)) as response:
+                async with session.post(COLAB_URL, data=files, timeout=aiohttp.ClientTimeout(total=180)) as response:
                     response.raise_for_status()
                     result = await response.json()
                     logger.info(f"Translation result: {result}")
@@ -100,8 +100,7 @@ async def handle_live_translation(data):
     try:
         with Timeout(30, False):
             landmarks = json.loads(data['data'])
-            # 這裡應將 landmarks 發送到 Colab API 進行即時翻譯
-            # 模擬回應（需替換為實際 API 調用）
+            # 模擬回應（需替換為實際 Colab API 調用）
             result = {'gesture': 'Test Live Gesture', 'error': None}
             logger.info(f"Live translation result: {result}")
             emit('translation', {'gesture': result['gesture'], 'user': user, 'error': result.get('error')}, broadcast=True)
