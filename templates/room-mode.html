@@ -214,7 +214,7 @@
           formData.append('video', blob, 'recording.mp4');
           result.innerText = "⏳ 正在上传并翻译...";
           try {
-            const response = await fetch(`${COLAB_URL}/predict_colab`, {
+            const response = await fetch(`${COLAB_URL}/predict`, {
               method: 'POST',
               body: formData,
               mode: 'cors'
