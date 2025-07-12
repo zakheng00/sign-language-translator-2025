@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "wss://716e544c49a9.ngrok-free.app/predict_colab"  # 更新為 Colab 的最新 WebSocket URL
+COLAB_URL = "https://d83bc9d55388.ngrok-free.app/predict_colab"  # 更新為 Colab 的最新 WebSocket URL
 
 # --- 路由 ---
 @app.route('/')

@@ -1,50 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>手语翻译系统 - Room Mode</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Language Chat Room</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-</head>
-<body class="bg-gray-100 p-4">
-  <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">手语翻译系统 ✌️ - Room Mode</h1>
-    <div class="text-center mb-4">
-      <p>Click to join a room (max 2 users per room).</p>
-    </div>
-    <div id="roomsList" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"></div>
-    <div id="currentRoom" class="text-center mb-4"></div>
-    <div id="roomError" class="text-red-500 text-center hidden"></div>
-
-    <!-- Chat Box and Input -->
-    <div id="chatContainer" class="mb-4 hidden">
-      <div id="chatBox" class="h-64 border p-2 mb-4 overflow-y-auto"></div>
-      <div class="flex gap-2">
-        <input id="chatInput" class="border p-2 w-full" placeholder="Type a message..." />
-        <button id="sendBtn" class="bg-primary text-white px-4 py-2 rounded">Send</button>
-      </div>
-    </div>
-
-    <!-- Sign Language Section -->
-    <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
-    <div class="flex justify-between items-center mb-4">
-      <button id="startBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Recording</button>
-      <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop</button>
-      <button id="translateBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Translate</button>
-    </div>
-    <div id="result" class="mt-4 text-center text-lg font-medium"></div>
-  </div>
-
   <script type="module">
-    const COLAB_URL = "wss://e7cdb6ca0a0d.ngrok-free.app/predict_colab"; // 根據 Colab 最新 URL 更新，請確保與 ngrok 輸出一致
+    // 根據 Render URL 更新
+    const COLAB_URL = "https://sign-language-translator-2025.onrender.com";
 
-    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { primary: '#3B82F6', secondary: '#60A5FA' }
+        }
+      }
+    };
 
     document.addEventListener('DOMContentLoaded', () => {
-      const roomsList = document.getElementById('roomsList');
+      const roomSelect = document.getElementById('roomSelect');
+      const joinRoomBtn = document.getElementById('joinRoomBtn');
       const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
       const chatBox = document.getElementById('chatBox');
       const chatInput = document.getElementById('chatInput');
@@ -53,206 +30,123 @@
       const startBtn = document.getElementById('startBtn');
       const stopBtn = document.getElementById('stopBtn');
       const translateBtn = document.getElementById('translateBtn');
-      const result = document.getElementById('result');
+      const userInput = document.getElementById('userInput');
       let mediaRecorder;
       let recordedBlobs = [];
-      let socket = null;
-      let heartbeatInterval = null;
-      const MAX_USERS = 2;
-      const rooms = ['room1', 'room2'];
+      let currentRoom = null;
+      let socket = io(COLAB_URL, { path: '/socket.io' });
 
-      function showError(message) {
-        roomError.textContent = message;
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
-      }
+      // 連線事件
+      socket.on('connect', () => {
+        console.log('Connected to server');
+      });
 
-      function addChatMessage(message, isSelf) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-2 ${isSelf ? 'text-right' : 'text-left'}`;
-        messageDiv.innerHTML = `<span class="inline-block p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-gray-200'}">${message}</span>`;
-        chatBox.appendChild(messageDiv);
+      socket.on('message', (data) => {
+        chatBox.innerHTML += `<p class="text-gray-500">${data.msg}</p>`;
         chatBox.scrollTop = chatBox.scrollHeight;
-      }
+      });
 
-      function createRoomCard(roomId, userCount = 0) {
-        const full = userCount >= MAX_USERS;
-        const btnText = full ? 'Room Full' : 'Join Room';
-        const btnClass = full ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-secondary';
-        const card = document.createElement('div');
-        card.className = 'p-4 border rounded shadow';
-        card.innerHTML = `
-          <h2 class="text-xl font-bold mb-2">Room ${roomId}</h2>
-          <p class="mb-2">Users: ${userCount} / ${MAX_USERS}</p>
-          <button ${full ? 'disabled' : ''} class="text-white px-4 py-2 rounded ${btnClass} join-btn" data-room-id="${roomId}">${btnText}</button>
-        `;
-        roomsList.appendChild(card);
-      }
+      socket.on('translation', (data) => {
+        chatBox.innerHTML += `<p><strong>${data.user}:</strong> ${data.gesture || data.error}</p>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+      });
 
-      // 自動生成兩個房間
-      rooms.forEach(roomId => createRoomCard(roomId));
+      socket.on('room_users', (data) => {
+        currentRoomDiv.innerText = `Current Room: ${currentRoom} (Users: ${data.users})`;
+      });
 
-      async function joinRoom(roomId, attempt = 1) {
-        if (attempt > 3) {
-          showError('❌ 无法连接到服务器，尝试已达上限。请检查网络或重新运行Colab。');
-          return;
-        }
-        if (!roomId || typeof roomId !== 'string') {
-          showError('❗ Room ID is invalid.');
-          return;
-        }
-        currentRoomDiv.textContent = `📶 Attempting to join: ${roomId} (Attempt ${attempt}/3)...`;
-        try {
-          socket = io(COLAB_URL, { 
-            path: '/socket.io',
-            reconnection: true, 
-            reconnectionAttempts: 5, 
-            reconnectionDelay: 1000, 
-            reconnectionDelayMax: 5000, 
-            timeout: 10000,
-            transports: ['websocket', 'polling'],
-            forceNew: true // 確保創建新連線
-          });
-          socket.emit('join_room', { room: roomId });
-          socket.on('connect', () => {
-            console.log('Socket.IO connected, joined room:', roomId);
-            currentRoomDiv.textContent = `📶 Current Room: ${roomId} (Connected)`;
-            roomError.classList.add('hidden');
-            chatContainer.classList.remove('hidden');
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            heartbeatInterval = setInterval(() => {
-              if (socket.connected) socket.emit('ping', { room: roomId });
-            }, 10000);
-            socket.on('pong', () => console.log('Heartbeat received'));
-          });
-          socket.on('message', (data) => addChatMessage(data.msg, data.sid === socket.id));
-          socket.on('prediction', (data) => {
-            result.innerText = `✅ 翻译结果: ${data.gesture ?? data.error ?? '未知结果'}`;
-            addChatMessage(data.gesture ?? data.error ?? '未知结果', data.sid === socket.id);
-            if (data.user_count !== undefined) {
-              updateRoomUserCount(roomId, data.user_count);
-            }
-          });
-          socket.on('connect_error', (error) => {
-            console.error('Socket.IO connection error:', error);
-            showError(`⚠️ 连接到服务器失败: ${error.message}. 正在重试 (${attempt}/3)...`);
-            setTimeout(() => joinRoom(roomId, attempt + 1), 1000 * attempt);
-          });
-          socket.on('error', (error) => {
-            console.error('Socket.IO error:', error);
-            showError(`⚠️ Socket 错误: ${error.message}.`);
-          });
-          socket.on('disconnect', (reason) => {
-            console.log('Socket.IO disconnected, reason:', reason);
-            currentRoomDiv.textContent = `📶 Disconnected from ${roomId}. Reconnecting...`;
-            showError(`⚠️ Disconnected: ${reason}. Attempting to reconnect automatically.`);
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-          });
-        } catch (err) {
-          console.error('Join room error:', err);
-          showError(`⚠️ 网络或服务器错误: ${err.message} (Attempt ${attempt}/3)`);
-          setTimeout(() => joinRoom(roomId, attempt + 1), 1000 * attempt);
-        }
-      }
-
-      function updateRoomUserCount(roomId, userCount) {
-        const cards = roomsList.getElementsByClassName('join-btn');
-        for (let card of cards) {
-          if (card.getAttribute('data-room-id') === roomId) {
-            const parent = card.parentElement;
-            const userCountElement = parent.getElementsByTagName('p')[0];
-            userCountElement.textContent = `Users: ${userCount} / ${MAX_USERS}`;
-            if (userCount >= MAX_USERS) {
-              card.disabled = true;
-              card.className = 'text-white px-4 py-2 rounded bg-gray-400 cursor-not-allowed';
-              card.textContent = 'Room Full';
-            } else {
-              card.disabled = false;
-              card.className = 'text-white px-4 py-2 rounded bg-primary hover:bg-secondary';
-              card.textContent = 'Join Room';
-            }
-            break;
-          }
-        }
-      }
-
-      function sendMessage() {
-        const msg = chatInput.value.trim();
-        if (!msg || !socket) return;
-        socket.emit('message', { room: currentRoomDiv.textContent.split(': ')[1], msg });
-        chatInput.value = '';
-      }
-
-      async function initCamera() {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          preview.srcObject = stream;
-          return stream;
-        } catch (err) {
-          console.error('Failed to start webcam:', err);
-          result.innerText = `❌ 无法访问摄像头: ${err.message}`;
-          alert('请允许摄像头访问以继续！');
-        }
-      }
-
-      startBtn.onclick = async () => {
-        recordedBlobs = [];
-        const stream = await initCamera();
-        const mimeTypes = ["video/mp4", "video/webm"];
-        let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "video/webm";
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedBlobs.push(event.data);
-        };
-
-        mediaRecorder.start(1000); // 每 1 秒觸發一次 ondataavailable
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        translateBtn.disabled = true;
-        result.innerText = "⏳ 正在录制...";
+      // 加入房間
+      joinRoomBtn.onclick = () => {
+        currentRoom = roomSelect.value;
+        socket.emit('join_room', { room: currentRoom });
+        chatBox.innerHTML = `<p>Welcome to room ${currentRoom}!</p>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
       };
 
+      // 開始錄製
+      startBtn.onclick = () => {
+        if (!currentRoom) {
+          alert('Please join a room first!');
+          return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          .then(stream => {
+            preview.srcObject = stream;
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => recordedBlobs.push(event.data);
+            mediaRecorder.start();
+            console.log('Recording started');
+          });
+      };
+
+      // 停止錄製
       stopBtn.onclick = () => {
-        if (mediaRecorder && socket) {
+        if (mediaRecorder) {
           mediaRecorder.stop();
-          startBtn.disabled = false;
-          stopBtn.disabled = true;
-          translateBtn.disabled = false;
-          result.innerText = "✅ 录制完成，准备翻译...";
-          const blob = new Blob(recordedBlobs, { type: mediaRecorder.mimeType });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result.split(',')[1]; // 獲取 base64 數據
-            socket.emit('video_frame', base64data); // 發送到 Colab
-          };
-          reader.readAsDataURL(blob);
+          preview.srcObject.getTracks().forEach(track => track.stop());
+          console.log('Recording stopped');
         }
       };
 
+      // 發送翻譯
       translateBtn.onclick = () => {
-        if (socket) {
-          socket.emit('submit_sign', { room: currentRoomDiv.textContent.split(': ')[1] });
-          result.innerText = "⏳ 正在翻译，请稍候...";
-        } else {
-          result.innerText = "❌ 请先加入房间！";
+        if (!currentRoom || !recordedBlobs.length) {
+          alert('Please join a room and record a video first!');
+          return;
         }
+        const blob = new Blob(recordedBlobs, { type: 'video/mp4' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          socket.emit('send_video', {
+            video: reader.result,
+            room: currentRoom,
+            user: userInput.value || 'Anonymous'
+          });
+        };
+        reader.readAsDataURL(blob);
+        recordedBlobs = [];
       };
 
-      roomsList.addEventListener('click', (event) => {
-        const button = event.target.closest('.join-btn');
-        if (button && !button.disabled) {
-          const roomId = button.getAttribute('data-room-id');
-          joinRoom(roomId);
+      // 模擬假聊天
+      sendBtn.onclick = () => {
+        if (!currentRoom || !chatInput.value) {
+          alert('Please join a room and enter a message!');
+          return;
         }
-      });
-      sendBtn.addEventListener('click', sendMessage);
-      initCamera(); // 初始化摄像头
-      window.addEventListener('beforeunload', () => {
-        if (socket) socket.disconnect();
-        if (preview.srcObject) preview.srcObject.getTracks().forEach(track => track.stop());
-      });
+        const msg = chatInput.value;
+        chatBox.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+        chatInput.value = '';
+        setTimeout(() => {
+          chatBox.innerHTML += `<p><strong>Other:</strong> ${msg} (translated)</p>`;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }, 1000);
+      };
     });
   </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-4 text-center">Sign Language Chat</h1>
+    <div class="mb-4">
+      <select id="roomSelect" class="border p-2 rounded w-full">
+        <option value="room1">Room 1</option>
+        <option value="room2">Room 2</option>
+        <option value="room3">Room 3</option>
+      </select>
+      <button id="joinRoomBtn" class="mt-2 bg-primary text-white p-2 rounded w-full">Join Room</button>
+    </div>
+    <div id="currentRoom" class="mb-4 text-center"></div>
+    <div id="chatContainer" class="mb-4 h-40 overflow-y-auto border p-2 bg-gray-50">
+      <div id="chatBox"></div>
+    </div>
+    <input id="userInput" type="text" placeholder="Your name" class="border p-2 rounded w-full mb-2">
+    <input id="chatInput" type="text" placeholder="Type a message" class="border p-2 rounded w-full mb-2">
+    <button id="sendBtn" class="bg-secondary text-white p-2 rounded w-full mb-2">Send Message</button>
+    <video id="preview" width="100%" controls class="mb-2 hidden"></video>
+    <button id="startBtn" class="bg-green-500 text-white p-2 rounded w-full mb-2">Start Recording</button>
+    <button id="stopBtn" class="bg-red-500 text-white p-2 rounded w-full mb-2">Stop Recording</button>
+    <button id="translateBtn" class="bg-primary text-white p-2 rounded w-full">Translate Sign</button>
+  </div>
 </body>
 </html>
