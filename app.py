@@ -9,14 +9,14 @@ from eventlet import Timeout
 
 # 初始化 Flask 應用
 app = Flask(__name__, static_folder='templates')
-socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True, async_mode='eventlet', ping_timeout=60, ping_interval=25)
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True, async_mode='eventlet', ping_timeout=120, ping_interval=30)
 
 # 配置日誌
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # 根據 Colab ngrok URL 更新
-COLAB_URL = "https://77279c3e3907.ngrok-free.app/predict"  # 確保與 Colab 一致
+COLAB_URL = "https://77279c3e3907.ngrok-free.app/predict"  # 請確保這是有效的 ngrok URL
 
 # 靜態路由
 @app.route('/')
@@ -31,6 +31,10 @@ def live_translation():
 def room_mode():
     return send_from_directory('templates', 'room-mode.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 # HTTP predict 路由
 @app.route('/predict', methods=['POST'])
 async def predict():
@@ -38,7 +42,7 @@ async def predict():
         return jsonify({'error': 'Missing video file'}), 400
     video_file = request.files['video']
     try:
-        with Timeout(600, False):  # 設置 600 秒超時
+        with Timeout(600, False):
             files = {'video': (video_file.filename, video_file, 'video/mp4')}
             logger.info(f"Sending request to Colab: {COLAB_URL}")
             async with aiohttp.ClientSession() as session:
@@ -68,12 +72,12 @@ async def handle_video(data):
     user = data.get('user', 'Anonymous')
     logger.info(f"Received video from user: {user}")
     try:
-        with Timeout(60, False):  # 設置 60 秒超時
+        with Timeout(120, False):  # 增加超時為 120 秒
             video_data = data['video']
-            files = {'video': ('video.mp4', base64.b64decode(video_data.split(',')[1]), 'video/mp4')}
+            files = {'video': ('video.mp4', base64.b64decode(video_data), 'video/mp4')}
             logger.info(f"Sending request to Colab: {COLAB_URL}")
             async with aiohttp.ClientSession() as session:
-                async with session.post(COLAB_URL, data=files, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                async with session.post(COLAB_URL, data=files, timeout=aiohttp.ClientTimeout(total=120)) as response:
                     response.raise_for_status()
                     result = await response.json()
                     logger.info(f"Translation result: {result}")
