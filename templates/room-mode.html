@@ -33,7 +33,8 @@
       const userInput = document.getElementById('userInput');
       let mediaRecorder;
       let recordedBlobs = [];
-      let currentRoom = "Default Room"; // 假定默認房間，不需真實加入
+      let stream; // 儲存攝像頭流
+      let currentRoom = "Default Room";
       let socket = io(COLAB_URL, { path: '/socket.io' });
 
       // 連線事件
@@ -62,23 +63,23 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       };
 
-      // 開始錄製
+      // 打開攝像頭並顯示畫面
       startBtn.onclick = () => {
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-          .then(stream => {
-            preview.srcObject = stream;
-            mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => recordedBlobs.push(event.data);
-            mediaRecorder.start();
-            console.log('Recording started');
-          });
+        if (!stream) {
+          navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(s => {
+              stream = s;
+              preview.srcObject = stream;
+              console.log('Camera started');
+            })
+            .catch(err => console.error('Error accessing camera:', err));
+        }
       };
 
-      // 停止錄製
+      // 停止錄製（不關閉攝像頭）
       stopBtn.onclick = () => {
-        if (mediaRecorder) {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
-          preview.srcObject.getTracks().forEach(track => track.stop());
           console.log('Recording stopped');
         }
       };
@@ -116,6 +117,24 @@
           chatBox.scrollTop = chatBox.scrollHeight;
         }, 1000);
       };
+
+      // 開始錄製
+      startBtn.addEventListener('click', () => {
+        if (stream && !mediaRecorder) {
+          mediaRecorder = new MediaRecorder(stream);
+          recordedBlobs = [];
+          mediaRecorder.ondataavailable = event => recordedBlobs.push(event.data);
+          mediaRecorder.start(1000); // 每 1 秒收集一段數據
+          console.log('Recording started');
+        }
+      });
+
+      // 確保錄製停止時不影響畫面
+      if (mediaRecorder) {
+        mediaRecorder.onstop = () => {
+          console.log('Recorder stopped');
+        };
+      }
     });
   </script>
 </head>
@@ -137,8 +156,8 @@
     <input id="userInput" type="text" placeholder="Your name" class="border p-2 rounded w-full mb-2">
     <input id="chatInput" type="text" placeholder="Type a message" class="border p-2 rounded w-full mb-2">
     <button id="sendBtn" class="bg-secondary text-white p-2 rounded w-full mb-2">Send Message</button>
-    <video id="preview" width="100%" controls class="mb-2 hidden"></video>
-    <button id="startBtn" class="bg-green-500 text-white p-2 rounded w-full mb-2">Start Recording</button>
+    <video id="preview" width="100%" controls autoplay class="mb-2"></video> <!-- 移除 hidden 類，添加 autoplay -->
+    <button id="startBtn" class="bg-green-500 text-white p-2 rounded w-full mb-2">Start Camera/Recording</button>
     <button id="stopBtn" class="bg-red-500 text-white p-2 rounded w-full mb-2">Stop Recording</button>
     <button id="translateBtn" class="bg-primary text-white p-2 rounded w-full">Translate Sign</button>
   </div>
