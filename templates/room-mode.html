@@ -122,7 +122,7 @@
 
       socket.on('translation', (data) => {
         const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
-        addChatMessage(message, false, true); // 翻譯消息以綠色背景顯示
+        addChatMessage(message, data.sid === socket.id, true); // 根據 sid 判斷是否為自己
         result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
       });
 
@@ -217,8 +217,8 @@
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const resultData = await response.json();
             const translatedMessage = `User: ${resultData.gesture || resultData.error || '未知结果'}`;
-            socket.emit('translation', { gesture: resultData.gesture, user: 'User', error: resultData.error });
-            addChatMessage(translatedMessage, false, true); // 模擬聊天，顯示翻譯結果
+            socket.emit('translation', { gesture: resultData.gesture, user: 'User', error: resultData.error, sid: socket.id });
+            // 移除手動 addChatMessage，依賴 socket.on('translation')
           } catch (error) {
             console.error('Upload failed:', error);
             result.innerText = `❌ 上传失败: ${error.message}`;
