@@ -65,6 +65,7 @@
         reconnectionDelayMax: 5000,
         timeout: 45000
       });
+      let processedTranslations = new Set(); // 用於防止重複顯示
 
       // 激活 Chatbox 和 Input
       chatContainer.style.display = 'block'; // 確保聊天框可見
@@ -121,9 +122,13 @@
       });
 
       socket.on('translation', (data) => {
-        const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
-        addChatMessage(message, data.sid === socket.id, true); // 根據 sid 判斷是否為自己
-        result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
+        const key = `${data.user}-${data.gesture || data.error}`; // 唯一標識符
+        if (!processedTranslations.has(key)) {
+          processedTranslations.add(key);
+          const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
+          addChatMessage(message, data.sid === socket.id, true); // 根據 sid 判斷是否為自己
+          result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
+        }
       });
 
       socket.on('connect_error', (error) => {
