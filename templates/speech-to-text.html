@@ -1,135 +1,116 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Speech to Text System</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech to Text - 語音轉文字</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        /* 樣式保持不變 */
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        #result { margin-top: 20px; font-size: 18px; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
 </head>
-<body class="bg-gray-100 p-4">
-  <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">Speech to Text System 🎙️</h1>
-    <div class="text-center mb-4">
-      <p>Click to start recording and convert speech to text.</p>
-    </div>
-    <div id="roomError" class="text-red-500 text-center hidden"></div>
+<body>
+    <h1>Speech to Text - 語音轉文字</h1>
+    <button id="startBtn">開始錄音</button>
+    <button id="stopBtn" disabled>停止錄音</button>
+    <button id="uploadBtn" disabled>轉換為文字</button>
+    <div id="result">請點擊“開始錄音”以開始。</div>
 
-    <!-- Audio Section -->
-    <video id="preview" class="w-full rounded mb-4 hidden" autoplay muted></video>
-    <div class="flex justify-between items-center mb-4">
-      <button id="startRecordBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
-      <button id="stopRecordBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Recording</button>
-      <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Convert to Text</button>
-    </div>
-    <div id="result" class="mt-4 text-center text-lg font-medium"></div>
-  </div>
+    <script type="module">
+        const COLAB_URL = "https://4fe696e97fec.ngrok-free.app"; // 指向 Colab 的 ngrok URL，請根據最新 URL 更新
 
-  <script type="module">
-    const COLAB_URL = "https://4fe696e97fec.ngrok-free.app/speech_to_text"; 
-    tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
+        document.addEventListener('DOMContentLoaded', () => {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const result = document.getElementById('result');
+            let stream;
+            let mediaRecorder;
+            let recordedBlobs = [];
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const roomError = document.getElementById('roomError');
-      const preview = document.getElementById('preview');
-      const startRecordBtn = document.getElementById('startRecordBtn');
-      const stopRecordBtn = document.getElementById('stopRecordBtn');
-      const uploadBtn = document.getElementById('uploadBtn');
-      const result = document.getElementById('result');
-      let stream;
-      let mediaRecorder;
-      let recordedBlobs = [];
-
-      function showError(message) {
-        roomError.textContent = message;
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
-      }
-
-      async function initMicrophone() {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          preview.srcObject = stream;
-          console.log('Microphone started');
-        } catch (err) {
-          console.error('Failed to start microphone:', err);
-          result.innerText = `❌ 无法访问麦克风: ${err.message}`;
-          alert('请允许麦克风访问以继续！');
-        }
-      }
-
-      startRecordBtn.onclick = () => {
-        if (!stream) {
-          initMicrophone().then(() => {
-            if (stream && !mediaRecorder) {
-              recordedBlobs = [];
-              mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-              mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) recordedBlobs.push(event.data);
-              };
-              mediaRecorder.start(1000);
-              startRecordBtn.disabled = true;
-              stopRecordBtn.disabled = false;
-              uploadBtn.disabled = true;
-              result.innerText = "⏳ 正在录制...";
-              console.log('Recording started');
+            // 訪問麥克風
+            async function startMicrophone() {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    result.innerText = "❌ 無法訪問麥克風！";
+                }
             }
-          }).catch(err => {
-            showError(`❌ 录制初始化失败: ${err.message}`);
-          });
-        } else if (!mediaRecorder) {
-          recordedBlobs = [];
-          mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) recordedBlobs.push(event.data);
-          };
-          mediaRecorder.start(1000);
-          startRecordBtn.disabled = true;
-          stopRecordBtn.disabled = false;
-          uploadBtn.disabled = true;
-          result.innerText = "⏳ 正在录制...";
-          console.log('Recording started');
-        }
-      };
 
-      stopRecordBtn.onclick = () => {
-        if (mediaRecorder) {
-          mediaRecorder.stop();
-          startRecordBtn.disabled = false;
-          stopRecordBtn.disabled = true;
-          uploadBtn.disabled = false;
-          result.innerText = "✅ 录制完成，准备转换...";
-          console.log('Recording stopped, blobs length:', recordedBlobs.length);
-        }
-      };
+            // 開始錄音
+            startBtn.onclick = () => {
+                startMicrophone();
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                mediaRecorder.ondataavailable = event => recordedBlobs.push(event.data);
+                mediaRecorder.onstop = () => {
+                    stopBtn.disabled = true;
+                    uploadBtn.disabled = false;
+                };
+                mediaRecorder.start(1000); // 每 1 秒生成一個 blob
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                result.innerText = "⏺ 錄音中...";
+            };
 
-      uploadBtn.onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          formData.append('audio', blob, 'recording.webm');
-          result.innerText = "⏳ 正在转换语音为文本...";
-          try {
-            const response = await fetch(`${COLAB_URL}/speech_to_text`, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors'
+            // 停止錄音
+            stopBtn.onclick = () => {
+                mediaRecorder.stop();
+                stream.getTracks().forEach(track => track.stop());
+                startBtn.disabled = false;
+            };
+
+            // 轉換為文字
+            uploadBtn.onclick = async () => {
+                if (recordedBlobs.length) {
+                    const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
+                    const formData = new FormData();
+                    formData.append('audio', blob, 'recording.webm');
+                    result.innerText = "⏳ 正在转换语音为文本...";
+                    try {
+                        const response = await fetch(`${COLAB_URL}/speech_to_text`, {
+                            method: 'POST',
+                            body: formData,
+                            mode: 'cors'
+                        });
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const resultData = await response.json();
+                        result.innerText = `✅ 轉換結果: ${resultData.text || resultData.error || '未知结果'}`;
+                    } catch (error) {
+                        console.error('Conversion failed:', error);
+                        result.innerText = `❌ 转换失败: ${error.message}`;
+                    }
+                } else {
+                    result.innerText = "❌ 请先录制音频！";
+                }
+            };
+
+            // Socket.IO 連線（可選，若需要實時通信）
+            let socket = io(COLAB_URL, {
+                path: '/socket.io',
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 15,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 45000
             });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const resultData = await response.json();
-            result.innerText = `✅ 转换结果: ${resultData.text || '无法识别'}`;
-          } catch (error) {
-            console.error('Conversion failed:', error);
-            result.innerText = `❌ 转换失败: ${error.message}`;
-          }
-        } else {
-          result.innerText = "❌ 请先录制音频！";
-        }
-      };
 
-      window.addEventListener('beforeunload', () => {
-        if (stream) stream.getTracks().forEach(track => track.stop());
-      });
-    });
-  </script>
+            socket.on('connect', () => {
+                console.log('Connected to server');
+            });
+
+            socket.on('translation', (data) => {
+                result.innerText = `✅ ${data.user}: ${data.text || data.error || '未知结果'}`;
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+            });
+        });
+    </script>
 </body>
 </html>
