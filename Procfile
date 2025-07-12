@@ -1,1 +1,1 @@
-gunicorn -w 1 -t 120 -k eventlet --bind 0.0.0.0:5000 app:socketio
+gunicorn -w 1 -t 300 -k eventlet --bind 0.0.0.0:5000 app:socketio
