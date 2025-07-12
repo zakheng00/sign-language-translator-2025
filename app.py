@@ -14,11 +14,8 @@ from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={
-    r"/predict": {"origins": "https://sign-language-translator-2025.onrender.com"},
-    r"/speech_to_text": {"origins": "https://sign-language-translator-2025.onrender.com"}
-})  # 精確限制 CORS 來源
-socketio = SocketIO(app, async_mode='eventlet', ping_timeout=20, ping_interval=25, cors_allowed_origins="https://sign-language-translator-2025.onrender.com") # 限制 Socket.IO 來源
+CORS(app)  # 啟用 CORS，允許所有來源（可根據需要限制）
+socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -27,7 +24,6 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # Colab API 端點 (替換為實際 NGROK URL)
 COLAB_URL = "https://4fe696e97fec.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
-COLAB_STT_URL = "https://4fe696e97fec.ngrok-free.app/speech_to_text"  # 語音轉文字端點
 
 # --- 路由 ---
 @app.route('/')
@@ -46,10 +42,13 @@ def room_mode():
 def speech_to_text():
     return send_from_directory('templates', 'speech-to-text.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204  # 忽略 favicon 請求
+
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'video' not in request.files:
-        logger.error("Missing video file in request")
         return jsonify({'error': 'Missing video file'}), 400
     video_file = request.files['video']
     try:
@@ -61,14 +60,12 @@ def predict():
         logger.info(f"Received prediction from Colab: {result}")
         return jsonify(result)
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab: {e}")
+        logger.error(f"Failed to connect to Colab for prediction: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
-# --- 語音轉文字路由 (新增，指定唯一端點名稱) ---
-@app.route('/speech_to_text', methods=['POST'], endpoint='stt')
+@app.route('/speech_to_text', methods=['POST'])
 def speech_to_text():
     if 'audio' not in request.files:
-        logger.error("Missing audio file in request")
         return jsonify({'error': 'Missing audio file'}), 400
     audio_file = request.files['audio']
     try:
