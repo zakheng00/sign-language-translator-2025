@@ -13,13 +13,11 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
-app = Flask(__name__)
-CORS(app, resources={
-    r"/predict": {"origins": "https://sign-language-translator-2025.onrender.com"},
-    r"/speech_to_text": {"origins": "https://sign-language-translator-2025.onrender.com"}
-})
+app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app)  # 啟用 CORS，允許所有來源（可根據需要限制）
 socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
+
 
 # 設置日誌
 logger = logging.getLogger(__name__)
