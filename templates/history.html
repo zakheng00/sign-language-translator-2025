@@ -20,11 +20,9 @@
       const historyList = document.getElementById('historyList');
 
       async function fetchHistory() {
-        try {
-          const response = await fetch(HISTORY_ENDPOINT, {
-            method: 'GET',
-            mode: 'cors',
-          });
+    const response = await fetch(HISTORY_ENDPOINT, { method: 'GET', mode: 'cors' });
+    const history = await response.json();
+  }
 
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const history = await response.json();
