@@ -19,10 +19,13 @@
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
 
-      async function fetchHistory() {
-    const response = await fetch(HISTORY_ENDPOINT, { method: 'GET', mode: 'cors' });
-    const history = await response.json();
-  }
+    async function fetchHistory() {
+        try {
+          const response = await fetch(HISTORY_ENDPOINT, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'include'
+          });
 
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const history = await response.json();
