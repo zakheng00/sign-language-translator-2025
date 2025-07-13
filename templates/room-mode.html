@@ -318,11 +318,10 @@ document.getElementById('uploadBtn').onclick = async () => {
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
       }
       const resultData = await response.json();
-      console.log('Server response at upload:', resultData); // 診斷回應
-      if (!resultData.text && !resultData.gesture && !resultData.error) {
-        console.warn('No valid data in response:', resultData);
-        result.innerText = `❌ 服务器未返回有效结果`;
-        return;
+      console.log('Server response at upload:', resultData);
+      if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
+        console.warn('No valid speech data, keeping previous result if available');
+        return; // 避免覆蓋先前結果
       }
       const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
       result.innerText = `✅ ${translatedMessage}`;
@@ -344,13 +343,17 @@ document.getElementById('uploadBtn').onclick = async () => {
 };
 
 socket.on('translation', (data) => {
-  const key = `${data.user}-${data.gesture || data.text || data.error}`;
+  console.log('Translation event received:', data);
+  const key = `${data.user}-${data.gesture || data.text || data.error}-${data.timestamp || ''}`;
   if (!processedTranslations.has(key)) {
     processedTranslations.add(key);
-    console.log('Translation data received:', data); // 添加日誌以檢查數據
     const message = `${data.user}: ${data.gesture || data.text || data.error || '未知结果'}`;
     addChatMessage(message, data.sid === socket.id, true);
-    result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
+    if (!data.text && !data.gesture && !data.error && !isSignLanguageMode) {
+      console.warn('No valid translation data for speech, preserving previous UI state');
+    } else {
+      result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
+    }
   }
 });
 
