@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Speech to Text - 語音轉文字</title>
+    <title>Speech to Text - Audio Transcription</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <style>
@@ -12,22 +12,22 @@
 </head>
 <body class="bg-gray-100 p-4">
     <div class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md">
-        <h1 class="text-2xl font-bold mb-4">语音翻译系统 🎙️ - Speech to Text Mode</h1>
+        <h1 class="text-2xl font-bold mb-4">🎤 Speech to Text Transcription</h1>
         <div class="text-center mb-4">
-            <p>Record audio and translate to text.</p>
+            <p>Record your audio and get the text transcription.</p>
         </div>
         <audio id="preview" class="w-full rounded mb-4" controls></audio>
         <div class="flex justify-between items-center mb-4">
-            <button id="startBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">開始錄音</button>
-            <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>停止錄音</button>
-            <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>轉換為文字</button>
+            <button id="startBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
+            <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Recording</button>
+            <button id="uploadBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Transcribe</button>
         </div>
-        <div id="result" class="mt-4 text-center text-lg font-medium">請點擊“開始錄音”以開始。</div>
+        <div id="result" class="mt-4 text-center text-lg font-medium">Click "Start Recording" to begin.</div>
     </div>
 
     <script type="module">
-        const COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app"; // 更新為最新 ngrok URL
-        const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`; // 明確定義 /speech_to_text 端點
+        const COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app"; // Update with latest ngrok URL
+        const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;
 
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('startBtn');
@@ -39,33 +39,31 @@
             let mediaRecorder;
             let recordedBlobs = [];
             let socket = io(COLAB_URL, {
-  path: '/socket.io',
-  transports: ['websocket', 'polling'],
-  reconnection: true,
-  reconnectionAttempts: 15,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  timeout: 45000,
-  cors: {
-    origin: "https://sign-language-translator-2025.onrender.com",
-    methods: ["GET", "POST"]
-  }
-});
+                path: '/socket.io',
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 15,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 45000,
+                cors: {
+                    origin: "https://sign-language-translator-2025.onrender.com",
+                    methods: ["GET", "POST"]
+                }
+            });
 
-            // 訪問麥克風
             async function startMicrophone() {
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     preview.srcObject = stream;
-                    console.log('Audio started');
+                    console.log('Microphone access granted');
                 } catch (error) {
-                    console.error('Error accessing microphone:', error);
-                    result.innerText = "❌ 無法訪問麥克風！";
-                    alert('請允許麥克風訪問以繼續！');
+                    console.error('Microphone access error:', error);
+                    result.innerText = "❌ Cannot access microphone!";
+                    alert('Please allow microphone access to continue.');
                 }
             }
 
-            // 開始錄音
             startBtn.onclick = () => {
                 startMicrophone().then(() => {
                     if (stream && !mediaRecorder) {
@@ -82,15 +80,13 @@
                         mediaRecorder.start(1000);
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
-                        result.innerText = "⏺ 錄音中...";
-                        console.log('Recording started');
+                        result.innerText = "⏺ Recording in progress...";
                     }
                 }).catch(err => {
-                    result.innerText = `❌ 錄制初始化失敗: ${err.message}`;
+                    result.innerText = `❌ Recording initialization failed: ${err.message}`;
                 });
             };
 
-            // 停止錄音
             stopBtn.onclick = () => {
                 if (mediaRecorder) {
                     mediaRecorder.stop();
@@ -99,13 +95,12 @@
                 }
             };
 
-            // 轉換為文字
             uploadBtn.onclick = async () => {
                 if (recordedBlobs.length) {
                     const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
                     const formData = new FormData();
                     formData.append('audio', blob, 'recording.webm');
-                    result.innerText = "⏳ 正在轉換語音為文字...";
+                    result.innerText = "⏳ Transcribing...";
                     try {
                         const response = await fetch(SPEECH_ENDPOINT, {
                             method: 'POST',
@@ -115,7 +110,7 @@
                         });
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const resultData = await response.json();
-                        result.innerText = `✅ 轉換結果: ${resultData.text || resultData.error || '未知結果'}`;
+                        result.innerText = `✅ Result: ${resultData.text || resultData.error || 'Unknown result'}`;
                         socket.emit('translation', {
                             text: resultData.text,
                             user: 'User',
@@ -123,35 +118,33 @@
                             sid: socket.id
                         });
                     } catch (error) {
-                        console.error('Conversion failed:', error);
-                        result.innerText = `❌ 轉換失敗: ${error.message}`;
+                        console.error('Transcription failed:', error);
+                        result.innerText = `❌ Transcription failed: ${error.message}`;
                     }
                 } else {
-                    result.innerText = "❌ 請先錄製音頻！";
+                    result.innerText = "❌ Please record audio first!";
                 }
             };
 
-            // Socket.IO 事件
             socket.on('connect', () => {
                 console.log('Connected to server');
-                result.innerText = '✅ 已連接到服務器';
+                result.innerText = '✅ Connected to server';
             });
 
             socket.on('translation', (data) => {
-                result.innerText = `✅ ${data.user}: ${data.text || data.error || '未知結果'}`;
+                result.innerText = `✅ ${data.user}: ${data.text || data.error || 'Unknown result'}`;
             });
 
             socket.on('connect_error', (error) => {
                 console.error('Connection error:', error);
-                result.innerText = `⚠️ 連接到服務器失敗: ${error.message}. 正在重試...`;
+                result.innerText = `⚠️ Connection failed: ${error.message}. Retrying...`;
             });
 
             socket.on('disconnect', () => {
                 console.log('Disconnected from server');
-                result.innerText = `⚠️ 已斷開連線. 嘗試自動重連...`;
+                result.innerText = `⚠️ Disconnected. Attempting to reconnect...`;
             });
 
-            // 清理資源
             window.addEventListener('beforeunload', () => {
                 if (socket) socket.disconnect();
                 if (stream) stream.getTracks().forEach(track => track.stop());
