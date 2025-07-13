@@ -44,6 +44,10 @@ def room_mode():
 def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
 
+@app.route('/history')
+def history():
+    return send_from_directory('templates', 'history.html')
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204  # 忽略 favicon 請求
