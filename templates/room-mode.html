@@ -315,13 +315,13 @@ document.getElementById('uploadBtn').onclick = async () => {
       });
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Server error response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
       }
       const resultData = await response.json();
-      console.log('Server response at upload:', resultData); // 診斷回應
-      if (!resultData.text && !resultData.gesture && !resultData.error) {
-        console.warn('No valid data in response:', resultData);
-        result.innerText = `❌ 服务器未返回有效结果`;
+      console.log('Server response at upload:', resultData);
+      if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
+        console.warn('No valid speech data, keeping previous result');
         return;
       }
       const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
