@@ -21,10 +21,13 @@
 
       async function fetchHistory() {
         try {
+          console.log(`Fetching from: ${HISTORY_ENDPOINT}`); // 診斷 URL
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
-            credentials: 'include' // 僅在需要認證時使用
+            // 暫時移除 credentials 以測試
+            // credentials: 'include'
           });
+          console.log(`Response status: ${response.status}`); // 診斷狀態
           if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
