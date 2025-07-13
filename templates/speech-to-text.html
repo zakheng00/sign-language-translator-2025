@@ -26,7 +26,7 @@
     </div>
 
     <script type="module">
-        const COLAB_URL = "https://d445f33aff59.ngrok-free.app"; // 更新為最新 ngrok URL
+        const COLAB_URL = "https://ec310d83f0fd.ngrok-free.app"; // 更新為最新 ngrok URL
         const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`; // 明確定義 /speech_to_text 端點
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -39,18 +39,18 @@
             let mediaRecorder;
             let recordedBlobs = [];
             let socket = io(COLAB_URL, {
-                path: '/socket.io',
-                transports: ['websocket', 'polling'],
-                reconnection: true,
-                reconnectionAttempts: 15,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000,
-                timeout: 45000,
-                cors: {
-                    origin: "https://sign-language-translator-2025.onrender.com",
-                    methods: ["GET", "POST"]
-                }
-            });
+  path: '/socket.io',
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionAttempts: 15,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 45000,
+  cors: {
+    origin: "https://sign-language-translator-2025.onrender.com",
+    methods: ["GET", "POST"]
+  }
+});
 
             // 訪問麥克風
             async function startMicrophone() {
