@@ -14,7 +14,13 @@ from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)  # 啟用 CORS，允許所有來源（可根據需要限制）
+CORS(app, resources={
+    r"/*": {
+        "origins": "https://sign-language-translator-2025.onrender.com",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "Cache-Control"],
+    }
+}, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
 
