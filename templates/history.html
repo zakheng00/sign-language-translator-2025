@@ -14,7 +14,7 @@
 
   <script type="module">
     const COLAB_URL = "https://47e31c67464a.ngrok-free.app"; // 根據您的 ngrok URL 更新
-    const HISTORY_ENDPOINT = `${COLAB_URL}/history`; // 修正為模板字符串
+    const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
@@ -23,10 +23,12 @@
         try {
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
-            mode: 'cors',
-            credentials: 'include'
+            credentials: 'include' // 僅在需要認證時使用
           });
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+          }
           const history = await response.json();
           historyList.innerHTML = ''; // 清空列表
           history.forEach(record => {
@@ -84,7 +86,7 @@
           });
         } catch (error) {
           console.error('Failed to fetch history:', error);
-          historyList.innerHTML = '<p class="text-red-500">Failed to load history. Check console for details.</p>';
+          historyList.innerHTML = `<p class="text-red-500">Failed to load history. Error: ${error.message}</p>`;
         }
       }
 
