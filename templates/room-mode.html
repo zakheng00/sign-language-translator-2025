@@ -248,14 +248,12 @@
             const response = await fetch(`${COLAB_URL}${endpoint}`, {
                 method: 'POST',
                 body: formData,
-                mode: 'no-cors' // 臨時設置
+                mode: 'no-cors' // 臨時使用 no-cors 繞過 CORS
             });
-            if (response.ok) {
-                // no-cors 模式下無法解析 JSON，使用其他方式處理響應（如果需要）
-                result.innerText = `✅ 上传成功，但响应不可访问（no-cors 模式）`;
-            } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            if (response.type === 'opaque' || !response.ok) {
+                throw new Error(`HTTP error! status: ${response.status || 0}`);
             }
+            result.innerText = `✅ 上传成功（no-cors 模式，响应不可访问）`;
         } catch (error) {
             console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
             result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
