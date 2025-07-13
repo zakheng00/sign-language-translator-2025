@@ -318,7 +318,12 @@ document.getElementById('uploadBtn').onclick = async () => {
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
       }
       const resultData = await response.json();
-      console.log('Server response:', resultData); // 添加日誌以檢查回應
+      console.log('Server response at upload:', resultData); // 診斷回應
+      if (!resultData.text && !resultData.gesture && !resultData.error) {
+        console.warn('No valid data in response:', resultData);
+        result.innerText = `❌ 服务器未返回有效结果`;
+        return;
+      }
       const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
       result.innerText = `✅ ${translatedMessage}`;
       socket.emit('translation', {
@@ -326,7 +331,8 @@ document.getElementById('uploadBtn').onclick = async () => {
         text: resultData.text,
         user: 'User',
         error: resultData.error,
-        sid: socket.id
+        sid: socket.id,
+        timestamp: Date.now()
       });
     } catch (error) {
       console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
