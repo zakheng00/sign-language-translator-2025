@@ -43,7 +43,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://d445f33aff59.ngrok-free.app"; // 指向 Colab 的 ngrok URL
+    const COLAB_URL = "https://1135a21e41ca.ngrok-free.app"; // 指向 Colab 的 ngrok URL
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -238,37 +238,32 @@
       };
 
       uploadBtn.onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
-          result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
-          try {
-            const endpoint = isSignLanguageMode ? '/predict_colab' : '/speech_to_text'; // 直接使用 Colab 端點
+    if (recordedBlobs.length) {
+        const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
+        const formData = new FormData();
+        formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
+        result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
+        try {
+            const endpoint = isSignLanguageMode ? '/predict_colab' : '/speech_to_text';
             const response = await fetch(`${COLAB_URL}${endpoint}`, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors'
+                method: 'POST',
+                body: formData,
+                mode: 'no-cors' // 臨時設置
             });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const resultData = await response.json();
-            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
-            socket.emit('translation', {
-              gesture: resultData.gesture,
-              text: resultData.text,
-              user: 'User',
-              error: resultData.error,
-              sid: socket.id
-            });
-          } catch (error) {
+            if (response.ok) {
+                // no-cors 模式下無法解析 JSON，使用其他方式處理響應（如果需要）
+                result.innerText = `✅ 上传成功，但响应不可访问（no-cors 模式）`;
+            } else {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+        } catch (error) {
             console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
             result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
-          }
-        } else {
-          result.innerText = "❌ 请先录制视频或音频！";
         }
-      };
-
+    } else {
+        result.innerText = "❌ 请先录制视频或音频！";
+    }
+};
       window.addEventListener('beforeunload', () => {
         if (socket) socket.disconnect();
         if (stream) stream.getTracks().forEach(track => track.stop());
