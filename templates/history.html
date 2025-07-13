@@ -26,8 +26,8 @@
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
             mode: 'cors',
-            credentials: 'include',
-            headers: { 'Cache-Control': 'no-cache' } // 避免緩存問題
+            credentials: 'include'
+            // 移除 Cache-Control 頭部，因為後端可能未允許
           });
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}, message: ${await response.text()}`);
