@@ -4,7 +4,6 @@ import logging
 import time
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
-from flask_talisman import Talisman
 import psutil
 import numpy as np
 import requests
