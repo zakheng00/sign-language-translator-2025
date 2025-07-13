@@ -9,17 +9,18 @@
 <body class="bg-gray-100 p-4">
   <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-2xl font-bold mb-4">Translation History</h1>
-    <div id="historyList" class="space-y-4">
-      <p class="text-red-500">History endpoint is currently disabled. Please check server configuration.</p>
-    </div>
+    <div id="historyList" class="space-y-4"></div>
+    <button id="saveBtn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Save Test Data</button>
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app"; // 更新為最新的 ngrok URL
+    const COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app"; // 更新為最新的 app.py ngrok URL
     const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
+      const saveBtn = document.getElementById('saveBtn');
 
       async function fetchHistory() {
         try {
@@ -56,9 +57,34 @@
         }
       }
 
-      // 由於 /history 端點已移除，暫時禁用自動刷新
-      // fetchHistory(); // 初始加載
-      // setInterval(fetchHistory, 30000); // 每 30 秒刷新
+      async function saveHistory() {
+        const testData = {
+          user: "test_user",
+          text: "test text",
+          gesture: 1,
+          timestamp: new Date().toISOString()
+        };
+        try {
+          const response = await fetch(SAVE_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(testData)
+          });
+          const text = await response.text();
+          console.log(`Save response status: ${response.status}`);
+          console.log(`Save response text:`, text);
+          if (!response.ok) {
+            throw new Error(`Save failed: ${text}`);
+          }
+          fetchHistory(); // 刷新歷史記錄
+        } catch (error) {
+          console.error('Failed to save history:', error);
+        }
+      }
+
+      saveBtn.addEventListener('click', saveHistory);
+      fetchHistory(); // 初始加載
+      setInterval(fetchHistory, 30000); // 每 30 秒刷新
     });
   </script>
 </body>
