@@ -3,311 +3,233 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Translation History - Comprehensive Debug</title>
+  <title>Translation History</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">Translation History - Debug Tool</h1>
+    <h1 class="text-3xl font-bold mb-6 text-gray-800">Translation History</h1>
     
-    <!-- URL 配置區域 -->
-    <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded">
-      <h3 class="font-semibold mb-2">URL Configuration</h3>
-      <div class="flex items-center space-x-2">
-        <input id="ngrokUrl" type="text" 
-               value="https://c40c31c255a3.ngrok-free.app" 
-               class="flex-1 px-3 py-2 border rounded"
-               placeholder="Enter your ngrok URL">
-        <button id="updateUrlBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Update URL</button>
-      </div>
+    <!-- Loading indicator -->
+    <div id="loadingIndicator" class="flex justify-center items-center py-8">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
     </div>
     
-    <!-- 測試區域 -->
-    <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded">
-      <h3 class="font-semibold mb-2">Connection Tests</h3>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <button id="testPingBtn" class="bg-green-500 text-white px-3 py-2 rounded text-sm">Test Ping</button>
-        <button id="testHealthBtn" class="bg-yellow-500 text-white px-3 py-2 rounded text-sm">Test Health</button>
-        <button id="testCorsBtn" class="bg-purple-500 text-white px-3 py-2 rounded text-sm">Test CORS</button>
-        <button id="testHistoryBtn" class="bg-red-500 text-white px-3 py-2 rounded text-sm">Test History</button>
-      </div>
-    </div>
+    <!-- History list -->
+    <div id="historyList" class="space-y-4 hidden"></div>
     
-    <!-- 狀態顯示 -->
-    <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
-      <h3 class="font-semibold mb-2">Status</h3>
-      <div id="statusContent" class="text-sm space-y-1">
-        <div>Ready to test...</div>
-      </div>
-    </div>
+    <!-- Error message -->
+    <div id="errorMessage" class="text-red-500 p-4 rounded bg-red-50 hidden"></div>
     
-    <!-- 詳細日誌 -->
-    <div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded max-h-64 overflow-y-auto">
-      <h3 class="font-semibold mb-2">Debug Log</h3>
-      <div id="debugLog" class="text-xs font-mono space-y-1"></div>
-    </div>
-    
-    <!-- 歷史記錄 -->
-    <div class="mb-6">
-      <h3 class="font-semibold mb-2">History Records</h3>
-      <div id="historyList" class="space-y-4"></div>
+    <!-- Empty state -->
+    <div id="emptyState" class="text-center py-8 text-gray-500 hidden">
+      <p>No translation history found.</p>
     </div>
   </div>
 
-  <script>
-    let currentNgrokUrl = "https://c40c31c255a3.ngrok-free.app";
-    const statusContent = document.getElementById('statusContent');
-    const debugLog = document.getElementById('debugLog');
-    const historyList = document.getElementById('historyList');
-    
-    // 日誌函數
-    function log(message, type = 'info') {
-      const timestamp = new Date().toLocaleTimeString();
-      const colors = {
-        info: 'text-blue-600',
-        success: 'text-green-600',
-        error: 'text-red-600',
-        warning: 'text-yellow-600'
-      };
-      
-      const logEntry = document.createElement('div');
-      logEntry.className = colors[type] || 'text-gray-600';
-      logEntry.textContent = `[${timestamp}] ${message}`;
-      
-      debugLog.appendChild(logEntry);
-      debugLog.scrollTop = debugLog.scrollHeight;
-      
-      console.log(`[${type.toUpperCase()}] ${message}`);
-    }
-    
-    // 更新狀態
-    function updateStatus(message, type = 'info') {
-      const colors = {
-        info: 'text-blue-600',
-        success: 'text-green-600',
-        error: 'text-red-600',
-        warning: 'text-yellow-600'
-      };
-      
-      statusContent.innerHTML = `<div class="${colors[type]}">${message}</div>`;
-    }
-    
-    // 1. 測試基本連接（ping）
-    async function testPing() {
-      log('Testing basic connection...', 'info');
-      updateStatus('Testing connection...', 'info');
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(currentNgrokUrl, {
-          method: 'GET',
-          mode: 'no-cors',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        log('Basic connection successful', 'success');
-        updateStatus('✅ Basic connection OK', 'success');
-        return true;
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          log('Connection timeout (10s)', 'error');
-          updateStatus('❌ Connection timeout', 'error');
-        } else {
-          log(`Connection failed: ${error.message}`, 'error');
-          updateStatus('❌ Connection failed', 'error');
-        }
-        return false;
-      }
-    }
-    
-    // 2. 測試健康檢查端點
-    async function testHealth() {
-      log('Testing health endpoint...', 'info');
-      updateStatus('Testing health endpoint...', 'info');
-      
-      try {
-        const response = await fetch(`${currentNgrokUrl}/health`, {
-          method: 'GET',
-          mode: 'cors',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          log(`Health check successful: ${data.status}`, 'success');
-          updateStatus('✅ Health check OK', 'success');
-          return true;
-        } else {
-          log(`Health check failed: ${response.status} ${response.statusText}`, 'error');
-          updateStatus('❌ Health check failed', 'error');
-          return false;
-        }
-      } catch (error) {
-        log(`Health check error: ${error.message}`, 'error');
-        updateStatus('❌ Health check error', 'error');
-        return false;
-      }
-    }
-    
-    // 3. 測試 CORS
-    async function testCors() {
-      log('Testing CORS preflight...', 'info');
-      updateStatus('Testing CORS...', 'info');
-      
-      try {
-        const response = await fetch(`${currentNgrokUrl}/history`, {
-          method: 'OPTIONS',
-          mode: 'cors',
-          headers: {
-            'Origin': window.location.origin,
-            'Access-Control-Request-Method': 'GET',
-            'Access-Control-Request-Headers': 'Content-Type'
-          }
-        });
-        
-        log(`CORS preflight status: ${response.status}`, response.ok ? 'success' : 'error');
-        
-        // 檢查 CORS 標頭
-        const corsHeaders = {
-          'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
-          'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
-          'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers')
-        };
-        
-        log(`CORS headers: ${JSON.stringify(corsHeaders)}`, 'info');
-        
-        if (response.ok) {
-          updateStatus('✅ CORS OK', 'success');
-          return true;
-        } else {
-          updateStatus('❌ CORS failed', 'error');
-          return false;
-        }
-      } catch (error) {
-        log(`CORS test error: ${error.message}`, 'error');
-        updateStatus('❌ CORS test error', 'error');
-        return false;
-      }
-    }
-    
-    // 4. 測試 History 端點
-    async function testHistory() {
-      log('Testing history endpoint...', 'info');
-      updateStatus('Testing history endpoint...', 'info');
-      
-      const methods = [
-        // 方法1: 標準 CORS
-        {
-          name: 'Standard CORS',
-          options: {
-            method: 'GET',
-            mode: 'cors',
-            headers: { 'Content-Type': 'application/json' }
-          }
-        },
-        // 方法2: 帶 credentials
-        {
-          name: 'With credentials',
-          options: {
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
-          }
-        },
-        // 方法3: 無 headers
-        {
-          name: 'No headers',
-          options: {
-            method: 'GET',
-            mode: 'cors'
-          }
-        }
-      ];
-      
-      for (const method of methods) {
-        try {
-          log(`Trying ${method.name}...`, 'info');
-          const response = await fetch(`${currentNgrokUrl}/history`, method.options);
-          
-          if (response.ok) {
-            const data = await response.json();
-            log(`${method.name} successful - ${data.length} records`, 'success');
-            updateStatus('✅ History endpoint OK', 'success');
-            displayHistory(data);
-            return true;
-          } else {
-            log(`${method.name} failed: ${response.status} ${response.statusText}`, 'warning');
-          }
-        } catch (error) {
-          log(`${method.name} error: ${error.message}`, 'warning');
-        }
-      }
-      
-      updateStatus('❌ All history methods failed', 'error');
-      return false;
-    }
-    
-    // 顯示歷史記錄
-    function displayHistory(history) {
-      historyList.innerHTML = '';
-      
-      if (!history || history.length === 0) {
-        historyList.innerHTML = '<p class="text-gray-500">No history records found.</p>';
-        return;
-      }
-      
-      history.forEach(record => {
-        const item = document.createElement('div');
-        item.className = 'p-4 border rounded shadow-sm';
-        item.innerHTML = `
-          <div class="grid grid-cols-2 gap-4 text-sm">
-            <div><strong>User:</strong> ${record.user || 'Unknown'}</div>
-            <div><strong>Gesture:</strong> ${record.gesture || 'N/A'}</div>
-            <div><strong>Text:</strong> ${record.text || 'N/A'}</div>
-            <div><strong>Time:</strong> ${record.timestamp ? new Date(record.timestamp).toLocaleString() : 'N/A'}</div>
-          </div>
-          ${record.error ? `<div class="text-red-500 text-sm mt-2"><strong>Error:</strong> ${record.error}</div>` : ''}
-        `;
-        historyList.appendChild(item);
-      });
-      
-      log(`Successfully displayed ${history.length} records`, 'success');
-    }
-    
-    // 事件監聽器
+  <script type="module">
+    const COLAB_URL = "https://d8eccc0336c7.ngrok-free.app"; // Update with your ngrok URL
+    const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
+
     document.addEventListener('DOMContentLoaded', () => {
-      // 更新 URL
-      document.getElementById('updateUrlBtn').onclick = () => {
-        const newUrl = document.getElementById('ngrokUrl').value.trim();
-        if (newUrl) {
-          currentNgrokUrl = newUrl;
-          log(`Updated URL to: ${currentNgrokUrl}`, 'info');
-          updateStatus('URL updated', 'info');
+      const historyList = document.getElementById('historyList');
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      const errorMessage = document.getElementById('errorMessage');
+      const emptyState = document.getElementById('emptyState');
+
+      function showLoading() {
+        loadingIndicator.classList.remove('hidden');
+        historyList.classList.add('hidden');
+        errorMessage.classList.add('hidden');
+        emptyState.classList.add('hidden');
+      }
+
+      function hideLoading() {
+        loadingIndicator.classList.add('hidden');
+      }
+
+      function showError(message) {
+        hideLoading();
+        errorMessage.textContent = message;
+        errorMessage.classList.remove('hidden');
+        historyList.classList.add('hidden');
+        emptyState.classList.add('hidden');
+      }
+
+      function showHistory(records) {
+        hideLoading();
+        errorMessage.classList.add('hidden');
+        emptyState.classList.add('hidden');
+        
+        if (records.length === 0) {
+          emptyState.classList.remove('hidden');
+          return;
         }
-      };
+        
+        historyList.classList.remove('hidden');
+      }
+
+      function base64ToBlob(base64, mimeType) {
+        try {
+          const byteCharacters = atob(base64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          return new Blob([byteArray], { type: mimeType });
+        } catch (error) {
+          console.error('Error converting base64 to blob:', error);
+          return null;
+        }
+      }
+
+      function createDownloadLink(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function createRecordElement(record, index) {
+        const item = document.createElement('div');
+        item.className = 'p-4 border rounded-lg shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors';
+        
+        const timestamp = new Date(record.timestamp).toLocaleString();
+        const videoId = `video_${index}`;
+        const audioId = `audio_${index}`;
+        
+        item.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p class="mb-2"><strong class="text-gray-700">User:</strong> <span class="text-gray-900">${record.user || 'Unknown'}</span></p>
+              <p class="mb-2"><strong class="text-gray-700">Text:</strong> <span class="text-gray-900">${record.text || 'N/A'}</span></p>
+              <p class="mb-2"><strong class="text-gray-700">Gesture:</strong> <span class="text-gray-900">${record.gesture || 'N/A'}</span></p>
+              <p class="mb-2"><strong class="text-gray-700">Error:</strong> <span class="text-red-500">${record.error || 'None'}</span></p>
+              <p class="mb-2"><strong class="text-gray-700">Time:</strong> <span class="text-gray-900">${timestamp}</span></p>
+            </div>
+            <div class="space-y-3">
+              ${record.video ? `
+                <div>
+                  <video id="${videoId}" controls class="w-full h-32 bg-black rounded">
+                    <source type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
+                  <button id="downloadVideo_${index}" class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                    Download Video
+                  </button>
+                </div>
+              ` : ''}
+              ${record.audio ? `
+                <div>
+                  <audio id="${audioId}" controls class="w-full">
+                    <source type="audio/wav">
+                    Your browser does not support the audio tag.
+                  </audio>
+                  <button id="downloadAudio_${index}" class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                    Download Audio
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+
+        return item;
+      }
+
+      function setupMediaElements(record, index) {
+        if (record.video) {
+          const videoElement = document.getElementById(`video_${index}`);
+          const videoBlob = base64ToBlob(record.video, 'video/mp4');
+          if (videoBlob && videoElement) {
+            const videoUrl = URL.createObjectURL(videoBlob);
+            videoElement.src = videoUrl;
+            
+            const downloadBtn = document.getElementById(`downloadVideo_${index}`);
+            if (downloadBtn) {
+              downloadBtn.onclick = () => {
+                createDownloadLink(videoBlob, `video_${record.timestamp}.mp4`);
+              };
+            }
+          }
+        }
+
+        if (record.audio) {
+          const audioElement = document.getElementById(`audio_${index}`);
+          const audioBlob = base64ToBlob(record.audio, 'audio/wav');
+          if (audioBlob && audioElement) {
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioElement.src = audioUrl;
+            
+            const downloadBtn = document.getElementById(`downloadAudio_${index}`);
+            if (downloadBtn) {
+              downloadBtn.onclick = () => {
+                createDownloadLink(audioBlob, `audio_${record.timestamp}.wav`);
+              };
+            }
+          }
+        }
+      }
+
+      async function fetchHistory() {
+        showLoading();
+        
+        try {
+          const response = await fetch(HISTORY_ENDPOINT, {
+            method: 'GET',
+            mode: 'cors',
+            // 暫時移除 credentials: 'include' 
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const history = await response.json();
+          
+          if (!Array.isArray(history)) {
+            throw new Error('Invalid response format');
+          }
+          
+          showHistory(history);
+          
+          // Clear existing content
+          historyList.innerHTML = '';
+          
+          // Create and append record elements
+          history.forEach((record, index) => {
+            const recordElement = createRecordElement(record, index);
+            historyList.appendChild(recordElement);
+            
+            // Setup media elements after DOM insertion
+            setTimeout(() => setupMediaElements(record, index), 100);
+          });
+          
+        } catch (error) {
+          console.error('Failed to fetch history:', error);
+          showError(`Failed to load history: ${error.message}`);
+        }
+      }
+
+      // Initial load
+      fetchHistory();
       
-      // 測試按鈕
-      document.getElementById('testPingBtn').onclick = testPing;
-      document.getElementById('testHealthBtn').onclick = testHealth;
-      document.getElementById('testCorsBtn').onclick = testCors;
-      document.getElementById('testHistoryBtn').onclick = testHistory;
+      // Auto-refresh every 30 seconds
+      setInterval(fetchHistory, 30000);
       
-      // 自動運行初始測試
-      setTimeout(async () => {
-        await testPing();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await testHealth();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await testCors();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await testHistory();
-      }, 1000);
+      // Manual refresh button
+      const refreshBtn = document.createElement('button');
+      refreshBtn.textContent = 'Refresh';
+      refreshBtn.className = 'mb-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors';
+      refreshBtn.onclick = fetchHistory;
+      document.querySelector('.max-w-4xl').insertBefore(refreshBtn, document.getElementById('loadingIndicator'));
     });
   </script>
 </body>
