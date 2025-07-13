@@ -31,8 +31,11 @@ COLAB_STT_URL = "https://f9e20717a6d6.ngrok-free.app/speech_to_text"  # 根據�
 # --- SQLite 設置 ---
 def get_db():
     try:
-        # 在 Colab 中使用 Google Drive 路徑，Render 使用本地路徑
-        db_path = '/content/drive/My Drive/translations.db' if 'google.colab' in str(get_ipython()) else os.path.join(os.path.dirname(__file__), 'translations.db')
+        # 在 Render 使用本地路徑，在 Colab 使用 Google Drive 路徑（需手動切換）
+        if 'google.colab' in str(os.environ.get('COLAB_ENV', '')):  # 檢查環境變量或簡化邏輯
+            db_path = '/content/drive/My Drive/translations.db'
+        else:  # Render 或本地
+            db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
         db = sqlite3.connect(db_path, check_same_thread=False)
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
