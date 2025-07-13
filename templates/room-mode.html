@@ -34,6 +34,7 @@
 
     <!-- Sign Language and Speech Section -->
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
+    <audio id="audioPreview" class="w-full rounded mb-4 hidden" controls></audio> <!-- 添加音頻預覽 -->
     <div class="flex justify-between items-center mb-4">
       <button id="startRecordBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
       <button id="stopRecordBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Recording</button>
@@ -43,8 +44,9 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://ec310d83f0fd.ngrok-free.app"; // 基 URL，根據您的代碼更新
-    const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`; // 明確定義 /predict_colab 端點
+    const COLAB_URL = "https://ec310d83f0fd.ngrok-free.app"; // 基 URL
+    const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`; // 手語端點
+    const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`; // 語音端點
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -56,6 +58,7 @@
       const chatInput = document.getElementById('chatInput');
       const sendBtn = document.getElementById('sendBtn');
       const preview = document.getElementById('preview');
+      const audioPreview = document.getElementById('audioPreview'); // 音頻預覽
       const startRecordBtn = document.getElementById('startRecordBtn');
       const stopRecordBtn = document.getElementById('stopRecordBtn');
       const uploadBtn = document.getElementById('uploadBtn');
@@ -79,7 +82,8 @@
           methods: ["GET", "POST"]
         }
       });
-      let processedTranslations = new Set(); // 防止重複顯示
+      let processedTranslations = new Set();
+      let isSignLanguageMode = true; // 預設為手語模式
 
       // 激活 Chatbox 和 Input
       chatContainer.style.display = 'block';
@@ -136,12 +140,12 @@
       });
 
       socket.on('translation', (data) => {
-        const key = `${data.user}-${data.gesture || data.error}`;
+        const key = `${data.user}-${data.gesture || data.text || data.error}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const message = `${data.user}: ${data.gesture || data.error || '未知结果'}`;
+          const message = `${data.user}: ${data.gesture || data.text || data.error || '未知结果'}`;
           addChatMessage(message, data.sid === socket.id, true);
-          result.innerText = `✅ 翻译结果: ${data.gesture || data.error || '未知结果'}`;
+          result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
         }
       });
 
@@ -176,37 +180,85 @@
         }
       }
 
+      async function initMicrophone() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioPreview.srcObject = stream;
+          audioPreview.classList.remove('hidden');
+          preview.classList.add('hidden');
+          console.log('Microphone started');
+        } catch (err) {
+          console.error('Error accessing microphone:', err);
+          result.innerText = `❌ 无法访问麦克风: ${err.message}`;
+          alert('请允许麦克风访问以继续！');
+        }
+      }
+
       startRecordBtn.onclick = () => {
-        if (!stream) {
-          initCamera().then(() => {
-            if (stream && !mediaRecorder) {
-              recordedBlobs = [];
-              mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-              mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) recordedBlobs.push(event.data);
-              };
-              mediaRecorder.start(1000);
-              startRecordBtn.disabled = true;
-              stopRecordBtn.disabled = false;
-              uploadBtn.disabled = true;
-              result.innerText = "⏳ 正在录制...";
-              console.log('Recording started');
-            }
-          }).catch(err => {
-            showError(`❌ 录制初始化失败: ${err.message}`);
-          });
-        } else if (!mediaRecorder) {
-          recordedBlobs = [];
-          mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) recordedBlobs.push(event.data);
-          };
-          mediaRecorder.start(1000);
-          startRecordBtn.disabled = true;
-          stopRecordBtn.disabled = false;
-          uploadBtn.disabled = true;
-          result.innerText = "⏳ 正在录制...";
-          console.log('Recording started');
+        if (isSignLanguageMode) {
+          if (!stream) {
+            initCamera().then(() => {
+              if (stream && !mediaRecorder) {
+                recordedBlobs = [];
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                mediaRecorder.ondataavailable = (event) => {
+                  if (event.data.size > 0) recordedBlobs.push(event.data);
+                };
+                mediaRecorder.start(1000);
+                startRecordBtn.disabled = true;
+                stopRecordBtn.disabled = false;
+                uploadBtn.disabled = true;
+                result.innerText = "⏳ 正在录制...";
+                console.log('Recording started');
+              }
+            }).catch(err => {
+              showError(`❌ 录制初始化失败: ${err.message}`);
+            });
+          } else if (!mediaRecorder) {
+            recordedBlobs = [];
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            mediaRecorder.ondataavailable = (event) => {
+              if (event.data.size > 0) recordedBlobs.push(event.data);
+            };
+            mediaRecorder.start(1000);
+            startRecordBtn.disabled = true;
+            stopRecordBtn.disabled = false;
+            uploadBtn.disabled = true;
+            result.innerText = "⏳ 正在录制...";
+            console.log('Recording started');
+          }
+        } else {
+          if (!stream) {
+            initMicrophone().then(() => {
+              if (stream && !mediaRecorder) {
+                recordedBlobs = [];
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                mediaRecorder.ondataavailable = (event) => {
+                  if (event.data.size > 0) recordedBlobs.push(event.data);
+                };
+                mediaRecorder.start(1000);
+                startRecordBtn.disabled = true;
+                stopRecordBtn.disabled = false;
+                uploadBtn.disabled = true;
+                result.innerText = "⏳ 正在录制音频...";
+                console.log('Audio recording started');
+              }
+            }).catch(err => {
+              showError(`❌ 音频录制初始化失败: ${err.message}`);
+            });
+          } else if (!mediaRecorder) {
+            recordedBlobs = [];
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+            mediaRecorder.ondataavailable = (event) => {
+              if (event.data.size > 0) recordedBlobs.push(event.data);
+            };
+            mediaRecorder.start(1000);
+            startRecordBtn.disabled = true;
+            stopRecordBtn.disabled = false;
+            uploadBtn.disabled = true;
+            result.innerText = "⏳ 正在录制音频...";
+            console.log('Audio recording started');
+          }
         }
       };
 
@@ -216,20 +268,24 @@
           startRecordBtn.disabled = false;
           stopRecordBtn.disabled = true;
           uploadBtn.disabled = false;
-          result.innerText = "✅ 录制完成，准备上传...";
+          if (isSignLanguageMode) {
+            result.innerText = "✅ 录制完成，准备上传...";
+          } else {
+            result.innerText = "✅ 音频录制完成，准备上传...";
+          }
           console.log('Recording stopped, blobs length:', recordedBlobs.length);
         }
       };
 
-      // 模式選擇和上傳邏輯
-      let isSignLanguageMode = true; // 預設為手語模式
-
+      // 模式選擇
       signLanguageBtn.onclick = () => {
         isSignLanguageMode = true;
         signLanguageBtn.classList.add('bg-blue-600');
         signLanguageBtn.classList.remove('bg-blue-500');
         speechToTextBtn.classList.remove('bg-green-600');
         speechToTextBtn.classList.add('bg-green-500');
+        preview.classList.remove('hidden');
+        audioPreview.classList.add('hidden');
         result.innerText = "当前模式: 手语翻译";
       };
 
@@ -239,6 +295,8 @@
         speechToTextBtn.classList.remove('bg-green-500');
         signLanguageBtn.classList.remove('bg-blue-600');
         signLanguageBtn.classList.add('bg-blue-500');
+        preview.classList.add('hidden');
+        audioPreview.classList.remove('hidden');
         result.innerText = "当前模式: 语音翻译";
       };
 
@@ -249,26 +307,26 @@
           formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
           result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
           try {
-            const response = await fetch(PREDICT_ENDPOINT, { // 使用 PREDICT_ENDPOINT
+            const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
               method: 'POST',
               body: formData,
               mode: 'cors',
               credentials: 'include'
             });
-            if (response.ok) {
-              const resultData = await response.json();
-              const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
-              result.innerText = `✅ ${translatedMessage}`;
-              socket.emit('translation', {
-                gesture: resultData.gesture,
-                text: resultData.text,
-                user: 'User',
-                error: resultData.error,
-                sid: socket.id
-              });
-            } else {
-              throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
             }
+            const resultData = await response.json();
+            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
+            result.innerText = `✅ ${translatedMessage}`;
+            socket.emit('translation', {
+              gesture: resultData.gesture,
+              text: resultData.text,
+              user: 'User',
+              error: resultData.error,
+              sid: socket.id
+            });
           } catch (error) {
             console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
             result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
