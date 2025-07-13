@@ -9,6 +9,264 @@
 <body class="bg-gray-100 p-4">
   <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-2xl font-bold mb-4">Translation History</h1>
+    
+    <!-- 狀態指示器 -->
+    <div id="statusIndicator" class="mb-4 p-3 rounded-lg hidden">
+      <div class="flex items-center">
+        <div id="statusSpinner" class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2 hidden"></div>
+        <span id="statusText"></span>
+      </div>
+    </div>
+
+    <!-- 連接測試按鈕 -->
+    <div class="mb-4">
+      <button id="testConnectionBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+        Test Connection
+      </button>
+      <button id="refreshBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 ml-2">
+        Refresh History
+      </button>
+    </div>
+
+    <div id="historyList" class="space-y-4"></div>
+  </div>
+
+  <script type="module">
+    // 請更新這個 URL 為您當前的 ngrok URL
+    const COLAB_URL = "https://2f93811e26a8.ngrok-free.app"; 
+    const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
+    const TEST_ENDPOINT = `${COLAB_URL}/test`;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const historyList = document.getElementById('historyList');
+      const statusIndicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+      const statusSpinner = document.getElementById('statusSpinner');
+      const testConnectionBtn = document.getElementById('testConnectionBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      // 顯示狀態
+      function showStatus(message, type = 'info', showSpinner = false) {
+        statusIndicator.className = `mb-4 p-3 rounded-lg ${
+          type === 'error' ? 'bg-red-100 text-red-700' :
+          type === 'success' ? 'bg-green-100 text-green-700' :
+          'bg-blue-100 text-blue-700'
+        }`;
+        statusText.textContent = message;
+        statusSpinner.classList.toggle('hidden', !showSpinner);
+        statusIndicator.classList.remove('hidden');
+      }
+
+      // 隱藏狀態
+      function hideStatus() {
+        statusIndicator.classList.add('hidden');
+      }
+
+      // 測試連接
+      async function testConnection() {
+        showStatus('Testing connection...', 'info', true);
+        try {
+          const response = await fetch(TEST_ENDPOINT, {
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          showStatus(`Connection successful! ${data.message}`, 'success');
+          console.log('Connection test result:', data);
+        } catch (error) {
+          showStatus(`Connection failed: ${error.message}`, 'error');
+          console.error('Connection test error:', error);
+        }
+      }
+
+      // 獲取歷史記錄
+      async function fetchHistory() {
+        showStatus('Loading history...', 'info', true);
+        try {
+          const response = await fetch(HISTORY_ENDPOINT, {
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'ngrok-skip-browser-warning': 'true'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const history = await response.json();
+          displayHistory(history);
+          showStatus(`Loaded ${history.length} records successfully`, 'success');
+          setTimeout(hideStatus, 3000);
+        } catch (error) {
+          showStatus(`Failed to load history: ${error.message}`, 'error');
+          console.error('Fetch history error:', error);
+          
+          // 顯示詳細錯誤信息
+          historyList.innerHTML = `
+            <div class="p-4 border border-red-300 rounded bg-red-50">
+              <h3 class="font-bold text-red-700 mb-2">Error Details:</h3>
+              <p class="text-red-600 mb-2">Error: ${error.message}</p>
+              <p class="text-red-600 mb-2">Endpoint: ${HISTORY_ENDPOINT}</p>
+              <p class="text-red-600 mb-2">Time: ${new Date().toLocaleString()}</p>
+              <h4 class="font-bold text-red-700 mb-1">Troubleshooting:</h4>
+              <ul class="text-red-600 text-sm">
+                <li>• Check if the ngrok URL is correct and active</li>
+                <li>• Verify the backend server is running</li>
+                <li>• Check browser console for CORS errors</li>
+                <li>• Test connection using the button above</li>
+              </ul>
+            </div>
+          `;
+        }
+      }
+
+      // 顯示歷史記錄
+      function displayHistory(history) {
+        historyList.innerHTML = '';
+
+        if (history.length === 0) {
+          historyList.innerHTML = '<p class="text-gray-500 text-center py-8">No translation history found.</p>';
+          return;
+        }
+
+        history.forEach(record => {
+          const id = record._id || crypto.randomUUID();
+          const timestampStr = record.timestamp
+            ? new Date(record.timestamp).toLocaleString()
+            : 'N/A';
+
+          const item = document.createElement('div');
+          item.className = 'p-4 border rounded shadow hover:shadow-md transition-shadow';
+          item.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+              <p><strong>User:</strong> ${record.user || 'Unknown'}</p>
+              <p><strong>Time:</strong> ${timestampStr}</p>
+              <p><strong>Text:</strong> ${record.text || 'N/A'}</p>
+              <p><strong>Gesture:</strong> ${record.gesture || 'N/A'}</p>
+              ${record.error ? `<p class="text-red-600"><strong>Error:</strong> ${record.error}</p>` : ''}
+            </div>
+            
+            <div class="flex flex-wrap gap-2 mt-3">
+              ${record.video ? `
+                <div class="flex-1 min-w-0">
+                  <video controls class="w-full max-w-sm">
+                    <source id="videoSource_${id}" type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
+                  <button id="downloadVideoBtn_${id}" class="bg-blue-500 text-white px-3 py-1 rounded text-sm mt-1">
+                    Download Video
+                  </button>
+                </div>
+              ` : ''}
+              
+              ${record.audio ? `
+                <div class="flex-1 min-w-0">
+                  <audio controls class="w-full max-w-sm">
+                    <source id="audioSource_${id}" type="audio/wav">
+                    Your browser does not support the audio tag.
+                  </audio>
+                  <button id="downloadAudioBtn_${id}" class="bg-green-500 text-white px-3 py-1 rounded text-sm mt-1">
+                    Download Audio
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+          historyList.appendChild(item);
+
+          // 處理視頻
+          if (record.video) {
+            try {
+              const videoSource = document.getElementById(`videoSource_${id}`);
+              const blob = base64ToBlob(record.video, 'video/mp4');
+              const url = URL.createObjectURL(blob);
+              videoSource.src = url;
+
+              const downloadBtn = document.getElementById(`downloadVideoBtn_${id}`);
+              downloadBtn.onclick = () => downloadFile(url, `video_${id}.mp4`);
+
+              window.addEventListener('beforeunload', () => URL.revokeObjectURL(url));
+            } catch (error) {
+              console.error('Error processing video:', error);
+            }
+          }
+
+          // 處理音頻
+          if (record.audio) {
+            try {
+              const audioSource = document.getElementById(`audioSource_${id}`);
+              const blob = base64ToBlob(record.audio, 'audio/wav');
+              const url = URL.createObjectURL(blob);
+              audioSource.src = url;
+
+              const downloadBtn = document.getElementById(`downloadAudioBtn_${id}`);
+              downloadBtn.onclick = () => downloadFile(url, `audio_${id}.wav`);
+
+              window.addEventListener('beforeunload', () => URL.revokeObjectURL(url));
+            } catch (error) {
+              console.error('Error processing audio:', error);
+            }
+          }
+        });
+      }
+
+      // Base64 轉 Blob
+      function base64ToBlob(base64, mimeType) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
+      }
+
+      // 下載文件
+      function downloadFile(url, filename) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      // 事件監聽器
+      testConnectionBtn.addEventListener('click', testConnection);
+      refreshBtn.addEventListener('click', fetchHistory);
+
+      // 初始化
+      fetchHistory();
+      
+      // 定期刷新（可選）
+      // setInterval(fetchHistory, 30000); // 每30秒刷新一次
+    });
+  </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Translation History</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4">Translation History</h1>
     <div id="historyList" class="space-y-4"></div>
   </div>
 
