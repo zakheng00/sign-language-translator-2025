@@ -34,7 +34,7 @@
 
     <!-- Sign Language and Speech Section -->
     <video id="preview" class="w-full rounded mb-4" autoplay muted></video>
-    <audio id="audioPreview" class="w-full rounded mb-4 hidden" controls></audio> <!-- 添加音頻預覽 -->
+    <audio id="audioPreview" class="w-full rounded mb-4 hidden" controls></audio>
     <div class="flex justify-between items-center mb-4">
       <button id="startRecordBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Start Recording</button>
       <button id="stopRecordBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Stop Recording</button>
@@ -44,9 +44,9 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://5c16bc7b7697.ngrok-free.app"; // 基 URL
-    const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`; // 手語端點
-    const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`; // 語音端點
+    const COLAB_URL = "https://5c16bc7b7697.ngrok-free.app"; // 確保與最新 ngrok URL 一致
+    const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`;
+    const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -58,7 +58,7 @@
       const chatInput = document.getElementById('chatInput');
       const sendBtn = document.getElementById('sendBtn');
       const preview = document.getElementById('preview');
-      const audioPreview = document.getElementById('audioPreview'); // 音頻預覽
+      const audioPreview = document.getElementById('audioPreview');
       const startRecordBtn = document.getElementById('startRecordBtn');
       const stopRecordBtn = document.getElementById('stopRecordBtn');
       const uploadBtn = document.getElementById('uploadBtn');
@@ -83,7 +83,7 @@
         }
       });
       let processedTranslations = new Set();
-      let isSignLanguageMode = true; // 預設為手語模式
+      let isSignLanguageMode = true;
 
       // 激活 Chatbox 和 Input
       chatContainer.style.display = 'block';
@@ -203,13 +203,13 @@
                 mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
                 mediaRecorder.ondataavailable = (event) => {
                   if (event.data.size > 0) recordedBlobs.push(event.data);
+                  console.log('Video blob recorded:', event.data); // 診斷
                 };
                 mediaRecorder.start(1000);
                 startRecordBtn.disabled = true;
                 stopRecordBtn.disabled = false;
                 uploadBtn.disabled = true;
                 result.innerText = "⏳ 正在录制...";
-                console.log('Recording started');
               }
             }).catch(err => {
               showError(`❌ 录制初始化失败: ${err.message}`);
@@ -219,45 +219,46 @@
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
             mediaRecorder.ondataavailable = (event) => {
               if (event.data.size > 0) recordedBlobs.push(event.data);
+              console.log('Video blob recorded:', event.data); // 診斷
             };
             mediaRecorder.start(1000);
             startRecordBtn.disabled = true;
             stopRecordBtn.disabled = false;
             uploadBtn.disabled = true;
             result.innerText = "⏳ 正在录制...";
-            console.log('Recording started');
           }
         } else {
           if (!stream) {
             initMicrophone().then(() => {
               if (stream && !mediaRecorder) {
                 recordedBlobs = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                // 嘗試更改為更兼容的格式
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // 移除 codecs=opus
                 mediaRecorder.ondataavailable = (event) => {
                   if (event.data.size > 0) recordedBlobs.push(event.data);
+                  console.log('Audio blob recorded:', event.data); // 診斷
                 };
                 mediaRecorder.start(1000);
                 startRecordBtn.disabled = true;
                 stopRecordBtn.disabled = false;
                 uploadBtn.disabled = true;
                 result.innerText = "⏳ 正在录制音频...";
-                console.log('Audio recording started');
               }
             }).catch(err => {
               showError(`❌ 音频录制初始化失败: ${err.message}`);
             });
           } else if (!mediaRecorder) {
             recordedBlobs = [];
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // 移除 codecs=opus
             mediaRecorder.ondataavailable = (event) => {
               if (event.data.size > 0) recordedBlobs.push(event.data);
+              console.log('Audio blob recorded:', event.data); // 診斷
             };
             mediaRecorder.start(1000);
             startRecordBtn.disabled = true;
             stopRecordBtn.disabled = false;
             uploadBtn.disabled = true;
             result.innerText = "⏳ 正在录制音频...";
-            console.log('Audio recording started');
           }
         }
       };
@@ -277,7 +278,6 @@
         }
       };
 
-      // 模式選擇
       signLanguageBtn.onclick = () => {
         isSignLanguageMode = true;
         signLanguageBtn.classList.add('bg-blue-600');
@@ -300,59 +300,62 @@
         result.innerText = "当前模式: 语音翻译";
       };
 
-document.getElementById('uploadBtn').onclick = async () => {
-  if (recordedBlobs.length) {
-    const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
-    const formData = new FormData();
-    formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
-    result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
-    try {
-      const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server error response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-      }
-      const resultData = await response.json();
-      console.log('Server response at upload:', resultData);
-      if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
-        console.warn('No valid speech data, keeping previous result');
-        return;
-      }
-      const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
-      result.innerText = `✅ ${translatedMessage}`;
-      socket.emit('translation', {
-        gesture: resultData.gesture,
-        text: resultData.text,
-        user: 'User',
-        error: resultData.error,
-        sid: socket.id,
-        timestamp: Date.now()
-      });
-    } catch (error) {
-      console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-      result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
-    }
-  } else {
-    result.innerText = "❌ 请先录制视频或音频！";
-  }
-};
+      uploadBtn.onclick = async () => {
+        if (recordedBlobs.length) {
+          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm' });
+          const formData = new FormData();
+          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
+          result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
+          try {
+            const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
+              method: 'POST',
+              body: formData,
+              mode: 'cors',
+              credentials: 'include'
+            });
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Server error response:', errorText);
+              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
+            }
+            const resultData = await response.json();
+            console.log('Server response at upload:', resultData);
+            if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
+              console.warn('No valid speech data, keeping previous result');
+              return;
+            }
+            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
+            result.innerText = `✅ ${translatedMessage}`;
+            socket.emit('translation', {
+              gesture: resultData.gesture,
+              text: resultData.text,
+              user: 'User',
+              error: resultData.error,
+              sid: socket.id,
+              timestamp: Date.now()
+            });
+          } catch (error) {
+            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+            result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
+            showError(`❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`); // 顯示更明顯的錯誤
+          } finally {
+            recordedBlobs = []; // 清空錄製數據
+          }
+        } else {
+          result.innerText = "❌ 请先录制视频或音频！";
+        }
+      };
 
-socket.on('translation', (data) => {
-  const key = `${data.user}-${data.gesture || data.text || data.error}`;
-  if (!processedTranslations.has(key)) {
-    processedTranslations.add(key);
-    console.log('Translation data received:', data); // 添加日誌以檢查數據
-    const message = `${data.user}: ${data.gesture || data.text || data.error || '未知结果'}`;
-    addChatMessage(message, data.sid === socket.id, true);
-    result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
-  }
-});
+      socket.on('translation', (data) => {
+        const key = `${data.user}-${data.gesture || data.text || data.error}`;
+        if (!processedTranslations.has(key)) {
+          processedTranslations.add(key);
+          console.log('Translation data received:', data);
+          const message = `${data.user}: ${data.gesture || data.text || data.error || '未知结果'}`;
+          addChatMessage(message, data.sid === socket.id, true);
+          result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
+        }
+      });
 
       window.addEventListener('beforeunload', () => {
         if (socket) socket.disconnect();
