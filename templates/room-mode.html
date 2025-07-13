@@ -300,41 +300,53 @@
         result.innerText = "当前模式: 语音翻译";
       };
 
-      document.getElementById('uploadBtn').onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
-          result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
-          try {
-            const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors',
-              credentials: 'include'
-            });
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-            }
-            const resultData = await response.json();
-            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
-            result.innerText = `✅ ${translatedMessage}`;
-            socket.emit('translation', {
-              gesture: resultData.gesture,
-              text: resultData.text,
-              user: 'User',
-              error: resultData.error,
-              sid: socket.id
-            });
-          } catch (error) {
-            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-            result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
-          }
-        } else {
-          result.innerText = "❌ 请先录制视频或音频！";
-        }
-      };
+document.getElementById('uploadBtn').onclick = async () => {
+  if (recordedBlobs.length) {
+    const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm;codecs=opus' });
+    const formData = new FormData();
+    formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? 'recording.mp4' : 'recording.webm');
+    result.innerText = `⏳ 正在${isSignLanguageMode ? '上传并翻译手语' : '转换语音为文本'}...`;
+    try {
+      const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+        mode: 'cors',
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
+      }
+      const resultData = await response.json();
+      console.log('Server response:', resultData); // 添加日誌以檢查回應
+      const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || '未知结果'}`;
+      result.innerText = `✅ ${translatedMessage}`;
+      socket.emit('translation', {
+        gesture: resultData.gesture,
+        text: resultData.text,
+        user: 'User',
+        error: resultData.error,
+        sid: socket.id
+      });
+    } catch (error) {
+      console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+      result.innerText = `❌ ${isSignLanguageMode ? '上传' : '转换'}失败: ${error.message}`;
+    }
+  } else {
+    result.innerText = "❌ 请先录制视频或音频！";
+  }
+};
+
+socket.on('translation', (data) => {
+  const key = `${data.user}-${data.gesture || data.text || data.error}`;
+  if (!processedTranslations.has(key)) {
+    processedTranslations.add(key);
+    console.log('Translation data received:', data); // 添加日誌以檢查數據
+    const message = `${data.user}: ${data.gesture || data.text || data.error || '未知结果'}`;
+    addChatMessage(message, data.sid === socket.id, true);
+    result.innerText = `✅ 翻译结果: ${data.gesture || data.text || data.error || '未知结果'}`;
+  }
+});
 
       window.addEventListener('beforeunload', () => {
         if (socket) socket.disconnect();
