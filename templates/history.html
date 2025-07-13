@@ -9,7 +9,9 @@
 <body class="bg-gray-100 p-4">
   <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-2xl font-bold mb-4">Translation History</h1>
-    <div id="historyList" class="space-y-4"></div>
+    <div id="historyList" class="space-y-4">
+      <p class="text-red-500">History endpoint is currently disabled. Please check server configuration.</p>
+    </div>
   </div>
 
   <script type="module">
@@ -54,8 +56,9 @@
         }
       }
 
-      fetchHistory(); // 初始加載
-      setInterval(fetchHistory, 30000); // 每 30 秒刷新
+      // 由於 /history 端點已移除，暫時禁用自動刷新
+      // fetchHistory(); // 初始加載
+      // setInterval(fetchHistory, 30000); // 每 30 秒刷新
     });
   </script>
 </body>
