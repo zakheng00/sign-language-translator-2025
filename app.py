@@ -11,7 +11,7 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from pymongo import MongoClient
+import sqlite3
 import datetime
 
 # --- Flask 設置 ---
@@ -34,11 +34,24 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
 COLAB_STT_URL = "https://be3d2f08d2f6.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
 
-# --- MongoDB 設置 ---
+# --- SQLite 設置 ---
 def get_db():
-    client = MongoClient('mongodb+srv://zakheng00:Bong2000@@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority')
-    db = client['sign_language_db']
-    return db['translations']
+    db = sqlite3.connect('translations.db', check_same_thread=False)
+    db.execute('''CREATE TABLE IF NOT EXISTS translations
+                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   user TEXT,
+                   text TEXT,
+                   gesture INTEGER,
+                   timestamp TEXT)''')
+    return db
+
+def init_db():
+    with get_db() as db:
+        db.commit()
+    logger.info("SQLite database initialized.")
+
+# 確保數據庫初始化
+init_db()
 
 # --- 路由 ---
 @app.route('/')
@@ -107,9 +120,11 @@ def save_history():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        db = get_db()
         data['timestamp'] = data.get('timestamp', str(datetime.datetime.utcnow()))
-        db.insert_one(data)
+        with get_db() as db:
+            db.execute('INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                       (data.get('user', 'Unknown'), data.get('text', ''), data.get('gesture', 0), data['timestamp']))
+            db.commit()
         return jsonify({'message': 'History saved successfully', 'data': data}), 200
     except Exception as e:
         logger.error(f"Error saving history: {str(e)}")
@@ -119,10 +134,9 @@ def save_history():
 def get_history():
     logger.info(f"Received history request from origin: {request.headers.get('Origin')}")
     try:
-        db = get_db()
-        history = list(db.find().sort('timestamp', -1))
-        for record in history:
-            record['_id'] = str(record['_id'])  # 將 ObjectId 轉為字符串
+        with get_db() as db:
+            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC')
+            history = [{'id': row[0], 'user': row[1], 'text': row[2], 'gesture': row[3], 'timestamp': row[4]} for row in cursor.fetchall()]
         return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching history: {str(e)}")
