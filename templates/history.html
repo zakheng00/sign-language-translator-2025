@@ -7,229 +7,88 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-4">
-  <div class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-3xl font-bold mb-6 text-gray-800">Translation History</h1>
-    
-    <!-- Loading indicator -->
-    <div id="loadingIndicator" class="flex justify-center items-center py-8">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-    </div>
-    
-    <!-- History list -->
-    <div id="historyList" class="space-y-4 hidden"></div>
-    
-    <!-- Error message -->
-    <div id="errorMessage" class="text-red-500 p-4 rounded bg-red-50 hidden"></div>
-    
-    <!-- Empty state -->
-    <div id="emptyState" class="text-center py-8 text-gray-500 hidden">
-      <p>No translation history found.</p>
-    </div>
+  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4">Translation History</h1>
+    <div id="historyList" class="space-y-4"></div>
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://bcb35ffaf3c9.ngrok-free.app"; // Update with your ngrok URL
-    const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
+    const COLAB_URL = "https://d8eccc0336c7.ngrok-free.app"; // 根據您的 ngrok URL 更新
+    const HISTORY_ENDPOINT = ${COLAB_URL}/history;
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
-      const loadingIndicator = document.getElementById('loadingIndicator');
-      const errorMessage = document.getElementById('errorMessage');
-      const emptyState = document.getElementById('emptyState');
-
-      function showLoading() {
-        loadingIndicator.classList.remove('hidden');
-        historyList.classList.add('hidden');
-        errorMessage.classList.add('hidden');
-        emptyState.classList.add('hidden');
-      }
-
-      function hideLoading() {
-        loadingIndicator.classList.add('hidden');
-      }
-
-      function showError(message) {
-        hideLoading();
-        errorMessage.textContent = message;
-        errorMessage.classList.remove('hidden');
-        historyList.classList.add('hidden');
-        emptyState.classList.add('hidden');
-      }
-
-      function showHistory(records) {
-        hideLoading();
-        errorMessage.classList.add('hidden');
-        emptyState.classList.add('hidden');
-        
-        if (records.length === 0) {
-          emptyState.classList.remove('hidden');
-          return;
-        }
-        
-        historyList.classList.remove('hidden');
-      }
-
-      function base64ToBlob(base64, mimeType) {
-        try {
-          const byteCharacters = atob(base64);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          return new Blob([byteArray], { type: mimeType });
-        } catch (error) {
-          console.error('Error converting base64 to blob:', error);
-          return null;
-        }
-      }
-
-      function createDownloadLink(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-
-      function createRecordElement(record, index) {
-        const item = document.createElement('div');
-        item.className = 'p-4 border rounded-lg shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors';
-        
-        const timestamp = new Date(record.timestamp).toLocaleString();
-        const videoId = `video_${index}`;
-        const audioId = `audio_${index}`;
-        
-        item.innerHTML = `
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p class="mb-2"><strong class="text-gray-700">User:</strong> <span class="text-gray-900">${record.user || 'Unknown'}</span></p>
-              <p class="mb-2"><strong class="text-gray-700">Text:</strong> <span class="text-gray-900">${record.text || 'N/A'}</span></p>
-              <p class="mb-2"><strong class="text-gray-700">Gesture:</strong> <span class="text-gray-900">${record.gesture || 'N/A'}</span></p>
-              <p class="mb-2"><strong class="text-gray-700">Error:</strong> <span class="text-red-500">${record.error || 'None'}</span></p>
-              <p class="mb-2"><strong class="text-gray-700">Time:</strong> <span class="text-gray-900">${timestamp}</span></p>
-            </div>
-            <div class="space-y-3">
-              ${record.video ? `
-                <div>
-                  <video id="${videoId}" controls class="w-full h-32 bg-black rounded">
-                    <source type="video/mp4">
-                    Your browser does not support the video tag.
-                  </video>
-                  <button id="downloadVideo_${index}" class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
-                    Download Video
-                  </button>
-                </div>
-              ` : ''}
-              ${record.audio ? `
-                <div>
-                  <audio id="${audioId}" controls class="w-full">
-                    <source type="audio/wav">
-                    Your browser does not support the audio tag.
-                  </audio>
-                  <button id="downloadAudio_${index}" class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors">
-                    Download Audio
-                  </button>
-                </div>
-              ` : ''}
-            </div>
-          </div>
-        `;
-
-        return item;
-      }
-
-      function setupMediaElements(record, index) {
-        if (record.video) {
-          const videoElement = document.getElementById(`video_${index}`);
-          const videoBlob = base64ToBlob(record.video, 'video/mp4');
-          if (videoBlob && videoElement) {
-            const videoUrl = URL.createObjectURL(videoBlob);
-            videoElement.src = videoUrl;
-            
-            const downloadBtn = document.getElementById(`downloadVideo_${index}`);
-            if (downloadBtn) {
-              downloadBtn.onclick = () => {
-                createDownloadLink(videoBlob, `video_${record.timestamp}.mp4`);
-              };
-            }
-          }
-        }
-
-        if (record.audio) {
-          const audioElement = document.getElementById(`audio_${index}`);
-          const audioBlob = base64ToBlob(record.audio, 'audio/wav');
-          if (audioBlob && audioElement) {
-            const audioUrl = URL.createObjectURL(audioBlob);
-            audioElement.src = audioUrl;
-            
-            const downloadBtn = document.getElementById(`downloadAudio_${index}`);
-            if (downloadBtn) {
-              downloadBtn.onclick = () => {
-                createDownloadLink(audioBlob, `audio_${record.timestamp}.wav`);
-              };
-            }
-          }
-        }
-      }
 
       async function fetchHistory() {
-        showLoading();
-        
         try {
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
             mode: 'cors',
-            // 暫時移除 credentials: 'include' 
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache'
+            credentials: 'include'
+          });
+          if (!response.ok) throw new Error(HTTP error! status: ${response.status});
+          const history = await response.json();
+          historyList.innerHTML = ''; // 清空列表
+          history.forEach(record => {
+            const item = document.createElement('div');
+            item.className = 'p-4 border rounded shadow';
+            item.innerHTML = 
+              <p><strong>User:</strong> ${record.user || 'Unknown'}</p>
+              <p><strong>Text:</strong> ${record.text || 'N/A'}</p>
+              <p><strong>Gesture:</strong> ${record.gesture || 'N/A'}</p>
+              <p><strong>Error:</strong> ${record.error || 'None'}</p>
+              <p><strong>Time:</strong> ${new Date(record.timestamp).toLocaleString()}</p>
+              ${record.video ? '<video controls><source id="videoSource_${record.timestamp}" type="video/mp4"></video><br>' : ''}
+              ${record.audio ? '<audio controls><source id="audioSource_${record.timestamp}" type="audio/wav"></audio><br>' : ''}
+              <button id="downloadVideoBtn_${record.timestamp}" class="bg-blue-500 text-white px-2 py-1 rounded ${record.video ? '' : 'hidden'}">Download Video</button>
+              <button id="downloadAudioBtn_${record.timestamp}" class="bg-green-500 text-white px-2 py-1 rounded ${record.audio ? '' : 'hidden'}">Download Audio</button>
+            ;
+            historyList.appendChild(item);
+            if (record.video) {
+              const videoSource = document.getElementById(videoSource_${record.timestamp});
+              const byteCharacters = atob(record.video);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'video/mp4' });
+              videoSource.src = URL.createObjectURL(blob);
+              const downloadVideoBtn = document.getElementById(downloadVideoBtn_${record.timestamp});
+              downloadVideoBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = videoSource.src;
+                a.download = video_${record.timestamp}.mp4;
+                a.click();
+              };
+            }
+            if (record.audio) {
+              const audioSource = document.getElementById(audioSource_${record.timestamp});
+              const byteCharacters = atob(record.audio);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'audio/wav' });
+              audioSource.src = URL.createObjectURL(blob);
+              const downloadAudioBtn = document.getElementById(downloadAudioBtn_${record.timestamp});
+              downloadAudioBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = audioSource.src;
+                a.download = audio_${record.timestamp}.wav;
+                a.click();
+              };
             }
           });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          
-          const history = await response.json();
-          
-          if (!Array.isArray(history)) {
-            throw new Error('Invalid response format');
-          }
-          
-          showHistory(history);
-          
-          // Clear existing content
-          historyList.innerHTML = '';
-          
-          // Create and append record elements
-          history.forEach((record, index) => {
-            const recordElement = createRecordElement(record, index);
-            historyList.appendChild(recordElement);
-            
-            // Setup media elements after DOM insertion
-            setTimeout(() => setupMediaElements(record, index), 100);
-          });
-          
         } catch (error) {
           console.error('Failed to fetch history:', error);
-          showError(`Failed to load history: ${error.message}`);
+          historyList.innerHTML = '<p class="text-red-500">Failed to load history. Check console for details.</p>';
         }
       }
 
-      // Initial load
-      fetchHistory();
-      
-      // Auto-refresh every 30 seconds
-      setInterval(fetchHistory, 30000);
-      
-      // Manual refresh button
-      const refreshBtn = document.createElement('button');
-      refreshBtn.textContent = 'Refresh';
-      refreshBtn.className = 'mb-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors';
-      refreshBtn.onclick = fetchHistory;
-      document.querySelector('.max-w-4xl').insertBefore(refreshBtn, document.getElementById('loadingIndicator'));
+      fetchHistory(); // 初始加載
+      setInterval(fetchHistory, 30000); // 每 30 秒刷新
     });
   </script>
 </body>
