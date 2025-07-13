@@ -7,6 +7,7 @@ mediapipe
 gunicorn
 pyngrok
 flask-cors
+flask_talisman
 psutil
 flask_socketio
 eventlet==0.33.3
