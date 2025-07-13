@@ -14,7 +14,7 @@
 
   <script type="module">
     const COLAB_URL = "https://47e31c67464a.ngrok-free.app"; // 根據您的 ngrok URL 更新
-    const HISTORY_ENDPOINT = ${COLAB_URL}/history;
+    const HISTORY_ENDPOINT = `${COLAB_URL}/history`; // 修正為模板字符串
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
@@ -26,26 +26,27 @@
             mode: 'cors',
             credentials: 'include'
           });
-          if (!response.ok) throw new Error(HTTP error! status: ${response.status});
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const history = await response.json();
           historyList.innerHTML = ''; // 清空列表
           history.forEach(record => {
             const item = document.createElement('div');
             item.className = 'p-4 border rounded shadow';
-            item.innerHTML = 
+            item.innerHTML = `
               <p><strong>User:</strong> ${record.user || 'Unknown'}</p>
               <p><strong>Text:</strong> ${record.text || 'N/A'}</p>
               <p><strong>Gesture:</strong> ${record.gesture || 'N/A'}</p>
               <p><strong>Error:</strong> ${record.error || 'None'}</p>
               <p><strong>Time:</strong> ${new Date(record.timestamp).toLocaleString()}</p>
-              ${record.video ? '<video controls><source id="videoSource_${record.timestamp}" type="video/mp4"></video><br>' : ''}
-              ${record.audio ? '<audio controls><source id="audioSource_${record.timestamp}" type="audio/wav"></audio><br>' : ''}
+              ${record.video ? `<video controls><source id="videoSource_${record.timestamp}" type="video/mp4"></video><br>` : ''}
+              ${record.audio ? `<audio controls><source id="audioSource_${record.timestamp}" type="audio/wav"></audio><br>` : ''}
               <button id="downloadVideoBtn_${record.timestamp}" class="bg-blue-500 text-white px-2 py-1 rounded ${record.video ? '' : 'hidden'}">Download Video</button>
               <button id="downloadAudioBtn_${record.timestamp}" class="bg-green-500 text-white px-2 py-1 rounded ${record.audio ? '' : 'hidden'}">Download Audio</button>
-            ;
+            `;
             historyList.appendChild(item);
+
             if (record.video) {
-              const videoSource = document.getElementById(videoSource_${record.timestamp});
+              const videoSource = document.getElementById(`videoSource_${record.timestamp}`);
               const byteCharacters = atob(record.video);
               const byteNumbers = new Array(byteCharacters.length);
               for (let i = 0; i < byteCharacters.length; i++) {
@@ -54,16 +55,16 @@
               const byteArray = new Uint8Array(byteNumbers);
               const blob = new Blob([byteArray], { type: 'video/mp4' });
               videoSource.src = URL.createObjectURL(blob);
-              const downloadVideoBtn = document.getElementById(downloadVideoBtn_${record.timestamp});
+              const downloadVideoBtn = document.getElementById(`downloadVideoBtn_${record.timestamp}`);
               downloadVideoBtn.onclick = () => {
                 const a = document.createElement('a');
                 a.href = videoSource.src;
-                a.download = video_${record.timestamp}.mp4;
+                a.download = `video_${record.timestamp}.mp4`;
                 a.click();
               };
             }
             if (record.audio) {
-              const audioSource = document.getElementById(audioSource_${record.timestamp});
+              const audioSource = document.getElementById(`audioSource_${record.timestamp}`);
               const byteCharacters = atob(record.audio);
               const byteNumbers = new Array(byteCharacters.length);
               for (let i = 0; i < byteCharacters.length; i++) {
@@ -72,11 +73,11 @@
               const byteArray = new Uint8Array(byteNumbers);
               const blob = new Blob([byteArray], { type: 'audio/wav' });
               audioSource.src = URL.createObjectURL(blob);
-              const downloadAudioBtn = document.getElementById(downloadAudioBtn_${record.timestamp});
+              const downloadAudioBtn = document.getElementById(`downloadAudioBtn_${record.timestamp}`);
               downloadAudioBtn.onclick = () => {
                 const a = document.createElement('a');
                 a.href = audioSource.src;
-                a.download = audio_${record.timestamp}.wav;
+                a.download = `audio_${record.timestamp}.wav`;
                 a.click();
               };
             }
