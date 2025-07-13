@@ -14,7 +14,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app"; // 更新為最新的 app.py ngrok URL
+    const COLAB_URL = "https://sign-language-translator-2025.onrender.com"; // 更新為 Render URL
     const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
     const SAVE_ENDPOINT = `${COLAB_URL}/save_history`;
 
@@ -25,11 +25,11 @@
       async function fetchHistory() {
         try {
           console.log(`Fetching from: ${HISTORY_ENDPOINT}`);
-          const response = await fetch(HISTORY_ENDPOINT, { method: 'GET' });
+          const response = await fetch(HISTORY_ENDPOINT, { method: 'GET', credentials: 'include' });
           console.log(`Response status: ${response.status}`);
           console.log(`Response headers:`, Object.fromEntries(response.headers));
           const text = await response.text();
-          console.log(`Response text:`, text.substring(0, 100) + '...');
+          console.log(`Full Response text:`, text);
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}, message: ${text.substring(0, 100)}...`);
           }
@@ -65,10 +65,12 @@
           timestamp: new Date().toISOString()
         };
         try {
+          console.log(`Saving to: ${SAVE_ENDPOINT}`, testData);
           const response = await fetch(SAVE_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(testData)
+            body: JSON.stringify(testData),
+            credentials: 'include'
           });
           const text = await response.text();
           console.log(`Save response status: ${response.status}`);
