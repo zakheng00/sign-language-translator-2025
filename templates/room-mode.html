@@ -43,7 +43,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://4fe696e97fec.ngrok-free.app"; // 指向 Colab 的 ngrok URL
+    const COLAB_URL = "https://d445f33aff59.ngrok-free.app"; // 指向 Colab 的 ngrok URL
     tailwind.config = { theme: { extend: { colors: { primary: '#3B82F6', secondary: '#60A5FA' } } } };
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -65,14 +65,15 @@
       let mediaRecorder;
       let recordedBlobs = [];
       let socket = io(COLAB_URL, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 15,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 45000
-      });
+      path: '/socket.io',
+      transports: ['websocket', 'polling'], // 嘗試先使用 polling 作為後備
+      forceNew: true, // 強制創建新連線
+      reconnection: true,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 45000
+  });
       let processedTranslations = new Set(); // 防止重複顯示
 
       // 激活 Chatbox 和 Input
