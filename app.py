@@ -11,6 +11,8 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from pymongo import MongoClient
+import datetime
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -24,7 +26,6 @@ CORS(app, resources={
 socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
 
-
 # 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -32,6 +33,12 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 # Colab API 端點 (替換為實際 NGROK URL)
 COLAB_URL = "https://67387521b9d9.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
 COLAB_STT_URL = "https://67387521b9d9.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
+
+# --- MongoDB 設置 ---
+def get_db():
+    client = MongoClient('mongodb+srv://zakheng00:Bong2000@@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority')
+    db = client['sign_language_db']
+    return db['translations']
 
 # --- 路由 ---
 @app.route('/')
@@ -91,6 +98,35 @@ def speech_to_text():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
         return jsonify({'error': 'Failed to process audio on Colab'}), 500
+
+# --- 新增歷史記錄相關路由 ---
+@app.route('/save_history', methods=['POST'])
+def save_history():
+    logger.info(f"Received save request from origin: {request.headers.get('Origin')}")
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        db = get_db()
+        data['timestamp'] = data.get('timestamp', str(datetime.datetime.utcnow()))
+        db.insert_one(data)
+        return jsonify({'message': 'History saved successfully', 'data': data}), 200
+    except Exception as e:
+        logger.error(f"Error saving history: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history', methods=['GET', 'OPTIONS'])
+def get_history():
+    logger.info(f"Received history request from origin: {request.headers.get('Origin')}")
+    try:
+        db = get_db()
+        history = list(db.find().sort('timestamp', -1))
+        for record in history:
+            record['_id'] = str(record['_id'])  # 將 ObjectId 轉為字符串
+        return jsonify(history)
+    except Exception as e:
+        logger.error(f"Error fetching history: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
