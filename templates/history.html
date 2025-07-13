@@ -13,7 +13,7 @@
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://262a79671c64.ngrok-free.app"; // 根據您的 ngrok URL 更新
+    const COLAB_URL = "https://262a79671c64.ngrok-free.app"; // 確認與 Colab 日誌一致
     const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -21,19 +21,20 @@
 
       async function fetchHistory() {
         try {
-          console.log(`Fetching from: ${HISTORY_ENDPOINT}`); // 診斷 URL
+          console.log(`Fetching from: ${HISTORY_ENDPOINT}`);
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
-            // 暫時移除 credentials 以測試
+            // 暫時移除 credentials
             // credentials: 'include'
           });
-          console.log(`Response status: ${response.status}`); // 診斷狀態
+          console.log(`Response status: ${response.status}`);
+          console.log(`Response headers:`, Object.fromEntries(response.headers));
           if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
           }
           const history = await response.json();
-          historyList.innerHTML = ''; // 清空列表
+          historyList.innerHTML = '';
           history.forEach(record => {
             const item = document.createElement('div');
             item.className = 'p-4 border rounded shadow';
