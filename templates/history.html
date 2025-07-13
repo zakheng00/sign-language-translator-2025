@@ -1,92 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Translation History</title>
+  <title>翻譯歷史紀錄</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-4">
-  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
-    <h1 class="text-2xl font-bold mb-4">Translation History</h1>
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-md">
+    <h1 class="text-2xl font-bold mb-4">📜 翻譯歷史紀錄</h1>
     <div id="historyList" class="space-y-4"></div>
-    <button id="saveBtn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Save Test Data</button>
   </div>
 
-  <script type="module">
-    const COLAB_URL = "https://67387521b9d9.ngrok-free.app"; // 更新為最新的 ngrok URL
-    const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
-    const SAVE_ENDPOINT = `${COLAB_URL}/save_history`;
+  <script>
+    const BACKEND_URL = window.location.origin; // 自動從後端抓
+    const HISTORY_ENDPOINT = `${BACKEND_URL}/history`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
-      const saveBtn = document.getElementById('saveBtn');
 
       async function fetchHistory() {
         try {
-          console.log(`Fetching from: ${HISTORY_ENDPOINT}`);
-          const response = await fetch(HISTORY_ENDPOINT, { method: 'GET' });
-          console.log(`Response status: ${response.status}`);
-          console.log(`Response headers:`, Object.fromEntries(response.headers));
-          const text = await response.text();
-          console.log(`Response text:`, text.substring(0, 100) + '...');
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}, message: ${text.substring(0, 100)}...`);
-          }
-          let history;
-          try {
-            history = JSON.parse(text);
-          } catch (e) {
-            throw new Error(`Invalid JSON: ${text.substring(0, 100)}...`);
-          }
+          const response = await fetch(HISTORY_ENDPOINT, {
+            method: 'GET',
+            credentials: 'include'
+          });
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const history = await response.json();
           historyList.innerHTML = '';
+
           history.forEach(record => {
             const item = document.createElement('div');
-            item.className = 'p-4 border rounded shadow';
+            item.className = 'p-4 border rounded shadow bg-gray-50';
+
+            const timestamp = new Date(record.timestamp).toLocaleString();
+            const videoBlobUrl = record.video ? URL.createObjectURL(base64ToBlob(record.video, 'video/mp4')) : null;
+            const audioBlobUrl = record.audio ? URL.createObjectURL(base64ToBlob(record.audio, 'audio/wav')) : null;
+
             item.innerHTML = `
-              <p><strong>User:</strong> ${record.user || 'Unknown'}</p>
-              <p><strong>Text:</strong> ${record.text || 'N/A'}</p>
-              <p><strong>Gesture:</strong> ${record.gesture || 'N/A'}</p>
-              <p><strong>Error:</strong> ${record.error || 'None'}</p>
-              <p><strong>Time:</strong> ${new Date(record.timestamp).toLocaleString()}</p>
+              <p><strong>🧑 使用者:</strong> ${record.user || 'Unknown'}</p>
+              <p><strong>📝 語音內容:</strong> ${record.text || 'N/A'}</p>
+              <p><strong>🤟 手語翻譯:</strong> ${record.gesture || 'N/A'}</p>
+              <p><strong>⚠️ 錯誤訊息:</strong> ${record.error || 'None'}</p>
+              <p><strong>🕒 時間:</strong> ${timestamp}</p>
+              ${videoBlobUrl ? `<video controls class="w-full mt-2 mb-1"><source src="${videoBlobUrl}" type="video/mp4"></video>` : ''}
+              ${audioBlobUrl ? `<audio controls class="w-full mb-1"><source src="${audioBlobUrl}" type="audio/wav"></audio>` : ''}
+              ${videoBlobUrl ? `<a href="${videoBlobUrl}" download="video_${timestamp}.mp4" class="bg-blue-500 text-white px-3 py-1 rounded mr-2 inline-block">下載影片</a>` : ''}
+              ${audioBlobUrl ? `<a href="${audioBlobUrl}" download="audio_${timestamp}.wav" class="bg-green-500 text-white px-3 py-1 rounded inline-block">下載音訊</a>` : ''}
             `;
+
             historyList.appendChild(item);
           });
         } catch (error) {
-          console.error('Failed to fetch history:', error);
-          historyList.innerHTML = `<p class="text-red-500">Failed to load history. Error: ${error.message}</p>`;
+          console.error('❌ 無法取得歷史紀錄:', error);
+          historyList.innerHTML = '<p class="text-red-500">❌ 無法載入歷史紀錄，請查看主控台</p>';
         }
       }
 
-      async function saveHistory() {
-        const testData = {
-          user: "test_user",
-          text: "test text",
-          gesture: 1,
-          timestamp: new Date().toISOString()
-        };
-        try {
-          const response = await fetch(SAVE_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(testData)
-          });
-          const text = await response.text();
-          console.log(`Save response status: ${response.status}`);
-          console.log(`Save response text:`, text);
-          if (!response.ok) {
-            throw new Error(`Save failed: ${text}`);
-          }
-          fetchHistory(); // 刷新歷史記錄
-        } catch (error) {
-          console.error('Failed to save history:', error);
+      function base64ToBlob(base64, mimeType) {
+        const byteChars = atob(base64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) {
+          byteNumbers[i] = byteChars.charCodeAt(i);
         }
+        return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
       }
 
-      saveBtn.addEventListener('click', saveHistory);
-      fetchHistory(); // 初始加載
-      setInterval(fetchHistory, 30000); // 每 30 秒刷新
+      fetchHistory();
     });
   </script>
 </body>
 </html>
+
