@@ -4,10 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Speech to Text - 語音轉文字</title>
-    <script src="https://cdn.tailwindcss.com"></script> <!-- 添加 Tailwind CSS 保持與 room-mode.html 一致 -->
-    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script> <!-- 使用與 room-mode.html 一致的 Socket.IO 版本 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <style>
-        /* 內聯樣式保持簡潔，與 Tailwind 結合使用 */
         #result { margin-top: 20px; font-size: 18px; }
     </style>
 </head>
@@ -17,7 +16,7 @@
         <div class="text-center mb-4">
             <p>Record audio and translate to text.</p>
         </div>
-        <audio id="preview" class="w-full rounded mb-4" controls></audio> <!-- 添加音頻預覽 -->
+        <audio id="preview" class="w-full rounded mb-4" controls></audio>
         <div class="flex justify-between items-center mb-4">
             <button id="startBtn" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">開始錄音</button>
             <button id="stopBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>停止錄音</button>
@@ -27,7 +26,8 @@
     </div>
 
     <script type="module">
-        const COLAB_URL = "https://d445f33aff59.ngrok-free.app"; // 指向 Colab 的 ngrok URL，請根據最新 URL 更新
+        const COLAB_URL = "https://d445f33aff59.ngrok-free.app"; // 更新為最新 ngrok URL
+        const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`; // 明確定義 /speech_to_text 端點
 
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('startBtn');
@@ -45,14 +45,18 @@
                 reconnectionAttempts: 15,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
-                timeout: 45000
+                timeout: 45000,
+                cors: {
+                    origin: "https://sign-language-translator-2025.onrender.com",
+                    methods: ["GET", "POST"]
+                }
             });
 
             // 訪問麥克風
             async function startMicrophone() {
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    preview.srcObject = stream; // 設置音頻流到預覽
+                    preview.srcObject = stream;
                     console.log('Audio started');
                 } catch (error) {
                     console.error('Error accessing microphone:', error);
@@ -73,9 +77,9 @@
                         mediaRecorder.onstop = () => {
                             stopBtn.disabled = true;
                             uploadBtn.disabled = false;
-                            preview.srcObject = null; // 停止預覽
+                            preview.srcObject = null;
                         };
-                        mediaRecorder.start(1000); // 每 1 秒生成一個 blob
+                        mediaRecorder.start(1000);
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
                         result.innerText = "⏺ 錄音中...";
@@ -103,13 +107,15 @@
                     formData.append('audio', blob, 'recording.webm');
                     result.innerText = "⏳ 正在轉換語音為文字...";
                     try {
-                        const response = await fetch(`${COLAB_URL}/speech_to_text`, {
+                        const response = await fetch(SPEECH_ENDPOINT, {
                             method: 'POST',
                             body: formData,
-                            mode: 'cors'
+                            mode: 'cors',
+                            credentials: 'include'
                         });
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const resultData = await response.json();
+                        result.innerText = `✅ 轉換結果: ${resultData.text || resultData.error || '未知結果'}`;
                         socket.emit('translation', {
                             text: resultData.text,
                             user: 'User',
@@ -128,6 +134,7 @@
             // Socket.IO 事件
             socket.on('connect', () => {
                 console.log('Connected to server');
+                result.innerText = '✅ 已連接到服務器';
             });
 
             socket.on('translation', (data) => {
