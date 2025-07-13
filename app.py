@@ -8,21 +8,14 @@ import psutil
 import numpy as np
 import requests
 import json
+import sqlite3
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
-import sqlite3
-import datetime
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={
-    r"/*": {
-        "origins": "https://sign-language-translator-2025.onrender.com",
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "Cache-Control"],
-    }
-}, supports_credentials=True)
+CORS(app)  
 socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -31,19 +24,24 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://be3d2f08d2f6.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
-COLAB_STT_URL = "https://be3d2f08d2f6.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
+COLAB_URL = "https://d8eccc0336c7.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
+COLAB_STT_URL = "https://d8eccc0336c7.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
 
 # --- SQLite 設置 ---
 def get_db():
-    db = sqlite3.connect('translations.db', check_same_thread=False)
-    db.execute('''CREATE TABLE IF NOT EXISTS translations
-                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   user TEXT,
-                   text TEXT,
-                   gesture INTEGER,
-                   timestamp TEXT)''')
-    return db
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
+        db = sqlite3.connect(db_path, check_same_thread=False)
+        db.execute('''CREATE TABLE IF NOT EXISTS translations
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user TEXT,
+                       text TEXT,
+                       gesture INTEGER,
+                       timestamp TEXT)''')
+        return db
+    except sqlite3.OperationalError as e:
+        logger.error(f"SQLite error: {str(e)}")
+        raise
 
 def init_db():
     with get_db() as db:
