@@ -24,7 +24,6 @@
           const response = await fetch(HISTORY_ENDPOINT, {
             method: 'GET',
             mode: 'cors',
-            credentials: 'include'
           });
 
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
