@@ -9,14 +9,15 @@ import numpy as np
 import requests
 import json
 import sqlite3
+import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)  
-socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
+CORS(app, resources={r"/*": {"origins": ["https://sign-language-translator-2025.onrender.com", "*"]}})  # 限制來源
+socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com", "*"])
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -30,7 +31,8 @@ COLAB_STT_URL = "https://f9e20717a6d6.ngrok-free.app/speech_to_text"  # 根據�
 # --- SQLite 設置 ---
 def get_db():
     try:
-        db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
+        # 在 Colab 中使用 Google Drive 路徑，Render 使用本地路徑
+        db_path = '/content/drive/My Drive/translations.db' if 'google.colab' in str(get_ipython()) else os.path.join(os.path.dirname(__file__), 'translations.db')
         db = sqlite3.connect(db_path, check_same_thread=False)
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,8 +78,10 @@ def history():
 def favicon():
     return '', 204  # 忽略 favicon 請求
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
+    if request.method == 'OPTIONS':
+        return '', 204
     if 'video' not in request.files:
         return jsonify({'error': 'Missing video file'}), 400
     video_file = request.files['video']
@@ -93,8 +97,10 @@ def predict():
         logger.error(f"Failed to connect to Colab for prediction: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
-@app.route('/speech_to_text', methods=['POST'])
+@app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
+    if request.method == 'OPTIONS':
+        return '', 204
     if 'audio' not in request.files:
         return jsonify({'error': 'Missing audio file'}), 400
     audio_file = request.files['audio']
@@ -111,8 +117,10 @@ def speech_to_text():
         return jsonify({'error': 'Failed to process audio on Colab'}), 500
 
 # --- 新增歷史記錄相關路由 ---
-@app.route('/save_history', methods=['POST'])
+@app.route('/save_history', methods=['POST', 'OPTIONS'])
 def save_history():
+    if request.method == 'OPTIONS':
+        return '', 204
     logger.info(f"Received save request from origin: {request.headers.get('Origin')}")
     try:
         data = request.get_json()
@@ -130,6 +138,8 @@ def save_history():
 
 @app.route('/history', methods=['GET', 'OPTIONS'])
 def get_history():
+    if request.method == 'OPTIONS':
+        return '', 204
     logger.info(f"Received history request from origin: {request.headers.get('Origin')}")
     try:
         with get_db() as db:
