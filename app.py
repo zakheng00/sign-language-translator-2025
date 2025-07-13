@@ -4,6 +4,7 @@ import logging
 import time
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
+from flask_talisman import Talisman
 import psutil
 import numpy as np
 import requests
@@ -13,8 +14,17 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 # --- Flask 設置 ---
-app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)  # 啟用 CORS，允許所有來源（可根據需要限制）
+app = Flask(__name__)
+CORS(app, resources={
+    r"/predict": {"origins": "https://sign-language-translator-2025.onrender.com"},
+    r"/speech_to_text": {"origins": "https://sign-language-translator-2025.onrender.com"}
+})
+Talisman(app, content_security_policy={
+    'default-src': ['\'self\''],
+    'script-src': ['\'self\'', '\'unsafe-eval\'', 'https://cdn.socket.io'],  # 允許 unsafe-eval 和 Socket.IO
+    'connect-src': ['\'self\'', 'https://4fe696e97fec.ngrok-free.app'],  # 允許與 ngrok 連線
+    'style-src': ['\'self\'', 'https://cdn.tailwindcss.com']  # 允許 Tailwind CSS
+})
 socketio = SocketIO(app, cors_allowed_origins="*")  # 使用預設 threading 模式
 executor = ThreadPoolExecutor(max_workers=4)
 
