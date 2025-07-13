@@ -10,16 +10,14 @@
   <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-2xl font-bold mb-4">Translation History</h1>
     <div id="historyList" class="space-y-4"></div>
-    <div id="errorMessage" class="text-red-500 hidden mt-4"></div>
   </div>
 
   <script type="module">
-    const COLAB_URL = "https://3b66bb33d475.ngrok-free.app"; // 確保與最新 ngrok URL 一致
+    const COLAB_URL = "https://d8eccc0336c7.ngrok-free.app"; // 替換為你的 ngrok URL
     const HISTORY_ENDPOINT = `${COLAB_URL}/history`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const historyList = document.getElementById('historyList');
-      const errorMessage = document.getElementById('errorMessage');
 
       async function fetchHistory() {
         try {
@@ -27,19 +25,18 @@
             method: 'GET',
             mode: 'cors',
             credentials: 'include'
-            // 移除 Cache-Control 頭部，因為後端可能未允許
           });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}, message: ${await response.text()}`);
-          }
+
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const history = await response.json();
           historyList.innerHTML = ''; // 清空列表
-          if (!Array.isArray(history) || history.length === 0) {
-            historyList.innerHTML = '<p class="text-gray-500">No history records found.</p>';
-            return;
-          }
-          history.forEach((record, index) => {
-            const uniqueId = `record_${index}_${Date.now()}`; // 唯一 ID 避免衝突
+
+          history.forEach(record => {
+            const id = record._id || crypto.randomUUID();  // 使用 MongoDB _id 作為唯一識別碼
+            const timestampStr = record.timestamp
+              ? new Date(record.timestamp).toLocaleString()
+              : 'N/A';
+
             const item = document.createElement('div');
             item.className = 'p-4 border rounded shadow';
             item.innerHTML = `
@@ -47,62 +44,69 @@
               <p><strong>Text:</strong> ${record.text || 'N/A'}</p>
               <p><strong>Gesture:</strong> ${record.gesture || 'N/A'}</p>
               <p><strong>Error:</strong> ${record.error || 'None'}</p>
-              <p><strong>Time:</strong> ${new Date(record.timestamp).toLocaleString()}</p>
-              ${record.video ? `<video controls class="mt-2"><source id="videoSource_${uniqueId}" type="video/mp4"></video><br>` : ''}
-              ${record.audio ? `<audio controls class="mt-2"><source id="audioSource_${uniqueId}" type="audio/wav"></audio><br>` : ''}
-              <button id="downloadVideoBtn_${uniqueId}" class="bg-blue-500 text-white px-2 py-1 rounded mt-2 ${record.video ? '' : 'hidden'}">Download Video</button>
-              <button id="downloadAudioBtn_${uniqueId}" class="bg-green-500 text-white px-2 py-1 rounded mt-2 ${record.audio ? '' : 'hidden'}">Download Audio</button>
+              <p><strong>Time:</strong> ${timestampStr}</p>
+              ${record.video ? `<video controls><source id="videoSource_${id}" type="video/mp4"></video><br>` : ''}
+              ${record.audio ? `<audio controls><source id="audioSource_${id}" type="audio/wav"></audio><br>` : ''}
+              <button id="downloadVideoBtn_${id}" class="bg-blue-500 text-white px-2 py-1 rounded ${record.video ? '' : 'hidden'}">Download Video</button>
+              <button id="downloadAudioBtn_${id}" class="bg-green-500 text-white px-2 py-1 rounded ${record.audio ? '' : 'hidden'}">Download Audio</button>
             `;
             historyList.appendChild(item);
 
+            // 解碼 video base64 為 blob
             if (record.video) {
-              const videoSource = document.getElementById(`videoSource_${uniqueId}`);
-              const byteCharacters = atob(record.video);
-              const byteArray = new Uint8Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteArray[i] = byteCharacters.charCodeAt(i);
-              }
-              const blob = new Blob([byteArray], { type: 'video/mp4' });
-              videoSource.src = URL.createObjectURL(blob);
-              const downloadVideoBtn = document.getElementById(`downloadVideoBtn_${uniqueId}`);
-              downloadVideoBtn.onclick = () => {
+              const videoSource = document.getElementById(`videoSource_${id}`);
+              const blob = base64ToBlob(record.video, 'video/mp4');
+              const url = URL.createObjectURL(blob);
+              videoSource.src = url;
+
+              const downloadBtn = document.getElementById(`downloadVideoBtn_${id}`);
+              downloadBtn.onclick = () => {
                 const a = document.createElement('a');
-                a.href = videoSource.src;
-                a.download = `video_${uniqueId}.mp4`;
+                a.href = url;
+                a.download = `video_${id}.mp4`;
                 a.click();
               };
+
+              // Optional: 在 window unload/reload 時釋放 URL
+              window.addEventListener('beforeunload', () => URL.revokeObjectURL(url));
             }
 
+            // 解碼 audio base64 為 blob
             if (record.audio) {
-              const audioSource = document.getElementById(`audioSource_${uniqueId}`);
-              const byteCharacters = atob(record.audio);
-              const byteArray = new Uint8Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteArray[i] = byteCharacters.charCodeAt(i);
-              }
-              const blob = new Blob([byteArray], { type: 'audio/wav' });
-              audioSource.src = URL.createObjectURL(blob);
-              const downloadAudioBtn = document.getElementById(`downloadAudioBtn_${uniqueId}`);
-              downloadAudioBtn.onclick = () => {
+              const audioSource = document.getElementById(`audioSource_${id}`);
+              const blob = base64ToBlob(record.audio, 'audio/wav');
+              const url = URL.createObjectURL(blob);
+              audioSource.src = url;
+
+              const downloadBtn = document.getElementById(`downloadAudioBtn_${id}`);
+              downloadBtn.onclick = () => {
                 const a = document.createElement('a');
-                a.href = audioSource.src;
-                a.download = `audio_${uniqueId}.wav`;
+                a.href = url;
+                a.download = `audio_${id}.wav`;
                 a.click();
               };
+
+              window.addEventListener('beforeunload', () => URL.revokeObjectURL(url));
             }
           });
-          errorMessage.classList.add('hidden');
         } catch (error) {
           console.error('Failed to fetch history:', error);
-          errorMessage.textContent = `Failed to load history: ${error.message}. Please try again or check the server.`;
-          errorMessage.classList.remove('hidden');
-          historyList.innerHTML = '';
+          historyList.innerHTML = '<p class="text-red-500">Failed to load history. Check console for details.</p>';
         }
       }
 
+      function base64ToBlob(base64, mimeType) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
+      }
+
       fetchHistory(); // 初始加載
-      // 改進: 使用 MutationObserver 或 WebSocket 代替定時刷新
-      // setInterval(fetchHistory, 30000); // 暫時註釋，根據需求啟用
+      setInterval(fetchHistory, 30000); // 每 30 秒刷新
     });
   </script>
 </body>
