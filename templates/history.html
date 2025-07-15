@@ -50,12 +50,22 @@
       const currentHost = window.location.hostname;
       const currentProtocol = window.location.protocol;
       
+      // 如果是 Render 域名，使用 NGROK URL（因為後端在 NGROK 上）
+      if (currentHost.includes('onrender.com')) {
+        return "https://0ae5c8df1dae.ngrok-free.app";
+      }
+      
       // 如果是 NGROK 域名，使用當前域名
       if (currentHost.includes('ngrok-free.app') || currentHost.includes('ngrok.io')) {
         return `${currentProtocol}//${currentHost}`;
       }
       
-      // 否則使用配置的 NGROK URL
+      // 本地開發環境
+      if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
+        return `${currentProtocol}//${currentHost}:5000`;
+      }
+      
+      // 默認使用 NGROK URL
       return "https://0ae5c8df1dae.ngrok-free.app";
     }
 
