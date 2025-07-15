@@ -191,6 +191,7 @@ def speech_to_text():
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
+@app.route('/history', methods=['GET', 'OPTIONS'])  # 添加兼容性路由
 def get_history():
     if request.method == 'OPTIONS':
         return '', 204
