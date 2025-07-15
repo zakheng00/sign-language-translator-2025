@@ -17,7 +17,7 @@ from contextlib import contextmanager
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={r"/*": {"origins": ["https://sign-language-translator-2025.onrender.com"]}})  # 移除通配符
+CORS(app, resources={r"/*": {"origins": "*"}})
 socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
 executor = ThreadPoolExecutor(max_workers=4)
 
