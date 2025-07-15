@@ -17,8 +17,23 @@ from contextlib import contextmanager
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
+
+# 修復 CORS 配置 - 允許更多來源
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://sign-language-translator-2025.onrender.com",
+            "https://*.ngrok-free.app",
+            "https://*.ngrok.io",
+            "http://localhost:*",
+            "http://127.0.0.1:*"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"]
+    }
+})
+
+socketio = SocketIO(app, cors_allowed_origins="*")
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -38,7 +53,7 @@ def get_db():
     db = None
     try:
         db = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-        db.row_factory = sqlite3.Row  # 允許通過列名訪問
+        db.row_factory = sqlite3.Row
         yield db
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {str(e)}")
@@ -64,6 +79,35 @@ def init_db():
 # 確保數據庫初始化
 init_db()
 
+# 添加請求日誌中間件
+@app.before_request
+def log_request():
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
+    logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
+
+# 添加響應頭中間件
+@app.after_request
+def after_request(response):
+    # 添加 NGROK 相關頭部
+    response.headers['ngrok-skip-browser-warning'] = 'true'
+    return response
+
+# --- 測試端點 ---
+@app.route('/test')
+def test():
+    return jsonify({
+        'message': 'Server is running',
+        'timestamp': datetime.datetime.utcnow().isoformat(),
+        'endpoints': [
+            '/api/history',
+            '/api/save_history',
+            '/health',
+            '/predict',
+            '/speech_to_text'
+        ]
+    })
+
 # --- 頁面路由 ---
 @app.route('/')
 def index():
@@ -81,17 +125,14 @@ def room_mode():
 def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
 
-@app.route('/history-page')  # 改名避免冲突
+@app.route('/history-page')
 def history_page():
     return send_from_directory('templates', 'history.html')
 
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
-@app.before_request
-def log_request():
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.info(f"Headers: {dict(request.headers)}")
+
 # --- API 路由 ---
 @app.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
@@ -106,7 +147,6 @@ def predict():
         logger.info(f"Processing video file: {video_file.filename}")
         files = {'video': (video_file.filename, video_file, 'video/mp4')}
         
-        # 添加錯誤重試機制
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -150,7 +190,7 @@ def speech_to_text():
         return jsonify({'error': 'Failed to process audio on Colab'}), 500
 
 # --- 歷史記錄 API ---
-@app.route('/api/history', methods=['GET', 'OPTIONS'])  # 改為 /api/history
+@app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
     if request.method == 'OPTIONS':
         return '', 204
@@ -168,12 +208,13 @@ def get_history():
                     'gesture': row['gesture'],
                     'timestamp': row['timestamp']
                 })
+        logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching history: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/save_history', methods=['POST', 'OPTIONS'])  # 改為 /api/save_history
+@app.route('/api/save_history', methods=['POST', 'OPTIONS'])
 def save_history():
     if request.method == 'OPTIONS':
         return '', 204
@@ -190,16 +231,17 @@ def save_history():
         gesture = data.get('gesture', 0)
         timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
         
+        logger.info(f"Saving history: user={user}, text={text[:50]}...")
+        
         with get_db() as db:
             cursor = db.execute(
                 'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
                 (user, text, gesture, timestamp)
             )
             db.commit()
-            
-            # 返回插入的記錄 ID
             record_id = cursor.lastrowid
             
+        logger.info(f"History saved with ID: {record_id}")
         return jsonify({
             'message': 'History saved successfully',
             'id': record_id,
@@ -220,6 +262,7 @@ def delete_history(record_id):
     if request.method == 'OPTIONS':
         return '', 204
     
+    logger.info(f"Deleting history record: {record_id}")
     try:
         with get_db() as db:
             cursor = db.execute('DELETE FROM translations WHERE id = ?', (record_id,))
@@ -228,6 +271,7 @@ def delete_history(record_id):
             if cursor.rowcount == 0:
                 return jsonify({'error': 'Record not found'}), 404
             
+        logger.info(f"History record {record_id} deleted successfully")
         return jsonify({'message': 'History record deleted successfully'}), 200
         
     except Exception as e:
@@ -240,7 +284,8 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'colab_status': check_colab_status()
+        'colab_status': check_colab_status(),
+        'database': check_database_status()
     })
 
 def check_colab_status():
@@ -251,10 +296,21 @@ def check_colab_status():
     except:
         return 'offline'
 
+def check_database_status():
+    """檢查數據庫狀態"""
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM translations')
+            count = cursor.fetchone()[0]
+            return f'online ({count} records)'
+    except:
+        return 'offline'
+
 # --- 錯誤處理 ---
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    logger.warning(f"404 error: {request.url}")
+    return jsonify({'error': 'Not found', 'url': request.url}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -262,4 +318,6 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    logger.info("Starting Flask application...")
+    logger.info(f"Database path: {DATABASE_PATH}")
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
