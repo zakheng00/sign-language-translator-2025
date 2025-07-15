@@ -12,12 +12,12 @@ import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, join_room, emit
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, resources={r"/*": {"origins": ["https://sign-language-translator-2025.onrender.com", "*"]}})  # 限制來源
-socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com", "*"])
+CORS(app, resources={r"/*": {"origins": "*"}})  # 開發時使用 *, 生產環境限制
+socketio = SocketIO(app, cors_allowed_origins=["*"], async_mode='eventlet')  # 使用 eventlet 支持 WebSocket
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -31,11 +31,9 @@ COLAB_STT_URL = "https://c024f43eeb12.ngrok-free.app/speech_to_text"  # 根據�
 # --- SQLite 設置 ---
 def get_db():
     try:
-        # 在 Render 使用本地路徑，在 Colab 使用 Google Drive 路徑（需手動切換）
-        if 'google.colab' in str(os.environ.get('COLAB_ENV', '')):  # 檢查環境變量或簡化邏輯
-            db_path = '/content/drive/My Drive/translations.db'
-        else:  # Render 或本地
-            db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
+        # 改進環境檢測
+        is_colab = 'google.colab' in str(getattr(__import__('google.colab', fromlist=['']), '', ''))
+        db_path = '/content/drive/My Drive/translations.db' if is_colab else os.path.join(os.path.dirname(__file__), 'translations.db')
         db = sqlite3.connect(db_path, check_same_thread=False)
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +42,7 @@ def get_db():
                        gesture INTEGER,
                        timestamp TEXT)''')
         return db
-    except sqlite3.OperationalError as e:
+    except (sqlite3.OperationalError, ImportError) as e:
         logger.error(f"SQLite error: {str(e)}")
         raise
 
@@ -152,6 +150,31 @@ def get_history():
     except Exception as e:
         logger.error(f"Error fetching history: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# --- WebSocket 事件 ---
+@socketio.on('connect')
+def on_connect():
+    logger.info(f"Client connected: {request.sid}")
+    emit('message', {'msg': '🟢 Connected to chat room', 'sid': request.sid})
+
+@socketio.on('join_room')
+def on_join(data):
+    room = data.get('room', 'default')
+    join_room(room)
+    logger.info(f"Client {request.sid} joined room: {room}")
+    emit('joined_room', {'msg': f'✅ Joined {room}', 'sid': request.sid}, room=room)
+
+@socketio.on('message')
+def handle_message(data):
+    room = data.get('room', 'default')
+    logger.info(f"Received message from {data.get('sid', 'Unknown')} in room {room}: {data['msg']}")
+    emit('message', {'msg': data['msg'], 'sid': data.get('sid', 'Unknown')}, room=room, broadcast=True)
+
+@socketio.on('translation')
+def handle_translation(data):
+    room = data.get('room', 'default')
+    logger.info(f"Received translation from {data.get('sid', 'Unknown')} in room {room}: {data}")
+    emit('translation', data, room=room, broadcast=True)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
