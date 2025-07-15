@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://c024f43eeb12.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
-COLAB_STT_URL = "https://c024f43eeb12.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
+COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app/predict_colab"  # 根據最新 Colab URL 更新
+COLAB_STT_URL = "https://0ae5c8df1dae.ngrok-free.app/speech_to_text"  # 根據最新 Colab URL 更新
 
 # --- SQLite 設置 ---
 def get_db():
