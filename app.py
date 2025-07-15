@@ -88,7 +88,10 @@ def history_page():
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
-
+@app.before_request
+def log_request():
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
 # --- API 路由 ---
 @app.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
