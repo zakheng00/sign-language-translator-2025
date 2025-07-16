@@ -33,16 +33,17 @@ CORS(app, resources={
     }
 })
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')  # 使用 eventlet 提高穩定性
+# 使用 eventlet 作為異步模式
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Colab API 端點 (替換為實際 NGROK URL)
-COLAB_URL = "https://e965ae982731.ngrok-free.app/predict_colab"
-COLAB_STT_URL = "https://e965ae982731.ngrok-free.app/speech_to_text"
+# Colab API 端點
+COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app/predict_colab"
+COLAB_STT_URL = "https://0ae5c8df1dae.ngrok-free.app/speech_to_text"
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -103,6 +104,10 @@ def after_request(response):
     return response
 
 # --- SocketIO 事件 ---
+@socketio.on('connect')
+def on_connect():
+    logger.info(f"Client connected, SID: {request.sid}")
+
 @socketio.on('join')
 def on_join(data):
     room = data.get('room', 'default')
@@ -117,6 +122,10 @@ def on_send_message(data):
     sid = data.get('sid', 'anonymous')
     logger.info(f"Message received in room {room} from SID {sid}: {message}")
     emit('receive_message', {'user': sid, 'message': message, 'sid': request.sid}, room=room)
+
+@socketio.on('disconnect')
+def on_disconnect():
+    logger.info(f"Client disconnected, SID: {request.sid}")
 
 # --- 測試端點 ---
 @app.route('/test')
