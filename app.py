@@ -162,8 +162,16 @@ def predict():
     
     video_file = request.files['video']
     logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}, content_type: {video_file.content_type}")
-    if video_file.content_length is None:
-        logger.warning(f"Video file content_length is None, attempting to process anyway")
+    if video_file.content_length is None or video_file.content_length == 0:
+        logger.warning(f"Video file content_length is invalid ({video_file.content_length}), attempting to verify data")
+        try:
+            video_data = video_file.read()  # 嘗試讀取文件內容
+            if not video_data:
+                return jsonify({'error': 'Empty video data'}), 400
+            video_file.seek(0)  # 重置文件指針
+        except Exception as e:
+            logger.error(f"Failed to read video file: {e}")
+            return jsonify({'error': 'Invalid video file'}), 400
     
     try:
         files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
@@ -171,7 +179,7 @@ def predict():
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(COLAB_URL, files=files, timeout=120)  # 增加超時時間
+                response = requests.post(COLAB_URL, files=files, timeout=120)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received prediction from Colab: {result}")
@@ -187,24 +195,27 @@ def predict():
                         ('anonymous', text, gesture, datetime.datetime.utcnow().isoformat())
                     )
                     db.commit()
+                room = request.args.get('room', 'default')
+                logger.info(f"Emitting translation to room: {room}, text: {text}")
                 socketio.emit('translation', {
                     'text': text,
                     'gesture': gesture,
                     'user': 'anonymous',
                     'video_id': video_id,
                     'sid': 'server',
-                    'room': request.args.get('room', 'default')
-                }, room=request.args.get('room', 'default'))
+                    'room': room
+                }, room=room)
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
-                    logger.warning(f"Timeout attempt {attempt + 1}, retrying...")
-                    time.sleep(2)
+                    logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}, retrying...")
+                    time.sleep(2 ** attempt)  # 指數退避
                     continue
+                logger.error("Max retries reached for Colab request")
                 raise
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab for prediction: {e}")
-        return jsonify({'error': 'Failed to process video on Colab'}), 500
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Colab request failed: {e}")
+                raise
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
         return jsonify({'error': str(e)}), 500
@@ -219,12 +230,20 @@ def speech_to_text():
     
     audio_file = request.files['audio']
     logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
-    if audio_file.content_length is None:
-        logger.warning(f"Audio file content_length is None, attempting to process anyway")
+    if audio_file.content_length is None or audio_file.content_length == 0:
+        logger.warning(f"Audio file content_length is invalid ({audio_file.content_length}), attempting to verify data")
+        try:
+            audio_data = audio_file.read()
+            if not audio_data:
+                return jsonify({'error': 'Empty audio data'}), 400
+            audio_file.seek(0)
+        except Exception as e:
+            logger.error(f"Failed to read audio file: {e}")
+            return jsonify({'error': 'Invalid audio file'}), 400
     
     try:
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
-        response = requests.post(COLAB_STT_URL, files=files, timeout=120)  # 增加超時時間
+        response = requests.post(COLAB_STT_URL, files=files, timeout=120)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
@@ -236,12 +255,14 @@ def speech_to_text():
                 ('anonymous', text, 0, datetime.datetime.utcnow().isoformat())
             )
             db.commit()
+        room = request.args.get('room', 'default')
+        logger.info(f"Emitting translation to room: {room}, text: {text}")
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
             'sid': 'server',
-            'room': request.args.get('room', 'default')
-        }, room=request.args.get('room', 'default'))
+            'room': room
+        }, room=room)
         return jsonify({'text': text})
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
