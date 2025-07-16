@@ -67,7 +67,7 @@ def get_db():
 def init_db():
     """初始化數據庫"""
     with get_db() as db:
-        # 添加 video_id 和 audio_text 字段（如果不存在）
+        # 確保 video_id 和 audio_text 字段存在
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
                        user TEXT,
@@ -148,6 +148,7 @@ def predict():
     try:
         logger.info(f"Processing video file: {video_file.filename}")
         files = {'video': (video_file.filename, video_file, 'video/mp4')}
+        video_id = str(uuid4())  # 生成唯一視頻 ID
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -155,8 +156,16 @@ def predict():
                 response = requests.post(COLAB_URL, files=files, timeout=60)
                 response.raise_for_status()
                 result = response.json()
-                logger.info(f"Received prediction from Colab: {result}")
-                return jsonify(result)
+                text = result.get('translation', 'No translation')
+                # 存儲到歷史記錄
+                save_history({
+                    'user': 'anonymous',
+                    'text': text,
+                    'gesture': 0,
+                    'timestamp': datetime.datetime.utcnow().isoformat(),
+                    'video_id': video_id
+                })
+                return jsonify({'translation': text, 'video_id': video_id})
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
                     logger.warning(f"Timeout attempt {attempt + 1}, retrying...")
@@ -184,8 +193,16 @@ def speech_to_text():
         response = requests.post(COLAB_STT_URL, files=files, timeout=60)
         response.raise_for_status()
         result = response.json()
-        logger.info(f"Received speech to text result from Colab: {result}")
-        return jsonify(result)
+        text = result.get('text', 'No transcription')
+        # 存儲到歷史記錄
+        save_history({
+            'user': 'anonymous',
+            'text': text,
+            'gesture': 0,
+            'timestamp': datetime.datetime.utcnow().isoformat(),
+            'audio_text': text  # 使用 audio_text 存儲轉錄結果
+        })
+        return jsonify({'text': text})
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
@@ -232,8 +249,8 @@ def save_history():
         text = data.get('text', '')
         gesture = data.get('gesture', 0)
         timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
-        video_id = data.get('video_id', None)  # 新增字段
-        audio_text = data.get('audio_text', None)  # 新增字段
+        video_id = data.get('video_id', None)
+        audio_text = data.get('audio_text', None)
         logger.info(f"Saving history: user={user}, text={text[:50]}, video_id={video_id}, audio_text={audio_text[:50]}...")
         with get_db() as db:
             cursor = db.execute(
@@ -268,7 +285,6 @@ def delete_history(record_id):
             
         logger.info(f"History record {record_id} deleted successfully")
         return jsonify({'message': 'History record deleted successfully'}), 200
-        
     except Exception as e:
         logger.error(f"Error deleting history: {str(e)}")
         return jsonify({'error': f'Failed to delete history: {str(e)}'}), 500
