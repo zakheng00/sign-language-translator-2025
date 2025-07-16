@@ -42,6 +42,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"
 COLAB_STT_URL = "https://5bad14badabc.ngrok-free.app/speech_to_text"
 
+# 手語映射表（示例，需根據 Colab 定義調整）
+GESTURE_MAPPING = {
+    18: "Hello",  # 示例映射
+    11: "Thank You",
+    7: "I Love You",
+    8: "Yes",
+    23: "Good"
+}
+
 # --- SQLite 設置 ---
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
@@ -170,6 +179,9 @@ def predict():
         return jsonify({'error': 'Missing video file'}), 400
     
     video_file = request.files['video']
+    if video_file.content_length == 0:
+        return jsonify({'error': 'Empty video file uploaded', 'video_id': str(uuid4())}), 400
+    
     try:
         logger.info(f"Processing video file: {video_file.filename}, size: {video_file.content_length} bytes")
         files = {'video': (video_file.filename, video_file, 'video/mp4')}
@@ -181,10 +193,13 @@ def predict():
                 response = requests.post(COLAB_URL, files=files, timeout=60)
                 response.raise_for_status()
                 result = response.json()
-                logger.info(f"Colab response for predict: {result}")  # 記錄完整回應
-                text = result.get('translation', 'No translation')
+                logger.info(f"Colab response for predict: {result}")
                 gesture = result.get('gesture', 0)
-                frame_count = result.get('frame_count', 0)  # 假設 Colab 返回幀數
+                predictions = result.get('predictions', [])
+                text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
+                if predictions:
+                    text = GESTURE_MAPPING.get(predictions[0], text)  # 優先使用第一個預測
+                frame_count = result.get('frame_count', len(predictions) if predictions else 0)
                 if frame_count < 60:  # 假設要求至少 60 幀 (2 秒 @ 30 FPS)
                     logger.warning(f"Insufficient frames: got {frame_count}, padding may affect result")
                 save_history({
@@ -199,7 +214,7 @@ def predict():
                     'gesture': gesture,
                     'user': 'anonymous',
                     'sid': 'server',
-                    'room': request.args.get('room', 'default')  # 支持房間
+                    'room': request.args.get('room', 'default')
                 }, room=request.args.get('room', 'default'))
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
             except requests.exceptions.Timeout:
