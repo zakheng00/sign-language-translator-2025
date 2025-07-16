@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign Language Translation System - Room Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script> <!-- 更新版本 -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     /* [保持現有 CSS 不變] */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -384,7 +384,7 @@
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 45000,
-        cors: { origin: "*", methods: ["GET", "POST"] } // 開發時使用 *
+        cors: { origin: "*", methods: ["GET", "POST"] }
       });
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
@@ -439,7 +439,7 @@
           chatContainer.classList.remove('hidden');
           showError('✅ Successfully joined room!');
           roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-100 border border-green-200 text-green-800';
-          socket.emit('join_room', { room: roomId }); // 發送加入房間請求
+          socket.emit('join', { room: roomId }); // 更正為 'join' 事件
         }
       });
 
@@ -448,17 +448,22 @@
         addChatMessage('🟢 Connected to chat room', true);
       });
 
-      socket.on('message', (data) => {
-        addChatMessage(data.msg, data.sid === socket.id);
+      socket.on('connect_status', (data) => {
+        console.log('Connect status:', data.message);
+        addChatMessage(data.message, false);
+      });
+
+      socket.on('receive_message', (data) => {
+        addChatMessage(`${data.user}: ${data.message}`, data.sid === socket.id);
       });
 
       socket.on('translation', (data) => {
-        const key = `${data.user}-${data.gesture || data.text || data.error}`;
+        const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const message = `${data.user}: ${data.gesture || data.text || data.error || 'Unknown result'}`;
-          addChatMessage(message, data.sid === socket.id, true);
-          updateResult(`✅ Translation Result: ${data.gesture || data.text || data.error || 'Unknown result'}`, 'success');
+          const translatedMessage = `User: ${data.text || data.error || 'Unknown result'}`; // 優先使用 text
+          addChatMessage(translatedMessage, data.sid === socket.id, true);
+          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
         }
       });
 
@@ -475,7 +480,8 @@
       sendBtn.addEventListener('click', () => {
         const msg = chatInput.value.trim();
         if (msg && socket.connected) {
-          socket.emit('message', { msg, sid: socket.id, room: currentRoomDiv.textContent.split(':')[1].trim() }); // 發送到當前房間
+          const roomId = currentRoomDiv.textContent.split(':')[1].trim();
+          socket.emit('send_message', { room: roomId, message: msg, sid: socket.id });
           addChatMessage(msg, true);
           chatInput.value = '';
         }
@@ -536,7 +542,7 @@
                   if (event.data.size > 0) recordedBlobs.push(event.data);
                   console.log('Video blob recorded:', event.data);
                 };
-                mediaRecorder.start(200); // 調整為 200ms
+                mediaRecorder.start(200);
                 startRecordBtn.disabled = true;
                 stopRecordBtn.disabled = false;
                 uploadBtn.disabled = true;
@@ -630,7 +636,7 @@
         if (recordedBlobs.length) {
           const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm' });
           const formData = new FormData();
-          const mediaId = crypto.randomUUID(); // Generate unique ID
+          const mediaId = crypto.randomUUID();
           formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.mp4` : `recording_${mediaId}.webm`);
           updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
           try {
@@ -651,15 +657,15 @@
               console.warn('No valid speech data, keeping previous result');
               return;
             }
-            const translatedMessage = `User: ${resultData.gesture || resultData.text || resultData.error || 'Unknown result'}`;
-            updateResult(`✅ ${translatedMessage}`, 'success');
+            const translatedMessage = `User: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
+            updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
             socket.emit('translation', {
+              text: resultData.translation || resultData.text,
               gesture: resultData.gesture,
-              text: resultData.text,
               user: 'User',
               error: resultData.error,
               sid: socket.id,
-              room: currentRoomDiv.textContent.split(':')[1].trim() // 發送到當前房間
+              room: currentRoomDiv.textContent.split(':')[1].trim()
             });
 
             // Save to history
@@ -668,7 +674,7 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 user: 'anonymous',
-                text: resultData.gesture || resultData.text || resultData.error || 'Unknown result',
+                text: resultData.translation || resultData.text || resultData.error || 'Unknown result',
                 gesture: resultData.gesture || 0,
                 timestamp: new Date().toISOString(),
                 video_id: isSignLanguageMode ? mediaId : null,
