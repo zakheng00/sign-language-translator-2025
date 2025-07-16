@@ -344,9 +344,9 @@
         }
 
         const FLASK_URL = detectServerUrl();
-        const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab";
+        const COLAB_URL = "https://16215c21960a.ngrok-free.app"; // 修正為根 URL
         const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
-        const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+        const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('startBtn');
@@ -365,11 +365,8 @@
                 reconnectionAttempts: 15,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
-                timeout: 45000,
-                cors: {
-                    origin: "https://sign-language-translator-2025.onrender.com",
-                    methods: ["GET", "POST"]
-                }
+                timeout: 45000
+                // 移除 cors 選項，交由服務器處理
             });
 
             function updateResult(message, type = 'default') {
@@ -468,7 +465,7 @@
                         });
 
                         // Save to history
-                        await fetch(SAVE_ENDPOINT, {
+                        const saveResponse = await fetch(SAVE_ENDPOINT, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -479,6 +476,8 @@
                                 audio_text: transcription
                             })
                         });
+                        if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+                        const saveResult = await saveResponse.json();
                         console.log('History saved for audio ID:', audioId);
                     } catch (error) {
                         console.error('Transcription failed:', error);
