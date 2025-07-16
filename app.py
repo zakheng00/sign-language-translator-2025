@@ -41,8 +41,8 @@ executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Colab API 端點
-COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app/predict_colab"
+# Colab API 端點 (請確認 URL 是否有效)
+COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app/predict_colab"  # 請檢查並更新
 COLAB_STT_URL = "https://0ae5c8df1dae.ngrok-free.app/speech_to_text"
 
 # 手語映射表
@@ -178,8 +178,8 @@ def predict():
     
     video_file = request.files['video']
     try:
-        logger.info(f"Processing video file: {video_file.filename}")
-        files = {'video': (video_file.filename, video_file, 'video/mp4')}
+        logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}, content_type: {video_file.content_type}")
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -202,15 +202,15 @@ def predict():
                     'room': room
                 }, room=room)
                 return jsonify({'translation': text, 'gesture': gesture})
-            except requests.exceptions.Timeout:
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Colab request failed (attempt {attempt + 1}/{max_retries}): {e}, Response: {getattr(response, 'text', 'No response')}")
                 if attempt < max_retries - 1:
-                    logger.warning(f"Timeout attempt {attempt + 1}, retrying...")
                     time.sleep(2)
                     continue
                 raise
                 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab for prediction: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in predict: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
@@ -223,8 +223,8 @@ def speech_to_text():
     
     audio_file = request.files['audio']
     try:
-        logger.info(f"Processing audio file: {audio_file.filename}")
-        files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
+        logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
+        files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
         
         response = requests.post(COLAB_STT_URL, files=files, timeout=60)
         response.raise_for_status()
@@ -241,7 +241,7 @@ def speech_to_text():
         return jsonify({'text': text})
         
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab for speech to text: {e}")
+        logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': 'Failed to process audio on Colab'}), 500
 
 # --- 歷史記錄 API ---
