@@ -219,21 +219,16 @@ def get_history():
 def save_history():
     if request.method == 'OPTIONS':
         return '', 204
-    
     logger.info(f"Received save request from origin: {request.headers.get('Origin')}")
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        
-        # 數據驗證
         user = data.get('user', 'Unknown')
         text = data.get('text', '')
         gesture = data.get('gesture', 0)
         timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
-        
         logger.info(f"Saving history: user={user}, text={text[:50]}...")
-        
         with get_db() as db:
             cursor = db.execute(
                 'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
@@ -241,19 +236,11 @@ def save_history():
             )
             db.commit()
             record_id = cursor.lastrowid
-            
-        logger.info(f"History saved with ID: {record_id}")
         return jsonify({
             'message': 'History saved successfully',
             'id': record_id,
-            'data': {
-                'user': user,
-                'text': text,
-                'gesture': gesture,
-                'timestamp': timestamp
-            }
+            'data': {'user': user, 'text': text, 'gesture': gesture, 'timestamp': timestamp}
         }), 200
-        
     except Exception as e:
         logger.error(f"Error saving history: {str(e)}")
         return jsonify({'error': f'Failed to save history: {str(e)}'}), 500
