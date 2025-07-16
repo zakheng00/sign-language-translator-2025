@@ -67,12 +67,15 @@ def get_db():
 def init_db():
     """初始化數據庫"""
     with get_db() as db:
+        # 添加 video_id 和 audio_text 字段（如果不存在）
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
                        user TEXT,
                        text TEXT,
                        gesture INTEGER,
-                       timestamp TEXT)''')
+                       timestamp TEXT,
+                       video_id TEXT,
+                       audio_text TEXT)''')
         db.commit()
     logger.info("SQLite database initialized.")
 
@@ -89,7 +92,6 @@ def log_request():
 # 添加響應頭中間件
 @app.after_request
 def after_request(response):
-    # 添加 NGROK 相關頭部
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
@@ -207,7 +209,9 @@ def get_history():
                     'user': row['user'],
                     'text': row['text'],
                     'gesture': row['gesture'],
-                    'timestamp': row['timestamp']
+                    'timestamp': row['timestamp'],
+                    'video_id': row['video_id'],
+                    'audio_text': row['audio_text']
                 })
         logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
@@ -219,7 +223,7 @@ def get_history():
 def save_history():
     if request.method == 'OPTIONS':
         return '', 204
-    logger.info(f"Received save request from origin: {request.headers.get('Origin')}")
+    logger.info(f"Received save request from origin: {request.headers.get('Origin')}, data: {request.get_json()}")
     try:
         data = request.get_json()
         if not data:
@@ -228,18 +232,21 @@ def save_history():
         text = data.get('text', '')
         gesture = data.get('gesture', 0)
         timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
-        logger.info(f"Saving history: user={user}, text={text[:50]}...")
+        video_id = data.get('video_id', None)  # 新增字段
+        audio_text = data.get('audio_text', None)  # 新增字段
+        logger.info(f"Saving history: user={user}, text={text[:50]}, video_id={video_id}, audio_text={audio_text[:50]}...")
         with get_db() as db:
             cursor = db.execute(
-                'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
-                (user, text, gesture, timestamp)
+                'INSERT INTO translations (user, text, gesture, timestamp, video_id, audio_text) VALUES (?, ?, ?, ?, ?, ?)',
+                (user, text, gesture, timestamp, video_id, audio_text)
             )
             db.commit()
             record_id = cursor.lastrowid
+        logger.info(f"History saved with ID: {record_id}")
         return jsonify({
             'message': 'History saved successfully',
             'id': record_id,
-            'data': {'user': user, 'text': text, 'gesture': gesture, 'timestamp': timestamp}
+            'data': {'user': user, 'text': text, 'gesture': gesture, 'timestamp': timestamp, 'video_id': video_id, 'audio_text': audio_text}
         }), 200
     except Exception as e:
         logger.error(f"Error saving history: {str(e)}")
@@ -277,7 +284,6 @@ def health_check():
     })
 
 def check_colab_status():
-    """檢查 Colab 服務狀態"""
     try:
         response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
@@ -285,7 +291,6 @@ def check_colab_status():
         return 'offline'
 
 def check_database_status():
-    """檢查數據庫狀態"""
     try:
         with get_db() as db:
             cursor = db.execute('SELECT COUNT(*) FROM translations')
