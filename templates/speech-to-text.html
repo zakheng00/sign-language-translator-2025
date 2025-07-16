@@ -344,8 +344,9 @@
         }
 
         const FLASK_URL = detectServerUrl();
+        const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab";
         const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
-        const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
+        const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('startBtn');
