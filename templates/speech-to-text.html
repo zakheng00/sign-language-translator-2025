@@ -336,8 +336,16 @@
     </div>
 
     <script type="module">
-        const COLAB_URL = "https://5bad14badabc.ngrok-free.app"; // Update with latest ngrok URL
-        const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;
+        // Server URL detection
+        function detectServerUrl() {
+            const currentHost = window.location.hostname;
+            const currentProtocol = window.location.protocol;
+            return `${currentProtocol}//${currentHost}`; // Use Render domain
+        }
+
+        const FLASK_URL = detectServerUrl();
+        const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
+        const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
 
         document.addEventListener('DOMContentLoaded', () => {
             const startBtn = document.getElementById('startBtn');
@@ -349,7 +357,7 @@
             let stream;
             let mediaRecorder;
             let recordedBlobs = [];
-            let socket = io(COLAB_URL, {
+            let socket = io(FLASK_URL, {
                 path: '/socket.io',
                 transports: ['websocket', 'polling'],
                 reconnection: true,
@@ -437,7 +445,8 @@
                 if (recordedBlobs.length) {
                     const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
                     const formData = new FormData();
-                    formData.append('audio', blob, 'recording.webm');
+                    const audioId = crypto.randomUUID(); // Generate unique audio ID
+                    formData.append('audio', blob, `recording_${audioId}.webm`);
                     updateResult("⏳ Transcribing audio...", 'processing');
                     try {
                         const response = await fetch(SPEECH_ENDPOINT, {
@@ -448,13 +457,28 @@
                         });
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const resultData = await response.json();
-                        updateResult(`✅ Transcription Result: ${resultData.text || resultData.error || 'Unknown result'}`, 'success');
+                        const transcription = resultData.text || resultData.error || 'Unknown result';
+                        updateResult(`✅ Transcription Result: ${transcription}`, 'success');
                         socket.emit('translation', {
-                            text: resultData.text,
+                            text: transcription,
                             user: 'User',
                             error: resultData.error,
                             sid: socket.id
                         });
+
+                        // Save to history
+                        await fetch(SAVE_ENDPOINT, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                user: 'anonymous',
+                                text: transcription,
+                                gesture: 0, // Not applicable for speech-to-text
+                                timestamp: new Date().toISOString(),
+                                audio_text: transcription
+                            })
+                        });
+                        console.log('History saved for audio ID:', audioId);
                     } catch (error) {
                         console.error('Transcription failed:', error);
                         updateResult(`❌ Transcription failed: ${error.message}`, 'error');
