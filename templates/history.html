@@ -68,6 +68,12 @@
       const currentUrlSpan = document.getElementById('currentUrl');
       const lastCheckTimeSpan = document.getElementById('lastCheckTime');
 
+      // 確保元素存在
+      if (!historyList || !saveBtn || !refreshBtn || !testBtn || !statusBar || !currentUrlSpan || !lastCheckTimeSpan) {
+        console.error('One or more DOM elements not found');
+        return;
+      }
+
       currentUrlSpan.textContent = FLASK_URL;
 
       function updateStatus(message, isError = false) {
@@ -103,11 +109,14 @@
         try {
           updateStatus('Loading history...');
           console.log(`Fetching from: ${HISTORY_ENDPOINT}`);
-          const response = await fetch(HISTORY_ENDPOINT, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-          console.log(`Fetch status: ${response.status}`);
+          const response = await fetch(HISTORY_ENDPOINT, { 
+            method: 'GET', 
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } 
+          });
+          console.log(`Fetch status: ${response.status}, Response:`, await response.text());
           if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
           const history = await response.json();
-          console.log('History data:', history);
+          console.log('Parsed history:', history);
           displayHistory(history);
           updateStatus(`✅ Loaded ${history.length} records`);
           updateLastCheck();
@@ -187,11 +196,11 @@
       async function saveTestData() {
         const testData = {
           user: "test_user",
-          text: `Translated: Test video ${new Date().toLocaleTimeString()}`, // 模擬翻譯結果
+          text: `Translated: Test video ${new Date().toLocaleTimeString()}`,
           gesture: Math.floor(Math.random() * 10) + 1,
           timestamp: new Date().toISOString(),
-          video_id: `video_${Math.floor(Math.random() * 1000)}`, // 模擬視頻ID
-          audio_text: `Speech: Test audio ${new Date().toLocaleTimeString()}` // 模擬語音轉錄
+          video_id: `video_${Math.floor(Math.random() * 1000)}`,
+          audio_text: `Speech: Test audio ${new Date().toLocaleTimeString()}`
         };
 
         try {
