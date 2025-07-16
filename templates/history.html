@@ -52,10 +52,12 @@
       return `${currentProtocol}//${currentHost}`; // Use Render domain
     }
 
-    const FLASK_URL = detectServerUrl();
-    const HISTORY_ENDPOINT = `${FLASK_URL}/api/history`;
-    const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
-    const DELETE_ENDPOINT = `${FLASK_URL}/api/delete_history`;
+    // 定義 Colab 和 Render 的 URL
+    const FLASK_URL = detectServerUrl(); // Render URL
+    const COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app"; // 硬編碼 Colab ngrok URL，需根據實際情況更新
+    const HISTORY_ENDPOINT = `${COLAB_URL}/api/history`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+    const DELETE_ENDPOINT = `${COLAB_URL}/api/delete_history`;
     const HEALTH_ENDPOINT = `${FLASK_URL}/health`;
     const TEST_ENDPOINT = `${FLASK_URL}/test`;
 
