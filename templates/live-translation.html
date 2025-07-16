@@ -290,7 +290,7 @@
 
     const FLASK_URL = detectServerUrl();
     const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab"; // Keep Colab URL for prediction
-    const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
     let stream;
     let mediaRecorder;
