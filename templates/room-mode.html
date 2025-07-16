@@ -352,10 +352,10 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab";
-    let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 改為 let 以允許動態更新
-    let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 改為 let 以允許動態更新
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+    const COLAB_URL = "https://16215c21960a.ngrok-free.app"; // 修正為根 URL
+    let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 初始值，動態更新
+    let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 初始值，動態更新
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
     document.addEventListener('DOMContentLoaded', () => {
       const roomsList = document.getElementById('roomsList');
@@ -384,8 +384,8 @@
         reconnectionAttempts: 15,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 45000,
-        cors: { origin: "*", methods: ["GET", "POST"] }
+        timeout: 45000
+        // 移除 cors 選項，交由服務器處理
       });
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
@@ -656,7 +656,8 @@
               room: currentRoomDiv.textContent.split(':')[1].trim()
             });
 
-            await fetch(SAVE_ENDPOINT, {
+            // 保存歷史記錄到 Colab
+            const saveResponse = await fetch(SAVE_ENDPOINT, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -668,6 +669,8 @@
                 audio_text: !isSignLanguageMode ? resultData.text : null
               })
             });
+            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+            const saveResult = await saveResponse.json();
             console.log(`History saved for ${isSignLanguageMode ? 'video ID' : 'audio text'}:`, mediaId || resultData.text);
           } catch (error) {
             console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
