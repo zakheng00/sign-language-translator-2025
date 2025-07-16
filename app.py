@@ -218,7 +218,7 @@ def predict():
                     'gesture': gesture,
                     'user': 'anonymous',
                     'video_id': video_id,
-                    'sid': request.sid,
+                    'sid': 'server',  # 改為靜態 SID，避開 request.sid 錯誤
                     'room': room
                 }, room=room)
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
@@ -276,7 +276,7 @@ def speech_to_text():
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
-            'sid': request.sid,
+            'sid': 'server',  # 改為靜態 SID，避開 request.sid 錯誤
             'room': room
         }, room=room)
         return jsonify({'text': text})
