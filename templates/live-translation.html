@@ -289,8 +289,9 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab"; // Keep Colab URL for prediction
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+    const COLAB_URL = "https://16215c21960a.ngrok-free.app"; // 修正為根 URL
+    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
     let stream;
     let mediaRecorder;
@@ -352,36 +353,40 @@
       if (recordedBlobs.length) {
         const blob = new Blob(recordedBlobs, { type: 'video/webm' });
         const formData = new FormData();
-        const videoId = crypto.randomUUID(); // Generate a unique video ID
+        const videoId = crypto.randomUUID();
         formData.append('video', blob, `recording_${videoId}.mp4`);
         updateResult('⏳ Uploading and translating...', 'processing');
         try {
-          const response = await fetch(`${FLASK_URL}/predict`, {
+          const response = await fetch(PREDICT_ENDPOINT, {
             method: 'POST',
             body: formData,
             mode: 'cors'
           });
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
           const result = await response.json();
           const translation = result.translation || result.error || 'Unknown result';
           updateResult(`🎉 Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
           
-          // Save to history
-          await fetch(SAVE_ENDPOINT, {
+          // 保存歷史記錄到 Colab
+          const saveResponse = await fetch(SAVE_ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               user: 'anonymous',
               text: translation,
-              gesture: 0, // Adjust if gesture detection is added
+              gesture: result.gesture || 0,
               timestamp: new Date().toISOString(),
               video_id: videoId
             })
           });
-          console.log('History saved for video ID:', videoId);
+          if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+          const saveResult = await saveResponse.json();
+          console.log('History saved:', saveResult);
         } catch (error) {
           console.error('Upload failed:', error);
           updateResult(`❌ Upload failed: ${error.message}`, 'error');
+        } finally {
+          recordedBlobs = [];
         }
       } else {
         updateResult('❌ Please record a video first!', 'error');
