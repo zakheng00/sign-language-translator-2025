@@ -40,33 +40,18 @@
     </div>
     
     <div id="pagination" class="mt-6 flex justify-center">
-      <!-- 分页控件将在这里添加 -->
+      <!-- Pagination controls will be added here -->
     </div>
   </div>
 
   <script type="module">
-    // 動態檢測服務器 URL
+    // Fixed server URL detection - always use current domain
     function detectServerUrl() {
       const currentHost = window.location.hostname;
       const currentProtocol = window.location.protocol;
       
-      // 如果是 Render 域名，使用 NGROK URL（因為後端在 NGROK 上）
-      if (currentHost.includes('onrender.com')) {
-        return "https://5bad14badabc.ngrok-free.app";
-      }
-      
-      // 如果是 NGROK 域名，使用當前域名
-      if (currentHost.includes('ngrok-free.app') || currentHost.includes('ngrok.io')) {
-        return `${currentProtocol}//${currentHost}`;
-      }
-      
-      // 本地開發環境
-      if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
-        return `${currentProtocol}//${currentHost}:5000`;
-      }
-      
-      // 默認使用 NGROK URL
-      return "https://0ae5c8df1dae.ngrok-free.app";
+      // Always use the current domain (Render deployment)
+      return `${currentProtocol}//${currentHost}`;
     }
 
     const FLASK_URL = detectServerUrl();
@@ -85,10 +70,10 @@
       const currentUrlSpan = document.getElementById('currentUrl');
       const lastCheckTimeSpan = document.getElementById('lastCheckTime');
 
-      // 顯示當前 URL
+      // Display current URL
       currentUrlSpan.textContent = FLASK_URL;
 
-      // 更新狀態欄
+      // Update status bar
       function updateStatus(message, isError = false) {
         statusBar.textContent = `Status: ${message}`;
         statusBar.className = isError 
@@ -96,12 +81,12 @@
           : 'mb-4 p-3 rounded bg-green-50 text-sm text-green-600';
       }
 
-      // 更新檢查時間
+      // Update check time
       function updateLastCheck() {
         lastCheckTimeSpan.textContent = new Date().toLocaleTimeString();
       }
 
-      // 測試連接
+      // Test connection
       async function testConnection() {
         try {
           updateStatus('Testing connection...');
@@ -110,8 +95,7 @@
           const response = await fetch(TEST_ENDPOINT, {
             method: 'GET',
             headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true'
+              'Content-Type': 'application/json'
             }
           });
           
@@ -134,7 +118,7 @@
         }
       }
 
-      // 獲取歷史記錄
+      // Fetch history
       async function fetchHistory() {
         try {
           updateStatus('Loading history...');
@@ -143,8 +127,7 @@
           const response = await fetch(HISTORY_ENDPOINT, { 
             method: 'GET',
             headers: {
-              'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true'
+              'Content-Type': 'application/json'
             }
           });
           
@@ -184,7 +167,7 @@
         }
       }
 
-      // 顯示歷史記錄
+      // Display history
       function displayHistory(history) {
         if (history.length === 0) {
           historyList.innerHTML = `
@@ -192,6 +175,11 @@
               <div class="text-4xl mb-4">📝</div>
               <div class="text-lg">No translation history found</div>
               <div class="text-sm">Start translating to see your history here</div>
+              <div class="mt-4">
+                <button onclick="window.saveTestData()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                  Add Test Data
+                </button>
+              </div>
             </div>
           `;
           return;
@@ -235,7 +223,7 @@
         });
       }
 
-      // 格式化時間戳
+      // Format timestamp
       function formatTimestamp(timestamp) {
         try {
           const date = new Date(timestamp);
@@ -252,8 +240,8 @@
         }
       }
 
-      // 保存測試數據
-      async function saveHistory() {
+      // Save test data
+      async function saveTestData() {
         const testData = {
           user: "test_user",
           text: `Test translation ${new Date().toLocaleTimeString()}`,
@@ -269,8 +257,7 @@
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'ngrok-skip-browser-warning': 'true'
+              'Accept': 'application/json'
             },
             body: JSON.stringify(testData)
           });
@@ -293,7 +280,7 @@
         }
       }
 
-      // 刪除記錄
+      // Delete record
       window.deleteRecord = async function(recordId) {
         if (!confirm('Are you sure you want to delete this record?')) {
           return;
@@ -303,10 +290,7 @@
           updateStatus(`Deleting record ${recordId}...`);
           
           const response = await fetch(`${DELETE_ENDPOINT}/${recordId}`, {
-            method: 'DELETE',
-            headers: {
-              'ngrok-skip-browser-warning': 'true'
-            }
+            method: 'DELETE'
           });
 
           const result = await response.json();
@@ -326,14 +310,10 @@
         }
       };
 
-      // 檢查服務狀態
+      // Check service health
       async function checkHealth() {
         try {
-          const response = await fetch(HEALTH_ENDPOINT, {
-            headers: {
-              'ngrok-skip-browser-warning': 'true'
-            }
-          });
+          const response = await fetch(HEALTH_ENDPOINT);
           const health = await response.json();
           console.log('Service health:', health);
         } catch (error) {
@@ -341,16 +321,17 @@
         }
       }
 
-      // 暴露函數到全局作用域
+      // Expose functions to global scope
       window.fetchHistory = fetchHistory;
       window.testConnection = testConnection;
+      window.saveTestData = saveTestData;
 
-      // 事件監聽器
+      // Event listeners
       testBtn.addEventListener('click', testConnection);
-      saveBtn.addEventListener('click', saveHistory);
+      saveBtn.addEventListener('click', saveTestData);
       refreshBtn.addEventListener('click', fetchHistory);
 
-      // 初始化
+      // Initialize
       testConnection().then(() => {
         fetchHistory();
       });
