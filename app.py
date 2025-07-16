@@ -18,18 +18,16 @@ from contextlib import contextmanager
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 修復 CORS 配置 - 允許更多來源
+# 精簡 CORS 配置 - 只允許 Render 和本地測試來源
 CORS(app, resources={
     r"/*": {
         "origins": [
             "https://sign-language-translator-2025.onrender.com",
-            "https://*.ngrok-free.app",
-            "https://*.ngrok.io",
             "http://localhost:*",
             "http://127.0.0.1:*"
         ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"]
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
     }
 })
 
@@ -38,7 +36,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (替換為實際 NGROK URL)
 COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"
@@ -65,22 +63,49 @@ def get_db():
             db.close()
 
 def init_db():
-    """初始化數據庫"""
+    """初始化數據庫並添加索引"""
     with get_db() as db:
-        # 確保 video_id 和 audio_text 字段存在
-        db.execute('''CREATE TABLE IF NOT EXISTS translations
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       user TEXT,
-                       text TEXT,
-                       gesture INTEGER,
-                       timestamp TEXT,
-                       video_id TEXT,
-                       audio_text TEXT)''')
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS translations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT,
+                text TEXT,
+                gesture INTEGER,
+                timestamp TEXT,
+                video_id TEXT,
+                audio_text TEXT
+            )
+        ''')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
         db.commit()
-    logger.info("SQLite database initialized.")
+    logger.info("SQLite database initialized with index.")
 
 # 確保數據庫初始化
 init_db()
+
+def save_history(data):
+    """保存翻譯歷史記錄到 SQLite 數據庫"""
+    try:
+        with get_db() as db:
+            cursor = db.execute(
+                'INSERT INTO translations (user, text, gesture, timestamp, video_id, audio_text) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (
+                    data.get('user', 'anonymous'),
+                    data.get('text', ''),
+                    data.get('gesture', 0),
+                    data.get('timestamp', datetime.datetime.utcnow().isoformat()),
+                    data.get('video_id', None),
+                    data.get('audio_text', None)
+                )
+            )
+            db.commit()
+            record_id = cursor.lastrowid
+            logger.info(f"History saved with ID: {record_id}")
+            return record_id
+    except sqlite3.Error as e:
+        logger.error(f"Error saving history: {str(e)}")
+        raise
 
 # 添加請求日誌中間件
 @app.before_request
@@ -161,9 +186,15 @@ def predict():
                 save_history({
                     'user': 'anonymous',
                     'text': text,
-                    'gesture': 0,
+                    'gesture': result.get('gesture', 0),
                     'timestamp': datetime.datetime.utcnow().isoformat(),
                     'video_id': video_id
+                })
+                socketio.emit('translation', {
+                    'text': text,
+                    'gesture': result.get('gesture', 0),
+                    'user': 'anonymous',
+                    'sid': 'server'
                 })
                 return jsonify({'translation': text, 'video_id': video_id})
             except requests.exceptions.Timeout:
@@ -172,10 +203,16 @@ def predict():
                     time.sleep(2)
                     continue
                 raise
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Colab request failed: {e}")
+                raise
                 
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for prediction: {e}")
         return jsonify({'error': 'Failed to process video on Colab'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error in predict: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
@@ -200,13 +237,21 @@ def speech_to_text():
             'text': text,
             'gesture': 0,
             'timestamp': datetime.datetime.utcnow().isoformat(),
-            'audio_text': text  # 使用 audio_text 存儲轉錄結果
+            'audio_text': text
+        })
+        socketio.emit('translation', {
+            'text': text,
+            'user': 'anonymous',
+            'sid': 'server'
         })
         return jsonify({'text': text})
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
         return jsonify({'error': 'Failed to process audio on Colab'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error in speech_to_text: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
@@ -219,17 +264,7 @@ def get_history():
     try:
         with get_db() as db:
             cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
-            history = []
-            for row in cursor.fetchall():
-                history.append({
-                    'id': row['id'],
-                    'user': row['user'],
-                    'text': row['text'],
-                    'gesture': row['gesture'],
-                    'timestamp': row['timestamp'],
-                    'video_id': row['video_id'],
-                    'audio_text': row['audio_text']
-                })
+            history = [dict(row) for row in cursor.fetchall()]
         logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
     except Exception as e:
@@ -237,7 +272,7 @@ def get_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/save_history', methods=['POST', 'OPTIONS'])
-def save_history():
+def save_history_api():
     if request.method == 'OPTIONS':
         return '', 204
     logger.info(f"Received save request from origin: {request.headers.get('Origin')}, data: {request.get_json()}")
@@ -245,25 +280,11 @@ def save_history():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        user = data.get('user', 'Unknown')
-        text = data.get('text', '')
-        gesture = data.get('gesture', 0)
-        timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
-        video_id = data.get('video_id', None)
-        audio_text = data.get('audio_text', None)
-        logger.info(f"Saving history: user={user}, text={text[:50]}, video_id={video_id}, audio_text={audio_text[:50]}...")
-        with get_db() as db:
-            cursor = db.execute(
-                'INSERT INTO translations (user, text, gesture, timestamp, video_id, audio_text) VALUES (?, ?, ?, ?, ?, ?)',
-                (user, text, gesture, timestamp, video_id, audio_text)
-            )
-            db.commit()
-            record_id = cursor.lastrowid
-        logger.info(f"History saved with ID: {record_id}")
+        record_id = save_history(data)
         return jsonify({
             'message': 'History saved successfully',
             'id': record_id,
-            'data': {'user': user, 'text': text, 'gesture': gesture, 'timestamp': timestamp, 'video_id': video_id, 'audio_text': audio_text}
+            'data': data
         }), 200
     except Exception as e:
         logger.error(f"Error saving history: {str(e)}")
