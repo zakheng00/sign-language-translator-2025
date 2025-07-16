@@ -348,12 +348,12 @@
     function detectServerUrl() {
       const currentHost = window.location.hostname;
       const currentProtocol = window.location.protocol;
-      return `${currentProtocol}//${currentHost}`; // Use Render domain
+      return `${currentProtocol}//${currentHost}`;
     }
 
     const FLASK_URL = detectServerUrl();
-    const PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 預設房間
-    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 預設房間
+    let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 改為 let 以允許動態更新
+    let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 改為 let 以允許動態更新
     const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -372,8 +372,8 @@
       const result = document.getElementById('result');
       const signLanguageBtn = document.getElementById('signLanguageBtn');
       const speechToTextBtn = document.getElementById('speechToTextBtn');
-      let stream;
-      let mediaRecorder;
+      let stream = null;
+      let mediaRecorder = null;
       let recordedBlobs = [];
       let socket = io(FLASK_URL, {
         path: '/socket.io',
@@ -392,6 +392,7 @@
       chatContainer.style.display = 'block';
       chatInput.disabled = false;
 
+      // 顯示錯誤提示
       function showError(message) {
         roomError.textContent = message;
         roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
@@ -399,6 +400,7 @@
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
+      // 添加聊天消息
       function addChatMessage(message, isSelf = false, isTranslated = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
@@ -408,6 +410,7 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
+      // 創建房間卡片
       function createRoomCard(roomId, userCount = 0) {
         const full = userCount >= 2;
         const btnText = full ? 'Full' : 'Join';
@@ -431,6 +434,7 @@
 
       ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
 
+      // 房間切換事件
       roomsList.addEventListener('click', (event) => {
         const button = event.target.closest('.join-btn');
         if (button && !button.disabled) {
@@ -440,12 +444,12 @@
           showError('✅ Successfully joined room!');
           roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-100 border border-green-200 text-green-800';
           socket.emit('join', { room: roomId });
-          // 更新端點的房間參數
-          PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`;
-          SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`;
+          PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`; // 動態更新
+          SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`; // 動態更新
         }
       });
 
+      // WebSocket 事件處理
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
         addChatMessage('🟢 Connected to chat room', true);
@@ -478,8 +482,10 @@
       socket.on('disconnect', (reason) => {
         console.log('Disconnected:', reason);
         showError(`⚠️ Disconnected: ${reason}. Attempting to reconnect...`);
+        socket.connect(); // 嘗試自動重連
       });
 
+      // 發送消息
       sendBtn.addEventListener('click', () => {
         const msg = chatInput.value.trim();
         if (msg && socket.connected) {
@@ -493,11 +499,10 @@
       });
 
       chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          sendBtn.click();
-        }
+        if (e.key === 'Enter') sendBtn.click();
       });
 
+      // 更新結果顯示
       function updateResult(message, type = 'default') {
         const resultEl = document.getElementById('result');
         const colorClass = type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
@@ -508,6 +513,7 @@
         resultEl.innerHTML = `<div>${message}</div>`;
       }
 
+      // 初始化攝像頭
       async function initCamera() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -521,6 +527,7 @@
         }
       }
 
+      // 初始化麥克風
       async function initMicrophone() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -536,85 +543,57 @@
         }
       }
 
+      // 開始錄製
       startRecordBtn.onclick = () => {
         if (isSignLanguageMode) {
           if (!stream) {
-            initCamera().then(() => {
-              if (stream && !mediaRecorder) {
-                recordedBlobs = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' }); // 改進 mimeType
-                mediaRecorder.ondataavailable = (event) => {
-                  if (event.data.size > 0) recordedBlobs.push(event.data);
-                  console.log('Video blob recorded:', event.data);
-                };
-                mediaRecorder.start(200);
-                startRecordBtn.disabled = true;
-                stopRecordBtn.disabled = false;
-                uploadBtn.disabled = true;
-                updateResult('🔴 Recording video...', 'processing');
-              }
-            }).catch(err => {
-              showError(`❌ Recording initialization failed: ${err.message}`);
-            });
+            initCamera().then(() => startRecording());
           } else if (!mediaRecorder) {
-            recordedBlobs = [];
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
-            mediaRecorder.ondataavailable = (event) => {
-              if (event.data.size > 0) recordedBlobs.push(event.data);
-              console.log('Video blob recorded:', event.data);
-            };
-            mediaRecorder.start(200);
-            startRecordBtn.disabled = true;
-            stopRecordBtn.disabled = false;
-            uploadBtn.disabled = true;
-            updateResult('🔴 Recording video...', 'processing');
+            startRecording();
           }
         } else {
           if (!stream) {
-            initMicrophone().then(() => {
-              if (stream && !mediaRecorder) {
-                recordedBlobs = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-                mediaRecorder.ondataavailable = (event) => {
-                  if (event.data.size > 0) recordedBlobs.push(event.data);
-                  console.log('Audio blob recorded:', event.data);
-                };
-                mediaRecorder.start(200);
-                startRecordBtn.disabled = true;
-                stopRecordBtn.disabled = false;
-                uploadBtn.disabled = true;
-                updateResult('🔴 Recording audio...', 'processing');
-              }
-            }).catch(err => {
-              showError(`❌ Audio recording initialization failed: ${err.message}`);
-            });
+            initMicrophone().then(() => startRecording());
           } else if (!mediaRecorder) {
-            recordedBlobs = [];
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-            mediaRecorder.ondataavailable = (event) => {
-              if (event.data.size > 0) recordedBlobs.push(event.data);
-              console.log('Audio blob recorded:', event.data);
-            };
-            mediaRecorder.start(200);
-            startRecordBtn.disabled = true;
-            stopRecordBtn.disabled = false;
-            uploadBtn.disabled = true;
-            updateResult('🔴 Recording audio...', 'processing');
+            startRecording();
           }
         }
       };
 
+      function startRecording() {
+        recordedBlobs = [];
+        const mimeType = isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus';
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordedBlobs.push(event.data);
+          console.log(`${isSignLanguageMode ? 'Video' : 'Audio'} blob recorded:`, event.data);
+        };
+        mediaRecorder.onstop = () => {
+          console.log('Recording stopped');
+        };
+        mediaRecorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event.error);
+          showError(`❌ Recording failed: ${event.error.message}`);
+        };
+        mediaRecorder.start(200);
+        startRecordBtn.disabled = true;
+        stopRecordBtn.disabled = false;
+        uploadBtn.disabled = true;
+        updateResult(`🔴 Recording ${isSignLanguageMode ? 'video' : 'audio'}...`, 'processing');
+      }
+
+      // 停止錄製
       stopRecordBtn.onclick = () => {
-        if (mediaRecorder) {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
           startRecordBtn.disabled = false;
           stopRecordBtn.disabled = true;
           uploadBtn.disabled = false;
           updateResult(isSignLanguageMode ? '✅ Video recording completed - Ready to upload!' : '✅ Audio recording completed - Ready to upload!', 'success');
-          console.log('Recording stopped, blobs length:', recordedBlobs.length);
         }
       };
 
+      // 切換到簽語模式
       signLanguageBtn.onclick = () => {
         isSignLanguageMode = true;
         signLanguageBtn.classList.remove('btn-primary');
@@ -623,9 +602,11 @@
         speechToTextBtn.classList.add('btn-success');
         preview.classList.remove('hidden');
         audioPreview.classList.add('hidden');
+        cleanupStream(); // 清理舊流
         updateResult('Current Mode: Sign Language Translation', 'success');
       };
 
+      // 切換到語音模式
       speechToTextBtn.onclick = () => {
         isSignLanguageMode = false;
         speechToTextBtn.classList.remove('btn-success');
@@ -634,9 +615,11 @@
         signLanguageBtn.classList.add('btn-primary');
         preview.classList.add('hidden');
         audioPreview.classList.remove('hidden');
+        cleanupStream(); // 清理舊流
         updateResult('Current Mode: Speech to Text Translation', 'success');
       };
 
+      // 上傳並翻譯
       uploadBtn.onclick = async () => {
         if (recordedBlobs.length) {
           const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
@@ -654,13 +637,11 @@
             });
             if (!response.ok) {
               const errorText = await response.text();
-              console.error('Server error response:', errorText);
               throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
             }
             const resultData = await response.json();
-            console.log('Server response at upload:', resultData);
             if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
-              console.warn('No valid speech data, keeping previous result');
+              console.warn('No valid speech data');
               return;
             }
             const translatedMessage = `User: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
@@ -674,7 +655,6 @@
               room: currentRoomDiv.textContent.split(':')[1].trim()
             });
 
-            // Save to history
             await fetch(SAVE_ENDPOINT, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -699,6 +679,23 @@
           updateResult('❌ Please record video or audio first!', 'error');
         }
       };
+
+      // 清理媒體流
+      function cleanupStream() {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          stream = null;
+          preview.srcObject = null;
+          audioPreview.srcObject = null;
+          mediaRecorder = null;
+          startRecordBtn.disabled = false;
+          stopRecordBtn.disabled = true;
+          uploadBtn.disabled = true;
+        }
+      }
+
+      // 頁面卸載時清理
+      window.onbeforeunload = () => cleanupStream();
     });
   </script>
 </body>
