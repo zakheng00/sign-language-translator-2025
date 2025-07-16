@@ -12,7 +12,7 @@ import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, join_room, emit
 from contextlib import contextmanager
 
 # --- Flask 設置 ---
@@ -110,6 +110,22 @@ def log_resource_usage():
     cpu = process.cpu_percent(interval=1)
     logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
 
+# --- SocketIO 事件 ---
+@socketio.on('join')
+def on_join(data):
+    room = data.get('room', 'default')
+    logger.info(f"User joined room: {room}, SID: {request.sid}")
+    join_room(room)
+    emit('connect_status', {'message': f'User {request.sid} connected to room {room}'}, room=room)
+
+@socketio.on('send_message')
+def on_send_message(data):
+    room = data.get('room', 'default')
+    message = data.get('message', '')
+    sid = data.get('sid', 'anonymous')
+    logger.info(f"Message received in room {room} from SID {sid}: {message}")
+    emit('receive_message', {'user': sid, 'message': message, 'sid': request.sid}, room=room)
+
 # --- 測試端點 ---
 @app.route('/test')
 def test():
@@ -202,7 +218,7 @@ def predict():
                     'gesture': gesture,
                     'user': 'anonymous',
                     'video_id': video_id,
-                    'sid': 'server',
+                    'sid': request.sid,
                     'room': room
                 }, room=room)
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
@@ -260,7 +276,7 @@ def speech_to_text():
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
-            'sid': 'server',
+            'sid': request.sid,
             'room': room
         }, room=room)
         return jsonify({'text': text})
