@@ -18,7 +18,7 @@ from contextlib import contextmanager
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 精簡 CORS 配置 - 只允許 Render 和本地測試來源
+# 精簡 CORS 配置
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -38,7 +38,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Colab API 端點 (替換為實際 NGROK URL)
+# Colab API 端點
 COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"
 COLAB_STT_URL = "https://5bad14badabc.ngrok-free.app/speech_to_text"
 
@@ -171,9 +171,9 @@ def predict():
     
     video_file = request.files['video']
     try:
-        logger.info(f"Processing video file: {video_file.filename}")
+        logger.info(f"Processing video file: {video_file.filename}, size: {video_file.content_length} bytes")
         files = {'video': (video_file.filename, video_file, 'video/mp4')}
-        video_id = str(uuid4())  # 生成唯一視頻 ID
+        video_id = str(uuid4())
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -181,38 +181,41 @@ def predict():
                 response = requests.post(COLAB_URL, files=files, timeout=60)
                 response.raise_for_status()
                 result = response.json()
+                logger.info(f"Colab response for predict: {result}")  # 記錄完整回應
                 text = result.get('translation', 'No translation')
-                # 存儲到歷史記錄
+                gesture = result.get('gesture', 0)
+                frame_count = result.get('frame_count', 0)  # 假設 Colab 返回幀數
+                if frame_count < 60:  # 假設要求至少 60 幀 (2 秒 @ 30 FPS)
+                    logger.warning(f"Insufficient frames: got {frame_count}, padding may affect result")
                 save_history({
                     'user': 'anonymous',
                     'text': text,
-                    'gesture': result.get('gesture', 0),
+                    'gesture': gesture,
                     'timestamp': datetime.datetime.utcnow().isoformat(),
                     'video_id': video_id
                 })
                 socketio.emit('translation', {
                     'text': text,
-                    'gesture': result.get('gesture', 0),
+                    'gesture': gesture,
                     'user': 'anonymous',
-                    'sid': 'server'
-                })
-                return jsonify({'translation': text, 'video_id': video_id})
+                    'sid': 'server',
+                    'room': request.args.get('room', 'default')  # 支持房間
+                }, room=request.args.get('room', 'default'))
+                return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
                     logger.warning(f"Timeout attempt {attempt + 1}, retrying...")
                     time.sleep(2)
                     continue
-                raise
+                logger.error("Max retries reached for Colab request")
+                return jsonify({'error': 'Colab request timed out', 'video_id': video_id}), 504
             except requests.exceptions.RequestException as e:
                 logger.error(f"Colab request failed: {e}")
-                raise
+                return jsonify({'error': 'Failed to process video on Colab', 'video_id': video_id}), 500
                 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab for prediction: {e}")
-        return jsonify({'error': 'Failed to process video on Colab'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'video_id': video_id}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
@@ -224,14 +227,14 @@ def speech_to_text():
     
     audio_file = request.files['audio']
     try:
-        logger.info(f"Processing audio file: {audio_file.filename}")
+        logger.info(f"Processing audio file: {audio_file.filename}, size: {audio_file.content_length} bytes")
         files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
         
         response = requests.post(COLAB_STT_URL, files=files, timeout=60)
         response.raise_for_status()
         result = response.json()
+        logger.info(f"Colab response for speech_to_text: {result}")
         text = result.get('text', 'No transcription')
-        # 存儲到歷史記錄
         save_history({
             'user': 'anonymous',
             'text': text,
@@ -242,8 +245,9 @@ def speech_to_text():
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
-            'sid': 'server'
-        })
+            'sid': 'server',
+            'room': request.args.get('room', 'default')
+        }, room=request.args.get('room', 'default'))
         return jsonify({'text': text})
         
     except requests.exceptions.RequestException as e:
@@ -255,7 +259,7 @@ def speech_to_text():
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
-@app.route('/history', methods=['GET', 'OPTIONS'])  # 添加兼容性路由
+@app.route('/history', methods=['GET', 'OPTIONS'])
 def get_history():
     if request.method == 'OPTIONS':
         return '', 204
@@ -300,10 +304,8 @@ def delete_history(record_id):
         with get_db() as db:
             cursor = db.execute('DELETE FROM translations WHERE id = ?', (record_id,))
             db.commit()
-            
             if cursor.rowcount == 0:
                 return jsonify({'error': 'Record not found'}), 404
-            
         logger.info(f"History record {record_id} deleted successfully")
         return jsonify({'message': 'History record deleted successfully'}), 200
     except Exception as e:
