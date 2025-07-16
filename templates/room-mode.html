@@ -352,9 +352,10 @@
     }
 
     const FLASK_URL = detectServerUrl();
+    const COLAB_URL = "https://16215c21960a.ngrok-free.app/predict_colab";
     let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 改為 let 以允許動態更新
     let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 改為 let 以允許動態更新
-    const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const roomsList = document.getElementById('roomsList');
