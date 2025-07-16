@@ -352,8 +352,8 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
-    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
+    const PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 預設房間
+    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 預設房間
     const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -439,7 +439,10 @@
           chatContainer.classList.remove('hidden');
           showError('✅ Successfully joined room!');
           roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-100 border border-green-200 text-green-800';
-          socket.emit('join', { room: roomId }); // 更正為 'join' 事件
+          socket.emit('join', { room: roomId });
+          // 更新端點的房間參數
+          PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`;
+          SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`;
         }
       });
 
@@ -461,7 +464,7 @@
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const translatedMessage = `User: ${data.text || data.error || 'Unknown result'}`; // 優先使用 text
+          const translatedMessage = `User: ${data.text || data.error || 'Unknown result'}`;
           addChatMessage(translatedMessage, data.sid === socket.id, true);
           updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
         }
@@ -484,6 +487,8 @@
           socket.emit('send_message', { room: roomId, message: msg, sid: socket.id });
           addChatMessage(msg, true);
           chatInput.value = '';
+        } else {
+          showError('⚠️ Please connect to a room or check server status.');
         }
       });
 
@@ -537,7 +542,7 @@
             initCamera().then(() => {
               if (stream && !mediaRecorder) {
                 recordedBlobs = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' }); // 改進 mimeType
                 mediaRecorder.ondataavailable = (event) => {
                   if (event.data.size > 0) recordedBlobs.push(event.data);
                   console.log('Video blob recorded:', event.data);
@@ -553,7 +558,7 @@
             });
           } else if (!mediaRecorder) {
             recordedBlobs = [];
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
             mediaRecorder.ondataavailable = (event) => {
               if (event.data.size > 0) recordedBlobs.push(event.data);
               console.log('Video blob recorded:', event.data);
@@ -569,7 +574,7 @@
             initMicrophone().then(() => {
               if (stream && !mediaRecorder) {
                 recordedBlobs = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
                 mediaRecorder.ondataavailable = (event) => {
                   if (event.data.size > 0) recordedBlobs.push(event.data);
                   console.log('Audio blob recorded:', event.data);
@@ -585,7 +590,7 @@
             });
           } else if (!mediaRecorder) {
             recordedBlobs = [];
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
             mediaRecorder.ondataavailable = (event) => {
               if (event.data.size > 0) recordedBlobs.push(event.data);
               console.log('Audio blob recorded:', event.data);
@@ -634,13 +639,14 @@
 
       uploadBtn.onclick = async () => {
         if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm' : 'audio/webm' });
+          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
           const formData = new FormData();
           const mediaId = crypto.randomUUID();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.mp4` : `recording_${mediaId}.webm`);
+          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
           updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
           try {
-            const response = await fetch(isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT, {
+            const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
+            const response = await fetch(endpoint, {
               method: 'POST',
               body: formData,
               mode: 'cors',
@@ -661,8 +667,8 @@
             updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
             socket.emit('translation', {
               text: resultData.translation || resultData.text,
-              gesture: resultData.gesture,
-              user: 'User',
+              gesture: resultData.gesture || 0,
+              user: 'anonymous',
               error: resultData.error,
               sid: socket.id,
               room: currentRoomDiv.textContent.split(':')[1].trim()
