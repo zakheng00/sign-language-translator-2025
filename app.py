@@ -123,6 +123,12 @@ def on_send_message(data):
     logger.info(f"Message received in room {room} from SID {sid}: {message}")
     emit('receive_message', {'user': sid, 'message': message, 'sid': request.sid}, room=room)
 
+@socketio.on('translation')
+def on_translation(data):
+    logger.info(f"Received translation event: {data}")
+    room = data.get('room', 'default')
+    emit('translation', data, room=room)
+
 @socketio.on('disconnect')
 def on_disconnect():
     logger.info(f"Client disconnected, SID: {request.sid}")
@@ -179,7 +185,7 @@ def predict():
     video_file = request.files['video']
     try:
         logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}, content_type: {video_file.content_type}")
-        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/webm')}
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -211,7 +217,7 @@ def predict():
                 
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
-        return jsonify({'error': 'Failed to process video on Colab'}), 500
+        return jsonify({'error': f'Failed to process video on Colab: {str(e)}'}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
@@ -242,7 +248,7 @@ def speech_to_text():
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
-        return jsonify({'error': 'Failed to process audio on Colab'}), 500
+        return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
