@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點
-COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"
-COLAB_STT_URL = "https://5bad14badabc.ngrok-free.app/speech_to_text"
+COLAB_URL = "https://e965ae982731.ngrok-free.app/predict_colab"
+COLAB_STT_URL = "https://e965ae982731.ngrok-free.app/speech_to_text"
 
 # 手語映射表（示例，需根據 Colab 定義調整）
 GESTURE_MAPPING = {
