@@ -280,8 +280,18 @@
     </div>
   </div>
 
-  <script>
-    const COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"; // Make sure this is the latest ngrok URL
+  <script type="module">
+    // Server URL detection
+    function detectServerUrl() {
+      const currentHost = window.location.hostname;
+      const currentProtocol = window.location.protocol;
+      return `${currentProtocol}//${currentHost}`; // Use Render domain
+    }
+
+    const FLASK_URL = detectServerUrl();
+    const COLAB_URL = "https://5bad14badabc.ngrok-free.app/predict_colab"; // Keep Colab URL for prediction
+    const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`;
+
     let stream;
     let mediaRecorder;
     let recordedBlobs = [];
@@ -290,7 +300,6 @@
       const resultEl = document.getElementById('result');
       resultEl.innerHTML = `<div class="text-${type === 'success' ? 'green' : type === 'error' ? 'red' : type === 'processing' ? 'yellow' : 'gray'}-600">${message}</div>`;
       
-      // Add status classes
       resultEl.className = `result-display text-center text-lg font-medium slide-in stagger-4 ${
         type === 'success' ? 'status-success' : 
         type === 'error' ? 'status-error' : 
@@ -343,17 +352,33 @@
       if (recordedBlobs.length) {
         const blob = new Blob(recordedBlobs, { type: 'video/webm' });
         const formData = new FormData();
-        formData.append('video', blob, 'recording.mp4');
+        const videoId = crypto.randomUUID(); // Generate a unique video ID
+        formData.append('video', blob, `recording_${videoId}.mp4`);
         updateResult('⏳ Uploading and translating...', 'processing');
         try {
-          const response = await fetch(`${COLAB_URL}`, {
+          const response = await fetch(`${FLASK_URL}/predict`, {
             method: 'POST',
             body: formData,
             mode: 'cors'
           });
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const result = await response.json();
-          updateResult(`🎉 Translation Result: ${result.gesture || result.error || 'Unknown result'}`, 'success');
+          const translation = result.translation || result.error || 'Unknown result';
+          updateResult(`🎉 Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
+          
+          // Save to history
+          await fetch(SAVE_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user: 'anonymous',
+              text: translation,
+              gesture: 0, // Adjust if gesture detection is added
+              timestamp: new Date().toISOString(),
+              video_id: videoId
+            })
+          });
+          console.log('History saved for video ID:', videoId);
         } catch (error) {
           console.error('Upload failed:', error);
           updateResult(`❌ Upload failed: ${error.message}`, 'error');
