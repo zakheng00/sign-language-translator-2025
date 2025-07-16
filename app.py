@@ -18,16 +18,18 @@ from contextlib import contextmanager
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 精簡 CORS 配置
+# 修復 CORS 配置
 CORS(app, resources={
     r"/*": {
         "origins": [
             "https://sign-language-translator-2025.onrender.com",
+            "https://*.ngrok-free.app",
+            "https://*.ngrok.io",
             "http://localhost:*",
             "http://127.0.0.1:*"
         ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"]
     }
 })
 
@@ -36,20 +38,11 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點
 COLAB_URL = "https://e965ae982731.ngrok-free.app/predict_colab"
 COLAB_STT_URL = "https://e965ae982731.ngrok-free.app/speech_to_text"
-
-# 手語映射表（示例，需根據 Colab 定義調整）
-GESTURE_MAPPING = {
-    18: "Hello",
-    11: "Thank You",
-    7: "I Love You",
-    8: "Yes",
-    23: "Good"
-}
 
 # --- SQLite 設置 ---
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
@@ -72,49 +65,19 @@ def get_db():
             db.close()
 
 def init_db():
-    """初始化數據庫並添加索引"""
+    """初始化數據庫"""
     with get_db() as db:
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS translations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user TEXT,
-                text TEXT,
-                gesture INTEGER,
-                timestamp TEXT,
-                video_id TEXT,
-                audio_text TEXT
-            )
-        ''')
-        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
+        db.execute('''CREATE TABLE IF NOT EXISTS translations
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user TEXT,
+                       text TEXT,
+                       gesture INTEGER,
+                       timestamp TEXT)''')
         db.commit()
-    logger.info("SQLite database initialized with index.")
+    logger.info("SQLite database initialized.")
 
 # 確保數據庫初始化
 init_db()
-
-def save_history(data):
-    """保存翻譯歷史記錄到 SQLite 數據庫"""
-    try:
-        with get_db() as db:
-            cursor = db.execute(
-                'INSERT INTO translations (user, text, gesture, timestamp, video_id, audio_text) '
-                'VALUES (?, ?, ?, ?, ?, ?)',
-                (
-                    data.get('user', 'anonymous'),
-                    data.get('text', ''),
-                    data.get('gesture', 0),
-                    data.get('timestamp', datetime.datetime.utcnow().isoformat()),
-                    data.get('video_id', None),
-                    data.get('audio_text', None)
-                )
-            )
-            db.commit()
-            record_id = cursor.lastrowid
-            logger.info(f"History saved with ID: {record_id}")
-            return record_id
-    except sqlite3.Error as e:
-        logger.error(f"Error saving history: {str(e)}")
-        raise
 
 # 添加請求日誌中間件
 @app.before_request
@@ -130,17 +93,9 @@ def after_request(response):
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
-# 監控資源使用情況
-def log_resource_usage():
-    process = psutil.Process()
-    memory = process.memory_info().rss / 1024 / 1024  # MB
-    cpu = process.cpu_percent(interval=1)
-    logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
-
 # --- 測試端點 ---
 @app.route('/test')
 def test():
-    log_resource_usage()
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
@@ -188,60 +143,45 @@ def predict():
         return jsonify({'error': 'Missing video file'}), 400
     
     video_file = request.files['video']
-    if video_file.content_length < 1024:  # 允許最小 1KB 文件
-        video_id = str(uuid4())
-        logger.error(f"Invalid video file size: {video_file.content_length} bytes, video_id: {video_id}")
-        return jsonify({'error': 'File too small or empty, please record again', 'video_id': video_id}), 400
+    logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}")
+    if video_file.content_length is None:
+        logger.warning(f"Video file content_length is None, attempting to process anyway")
     
     try:
-        logger.info(f"Processing video file: {video_file.filename}, size: {video_file.content_length} bytes")
-        files = {'video': (video_file.filename, video_file, 'video/mp4')}
-        video_id = str(uuid4())
-        
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(COLAB_URL, files=files, timeout=120)  # 增加超時時間
+                response = requests.post(COLAB_URL, files=files, timeout=60)
                 response.raise_for_status()
                 result = response.json()
-                logger.info(f"Colab response for predict: {result}")
-                gesture = result.get('gesture', 0)
-                predictions = result.get('predictions', [])
-                text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
-                if predictions:
-                    text = GESTURE_MAPPING.get(predictions[0], text)  # 優先使用第一個預測
-                frame_count = result.get('frame_count', len(predictions) if predictions else 0)
-                if frame_count < 60:  # 假設要求至少 60 幀 (2 秒 @ 30 FPS)
-                    logger.warning(f"Insufficient frames: got {frame_count}, padding may affect result")
-                save_history({
-                    'user': 'anonymous',
-                    'text': text,
-                    'gesture': gesture,
-                    'timestamp': datetime.datetime.utcnow().isoformat(),
-                    'video_id': video_id
-                })
+                logger.info(f"Received prediction from Colab: {result}")
+                # 簡單保存歷史（暫時不映射，直接使用 Colab 結果）
+                with get_db() as db:
+                    db.execute(
+                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                        ('anonymous', str(result), 0, datetime.datetime.utcnow().isoformat())
+                    )
+                    db.commit()
                 socketio.emit('translation', {
-                    'text': text,
-                    'gesture': gesture,
+                    'text': str(result),
                     'user': 'anonymous',
                     'sid': 'server',
                     'room': request.args.get('room', 'default')
                 }, room=request.args.get('room', 'default'))
-                return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
+                return jsonify(result)
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
                     logger.warning(f"Timeout attempt {attempt + 1}, retrying...")
                     time.sleep(2)
                     continue
-                logger.error("Max retries reached for Colab request")
-                return jsonify({'error': 'Colab request timed out', 'video_id': video_id}), 504
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Colab request failed: {e}")
-                return jsonify({'error': f'Failed to process video on Colab: {str(e)}', 'video_id': video_id}), 500
-                
+                raise
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to connect to Colab for prediction: {e}")
+        return jsonify({'error': 'Failed to process video on Colab'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
-        return jsonify({'error': str(e), 'video_id': video_id}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
@@ -252,33 +192,33 @@ def speech_to_text():
         return jsonify({'error': 'Missing audio file'}), 400
     
     audio_file = request.files['audio']
+    logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}")
+    if audio_file.content_length is None:
+        logger.warning(f"Audio file content_length is None, attempting to process anyway")
+    
     try:
-        logger.info(f"Processing audio file: {audio_file.filename}, size: {audio_file.content_length} bytes")
-        files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
-        
-        response = requests.post(COLAB_STT_URL, files=files, timeout=120)  # 增加超時時間
+        files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
+        response = requests.post(COLAB_STT_URL, files=files, timeout=60)
         response.raise_for_status()
         result = response.json()
-        logger.info(f"Colab response for speech_to_text: {result}")
-        text = result.get('text', 'No transcription')
-        save_history({
-            'user': 'anonymous',
-            'text': text,
-            'gesture': 0,
-            'timestamp': datetime.datetime.utcnow().isoformat(),
-            'audio_text': text
-        })
+        logger.info(f"Received speech to text result from Colab: {result}")
+        # 簡單保存歷史
+        with get_db() as db:
+            db.execute(
+                'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                ('anonymous', str(result.get('text', 'No transcription')), 0, datetime.datetime.utcnow().isoformat())
+            )
+            db.commit()
         socketio.emit('translation', {
-            'text': text,
+            'text': str(result.get('text', 'No transcription')),
             'user': 'anonymous',
             'sid': 'server',
             'room': request.args.get('room', 'default')
         }, room=request.args.get('room', 'default'))
-        return jsonify({'text': text})
-        
+        return jsonify(result)
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
-        return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
+        return jsonify({'error': 'Failed to process audio on Colab'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in speech_to_text: {e}")
         return jsonify({'error': str(e)}), 500
@@ -294,7 +234,15 @@ def get_history():
     try:
         with get_db() as db:
             cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
-            history = [dict(row) for row in cursor.fetchall()]
+            history = []
+            for row in cursor.fetchall():
+                history.append({
+                    'id': row['id'],
+                    'user': row['user'],
+                    'text': row['text'],
+                    'gesture': row['gesture'],
+                    'timestamp': row['timestamp']
+                })
         logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
     except Exception as e:
@@ -302,19 +250,41 @@ def get_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/save_history', methods=['POST', 'OPTIONS'])
-def save_history_api():
+def save_history():
     if request.method == 'OPTIONS':
         return '', 204
-    logger.info(f"Received save request from origin: {request.headers.get('Origin')}, data: {request.get_json()}")
+    
+    logger.info(f"Received save request from origin: {request.headers.get('Origin')}")
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
-        record_id = save_history(data)
+        
+        user = data.get('user', 'Unknown')
+        text = data.get('text', '')
+        gesture = data.get('gesture', 0)
+        timestamp = data.get('timestamp', datetime.datetime.utcnow().isoformat())
+        
+        logger.info(f"Saving history: user={user}, text={text[:50]}...")
+        
+        with get_db() as db:
+            cursor = db.execute(
+                'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                (user, text, gesture, timestamp)
+            )
+            db.commit()
+            record_id = cursor.lastrowid
+            
+        logger.info(f"History saved with ID: {record_id}")
         return jsonify({
             'message': 'History saved successfully',
             'id': record_id,
-            'data': data
+            'data': {
+                'user': user,
+                'text': text,
+                'gesture': gesture,
+                'timestamp': timestamp
+            }
         }), 200
     except Exception as e:
         logger.error(f"Error saving history: {str(e)}")
@@ -341,7 +311,6 @@ def delete_history(record_id):
 # --- 健康檢查 ---
 @app.route('/health')
 def health_check():
-    log_resource_usage()
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
@@ -350,6 +319,7 @@ def health_check():
     })
 
 def check_colab_status():
+    """檢查 Colab 服務狀態"""
     try:
         response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
@@ -357,6 +327,7 @@ def check_colab_status():
         return 'offline'
 
 def check_database_status():
+    """檢查數據庫狀態"""
     try:
         with get_db() as db:
             cursor = db.execute('SELECT COUNT(*) FROM translations')
