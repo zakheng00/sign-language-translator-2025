@@ -44,7 +44,7 @@ COLAB_STT_URL = "https://5bad14badabc.ngrok-free.app/speech_to_text"
 
 # 手語映射表（示例，需根據 Colab 定義調整）
 GESTURE_MAPPING = {
-    18: "Hello",  # 示例映射
+    18: "Hello",
     11: "Thank You",
     7: "I Love You",
     8: "Yes",
@@ -122,6 +122,7 @@ def log_request():
     logger.info(f"Request: {request.method} {request.url}")
     logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
     logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
+    logger.info(f"Content-Length: {request.content_length}")
 
 # 添加響應頭中間件
 @app.after_request
@@ -129,9 +130,17 @@ def after_request(response):
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
+# 監控資源使用情況
+def log_resource_usage():
+    process = psutil.Process()
+    memory = process.memory_info().rss / 1024 / 1024  # MB
+    cpu = process.cpu_percent(interval=1)
+    logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+
 # --- 測試端點 ---
 @app.route('/test')
 def test():
+    log_resource_usage()
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
@@ -179,8 +188,10 @@ def predict():
         return jsonify({'error': 'Missing video file'}), 400
     
     video_file = request.files['video']
-    if video_file.content_length == 0:
-        return jsonify({'error': 'Empty video file uploaded', 'video_id': str(uuid4())}), 400
+    if video_file.content_length < 1024:  # 允許最小 1KB 文件
+        video_id = str(uuid4())
+        logger.error(f"Invalid video file size: {video_file.content_length} bytes, video_id: {video_id}")
+        return jsonify({'error': 'File too small or empty, please record again', 'video_id': video_id}), 400
     
     try:
         logger.info(f"Processing video file: {video_file.filename}, size: {video_file.content_length} bytes")
@@ -190,7 +201,7 @@ def predict():
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(COLAB_URL, files=files, timeout=60)
+                response = requests.post(COLAB_URL, files=files, timeout=120)  # 增加超時時間
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Colab response for predict: {result}")
@@ -226,7 +237,7 @@ def predict():
                 return jsonify({'error': 'Colab request timed out', 'video_id': video_id}), 504
             except requests.exceptions.RequestException as e:
                 logger.error(f"Colab request failed: {e}")
-                return jsonify({'error': 'Failed to process video on Colab', 'video_id': video_id}), 500
+                return jsonify({'error': f'Failed to process video on Colab: {str(e)}', 'video_id': video_id}), 500
                 
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
@@ -245,7 +256,7 @@ def speech_to_text():
         logger.info(f"Processing audio file: {audio_file.filename}, size: {audio_file.content_length} bytes")
         files = {'audio': (audio_file.filename, audio_file, 'audio/webm;codecs=opus')}
         
-        response = requests.post(COLAB_STT_URL, files=files, timeout=60)
+        response = requests.post(COLAB_STT_URL, files=files, timeout=120)  # 增加超時時間
         response.raise_for_status()
         result = response.json()
         logger.info(f"Colab response for speech_to_text: {result}")
@@ -267,7 +278,7 @@ def speech_to_text():
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
-        return jsonify({'error': 'Failed to process audio on Colab'}), 500
+        return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in speech_to_text: {e}")
         return jsonify({'error': str(e)}), 500
@@ -330,6 +341,7 @@ def delete_history(record_id):
 # --- 健康檢查 ---
 @app.route('/health')
 def health_check():
+    log_resource_usage()
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
