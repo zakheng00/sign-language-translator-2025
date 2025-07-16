@@ -34,7 +34,7 @@ CORS(app, resources={
 })
 
 # 使用 eventlet 作為異步模式
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=300, ping_interval=60)
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_URL = "https://e965ae982731.ngrok-free.app/predict_colab"  # 請檢查並更新
-COLAB_STT_URL = "https://e965ae982731.ngrok-free.app/speech_to_text"
+COLAB_URL = "https://0ae5c8df1dae.ngrok-free.app/predict_colab"
+COLAB_STT_URL = "https://0ae5c8df1dae.ngrok-free.app/speech_to_text"
 
 # 手語映射表
 GESTURE_MAPPING = {
