@@ -81,7 +81,7 @@
           🚪 Collaborative Room Mode
         </h1>
         <p class="text-gray-300 text-lg">
-          Real-time translation rooms for seamless communication
+          Real-time translation for all users
         </p>
       </div>
     </header>
@@ -89,15 +89,13 @@
     <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-bold gradient-text">Available Rooms</h2>
-          <p class="text-gray-400 text-sm">Max 2 users per room (Decorative)</p>
+          <h2 class="text-xl font-bold gradient-text">Connection Status</h2>
+          <p class="text-gray-400 text-sm">All users connected to global mode</p>
         </div>
         <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
           <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: Global
         </div>
       </div>
-      
-      <div id="roomsList" class="flex gap-3 mb-4"></div>
       <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
     </div>
 
@@ -168,13 +166,12 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://d86288490610.ngrok-free.app"; // 更新為最新 URL
-    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`; // 移除 room 參數
-    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`; // 移除 room 參數
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
+    const COLAB_URL = "https://d86288490610.ngrok-free.app"; // 請更新為最新 ngrok URL
+    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
+    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
-      const roomsList = document.getElementById('roomsList');
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
@@ -205,7 +202,6 @@
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
 
-      // 初始顯示 Chatbox
       chatContainer.style.display = 'block';
 
       // 顯示錯誤提示
@@ -218,65 +214,16 @@
 
       // 添加聊天消息
       function addChatMessage(message, isSelf = false, isTranslated = false) {
+        const now = new Date().toLocaleTimeString();
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
         const spanClass = isSelf ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
                         isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
                         'bg-gray-700 text-gray-300 border border-gray-600';
-        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message}</span>`;
+        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message} <small class="text-xs opacity-70">[${now}]</small></span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
-
-      // 創建房間卡片並模擬人數更新
-      function createRoomCard(roomId, userCount = 0) {
-        const full = userCount >= 2;
-        const btnText = full ? 'Full' : 'Join';
-        const btnClass = full ? 'btn-gray cursor-not-allowed' : 'btn-primary';
-        const card = document.createElement('div');
-        card.className = 'room-card p-4 rounded-xl shadow-md flex-1 min-w-0';
-        card.innerHTML = `
-          <div class="text-center">
-            <h3 class="text-lg font-bold gradient-text mb-2">${roomId}</h3>
-            <p class="text-gray-400 text-sm mb-3 flex items-center justify-center">
-              <span class="status-indicator ${full ? 'status-offline' : 'status-online'} w-3 h-3 rounded-full mr-1"></span>
-              ${userCount}/2
-            </p>
-            <button ${full ? 'disabled' : ''} class="btn ${btnClass} px-4 py-2 rounded-lg join-btn" data-room-id="${roomId}" data-user-count="${userCount}">
-              <span class="relative z-10">${btnText}</span>
-            </button>
-          </div>
-        `;
-        roomsList.appendChild(card);
-      }
-
-      ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
-
-      // 房間點擊事件 - 模擬人數更新並啟用功能
-      roomsList.addEventListener('click', (event) => {
-        const button = event.target.closest('.join-btn');
-        if (button && !button.disabled) {
-          const roomId = button.getAttribute('data-room-id');
-          let userCount = parseInt(button.getAttribute('data-user-count'), 10);
-          if (userCount < 2) {
-            userCount += 1;
-            button.setAttribute('data-user-count', userCount);
-            button.parentElement.querySelector('p').textContent = 
-              `<span class="status-indicator ${userCount >= 2 ? 'status-offline' : 'status-online'} w-3 h-3 rounded-full mr-1"></span> ${userCount}/2`;
-            if (userCount >= 2) {
-              button.disabled = true;
-              button.className = 'btn btn-gray px-4 py-2 rounded-lg cursor-not-allowed';
-              button.textContent = 'Full';
-            }
-            currentRoomDiv.textContent = `Connected: ${roomId}`;
-            chatInput.disabled = false;
-            sendBtn.disabled = false;
-            startRecordBtn.disabled = false;
-            showError(`✅ Joined ${roomId} (User count: ${userCount})`);
-            roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-900 border border-green-800 text-green-200';
-          }
-        }
-      });
 
       // WebSocket 事件處理
       socket.on('connect', () => {
@@ -301,6 +248,7 @@
       socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
         showError(`⚠️ Failed to connect to server: ${error.message}. Retrying...`);
+        setTimeout(() => location.reload(), 10000);
       });
 
       socket.on('disconnect', (reason) => {
@@ -475,7 +423,7 @@
               gesture: resultData.gesture || 0,
               user: 'anonymous',
               error: resultData.error
-            }); // 移除 room 參數，實現全局廣播
+            });
 
             const saveResponse = await fetch(SAVE_ENDPOINT, {
               method: 'POST',
