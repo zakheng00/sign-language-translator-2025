@@ -12,7 +12,7 @@ import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, emit
+from flask_socketio import SocketIO, join_room, emit, leave_room
 from contextlib import contextmanager
 
 # --- Flask 設置 ---
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_BASE_URL = "https://d86288490610.ngrok-free.app"  # 更新為最新 ngrok URL
+COLAB_BASE_URL = "https://05e138f0d96c.ngrok-free.app"  # 更新為最新 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
@@ -152,7 +152,7 @@ def speech_to_text_page():
 def history():
     return send_from_directory('templates', 'history.html')
 
-@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/favicon.ico')
 def favicon():
     return '', 204  # 處理 404 警告
 
@@ -279,10 +279,28 @@ def speech_to_text():
 
 @socketio.on('join_room')
 def on_join(data):
-    room = data.get('room', 'default')  # 防護性獲取 room
+    room = data.get('room', 'default')
     join_room(room)
     logger.info(f"User joined room: {room}")
     emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
+
+@socketio.on('leave_room')
+def on_leave(data):
+    room = data.get('room', 'default')
+    leave_room(room)
+    logger.info(f"User left room: {room}")
+
+@socketio.on('send_message')
+def handle_message(data):
+    room = data.get('room', 'default')
+    message = data.get('message', '').strip()
+    if message:
+        logger.info(f"Message from {data.get('user', 'anonymous')} in room {room}: {message}")
+        socketio.emit('new_message', {
+            'user': data.get('user', 'anonymous'),
+            'message': message,
+            'room': room
+        }, room=room)
 
 @socketio.on_error()
 def handle_error(e):
