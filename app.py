@@ -44,6 +44,8 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 # Colab API 端點 (請確認 URL 是否有效)
 COLAB_URL = "https://1aa98e78d123.ngrok-free.app/predict_colab"
 COLAB_STT_URL = "https://1aa98e78d123.ngrok-free.app/speech_to_text"
+COLAB_URL1 = "https://a1ff84a19b46.ngrok-free.app"  # 替換為實際 URL
+COLAB_HISTORY_URL = f"{COLAB_URL1}/api/history"
 
 # 手語映射表
 GESTURE_MAPPING = {
