@@ -55,6 +55,25 @@ GESTURE_MAPPING = {
     16: "Sorry"
 }
 
+# 添加 CORS 處理中間件
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "*")
+        response.headers.add('Access-Control-Allow-Methods', "*")
+        response.headers.add('ngrok-skip-browser-warning', 'true')
+        return response
+
+@app.after_request
+def after_request(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['ngrok-skip-browser-warning'] = 'true'
+    return response
+
 # --- 測試端點 ---
 @app.route('/test')
 def test():
@@ -67,9 +86,11 @@ def test():
             '/speech_to_text'
         ]
     })
+
 @app.route('/history')
 def history():
     return render_template('history.html')
+
 # --- 頁面路由 ---
 @app.route('/')
 def index():
@@ -112,7 +133,9 @@ def predict():
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = requests.post(COLAB_URL, files=files, timeout=60)
+                # 添加 ngrok 頭部
+                headers = {'ngrok-skip-browser-warning': 'true'}
+                response = requests.post(COLAB_URL, files=files, headers=headers, timeout=60)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received prediction from Colab: {result}")
@@ -154,7 +177,9 @@ def speech_to_text():
         logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
         
-        response = requests.post(COLAB_STT_URL, files=files, timeout=60)
+        # 添加 ngrok 頭部
+        headers = {'ngrok-skip-browser-warning': 'true'}
+        response = requests.post(COLAB_STT_URL, files=files, headers=headers, timeout=60)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
@@ -185,7 +210,8 @@ def health_check():
 def check_colab_status():
     """檢查 Colab 服務狀態"""
     try:
-        response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", timeout=5)
+        headers = {'ngrok-skip-browser-warning': 'true'}
+        response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", headers=headers, timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
     except:
         return 'offline'
@@ -206,51 +232,3 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
-    return jsonify({'error': 'Internal server error'}), 500
-
-# --- SocketIO 事件 ---
-@socketio.on('connect')
-def on_connect():
-    logger.info(f"Client connected, SID: {request.sid}")
-
-@socketio.on('join')
-def on_join(data):
-    room = data.get('room', 'default')
-    logger.info(f"User joined room: {room}, SID: {request.sid}")
-    join_room(room)
-    emit('connect_status', {'message': f'User {request.sid} connected to room {room}'}, room=room)
-
-@socketio.on('send_message')
-def on_send_message(data):
-    room = data.get('room', 'default')
-    message = data.get('message', '')
-    sid = data.get('sid', 'anonymous')
-    logger.info(f"Message received in room {room} from SID {sid}: {message}")
-    emit('receive_message', {'user': sid, 'message': message, 'sid': request.sid}, room=room)
-
-@socketio.on('translation')
-def on_translation(data):
-    logger.info(f"Received translation event: {data}")
-    room = data.get('room', 'default')
-    emit('translation', data, room=room)
-
-@socketio.on('disconnect')
-def on_disconnect():
-    logger.info(f"Client disconnected, SID: {request.sid}")
-
-# 添加請求日誌中間件
-@app.before_request
-def log_request():
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
-    logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
-
-# 添加響應頭中間件
-@app.after_request
-def after_request(response):
-    response.headers['ngrok-skip-browser-warning'] = 'true'
-    return response
-
-if __name__ == '__main__':
-    logger.info("Starting Flask application...")
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
