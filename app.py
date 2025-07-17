@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_BASE_URL = "https://558061a9e989.ngrok-free.app"  # 更新為最新 ngrok URL
+COLAB_BASE_URL = "https://05e138f0d96c.ngrok-free.app"  # 更新為最新 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
@@ -152,9 +152,9 @@ def speech_to_text_page():
 def history():
     return send_from_directory('templates', 'history.html')
 
-@app.route('/favicon.ico')
+@app.route('/apple-touch-icon-precomposed.png')
 def favicon():
-    return '', 204
+    return '', 204  # 處理 404 警告
 
 # --- API 路由 ---
 @app.route('/predict', methods=['POST', 'OPTIONS'])
@@ -180,7 +180,7 @@ def predict():
             return jsonify({'error': 'Invalid video file'}), 400
     
     try:
-        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/webm;codecs=vp9')}  # 改進為 webm 格式
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/webm;codecs=vp9')}
         video_id = str(uuid4())
         max_retries = 3
         for attempt in range(max_retries):
@@ -283,6 +283,10 @@ def on_join(data):
     join_room(room)
     logger.info(f"User joined room: {room}")
     emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
+
+@socketio.on_error()
+def handle_error(e):
+    logger.error(f"Socket.IO error: {e}")
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
