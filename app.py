@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 import psutil
 import numpy as np
 import requests
-import json
 import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
@@ -19,7 +18,7 @@ from typing import Optional, Dict, Any
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 修復 CORS 配置 - 允許更多來源並增加安全性
+# 修復 CORS 配置
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -31,34 +30,31 @@ CORS(app, resources={
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
-        "max_age": 86400  # 緩存預檢請求 24 小時
+        "max_age": 86400
     }
 }, supports_credentials=True)
 
-# 使用 eventlet 作為異步模式，增加超時設置並優化性能
+# 使用 eventlet 作為異步模式
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
                     ping_timeout=600, ping_interval=120, async_handlers=True)
-executor = ThreadPoolExecutor(max_workers=8)  # 增加 worker 數以應對更高並發
+executor = ThreadPoolExecutor(max_workers=8)
 
-# 設置日誌 - 添加文件輸出並限制控制台輸出
+# 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('app.log')
-    ]
+    handlers=[logging.StreamHandler(), logging.FileHandler('app.log')]
 )
 logger.setLevel(logging.INFO)
 
-# Colab API 端點 (使用環境變量以便動態配置)
-COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://d86288490610.ngrok-free.app")
+# Colab API 端點
+COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://d86288490610.ngrok-free.app")  # 使用 Colab 的 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
-# 手語映射表 - 增加註解並擴展映射
+# 手語映射表
 GESTURE_MAPPING = {
     18: "Hello",
     11: "Thank You",
@@ -66,7 +62,7 @@ GESTURE_MAPPING = {
     8: "Yes",
     19: "Good Bye",
     16: "Sorry",
-    0: "Unknown"  # 默認值
+    0: "Unknown"
 }
 
 # --- SQLite 設置 ---
@@ -74,7 +70,6 @@ DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
 @contextmanager
 def get_db():
-    """上下文管理器，確保數據庫連接正確關閉並處理異常"""
     db = None
     try:
         db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=10)
@@ -90,7 +85,6 @@ def get_db():
             db.close()
 
 def init_db():
-    """初始化數據庫並添加索引以提高查詢效率"""
     with get_db() as db:
         db.execute('''CREATE TABLE IF NOT EXISTS translations
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,14 +92,13 @@ def init_db():
                        text TEXT,
                        gesture INTEGER,
                        timestamp TEXT)''')
-        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')  # 添加索引
+        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
         db.commit()
     logger.info("SQLite database initialized with index.")
 
-# 確保數據庫初始化
 init_db()
 
-# 添加請求日誌中間件 - 增加請求時間記錄
+# 添加請求日誌中間件
 @app.before_request
 def log_request():
     request_start_time = time.time()
@@ -127,13 +120,12 @@ def after_request(response):
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
-# 監控資源使用情況 - 添加記憶體清理
+# 監控資源使用情況
 def log_resource_usage():
     process = psutil.Process()
-    memory = process.memory_info().rss / 1024 / 1024  # MB
+    memory = process.memory_info().rss / 1024 / 1024
     cpu = process.cpu_percent(interval=1)
     logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
-    gc.collect()  # 手動觸發垃圾回收
 
 # --- 測試端點 ---
 @app.route('/test')
@@ -142,12 +134,7 @@ def test():
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'endpoints': [
-            '/health',
-            '/predict',
-            '/speech_to_text',
-            '/api/history'
-        ]
+        'endpoints': ['/health', '/predict', '/speech_to_text', '/api/history']
     })
 
 # --- 頁面路由 ---
@@ -173,11 +160,10 @@ def history():
 
 @app.route('/favicon.ico')
 def favicon():
-    return '', 204  # 處理 404 警告
+    return '', 204
 
 # --- API 路由 ---
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
-    """處理媒體請求的通用函數，減少代碼重複"""
     if request.method == 'OPTIONS':
         return '', 204
     
@@ -185,8 +171,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         return jsonify({'error': f'Missing {file_key} file'}), 400
     
     media_file = request.files[file_key]
-    logger.info(f"Processing {file_key} file: {media_file.filename}, content_length: {media_file.content_length}, "
-                f"content_type: {media_file.content_type}")
+    logger.info(f"Processing {file_key} file: {media_file.filename}, content_length: {media_file.content_length}, content_type: {media_file.content_type}")
     
     if media_file.content_length is None or media_file.content_length == 0:
         logger.warning(f"{file_key} file content_length is invalid ({media_file.content_length})")
@@ -300,7 +285,6 @@ def health_check():
     })
 
 def check_colab_status() -> str:
-    """檢查 Colab 服務狀態並添加重試邏輯"""
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
         response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
@@ -310,7 +294,6 @@ def check_colab_status() -> str:
         return 'offline'
 
 def check_database_status() -> str:
-    """檢查數據庫狀態並優化資源使用"""
     try:
         with get_db() as db:
             cursor = db.execute('SELECT COUNT(*) FROM translations')
