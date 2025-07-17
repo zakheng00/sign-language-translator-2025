@@ -1,495 +1,306 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign Language Translation System - Room Mode</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    .floating-shapes .shape {
-      background: linear-gradient(45deg, #4b5bd7, #a16fe2);
-      opacity: 0.3;
-      border-radius: 50%;
-      animation: float 15s infinite;
+import os
+import tempfile
+import logging
+import time
+from uuid import uuid4
+from concurrent.futures import ThreadPoolExecutor
+import psutil
+import numpy as np
+import requests
+import sqlite3
+import datetime
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
+from contextlib import contextmanager
+from typing import Optional, Dict, Any
+
+# --- Flask 設置 ---
+app = Flask(__name__, static_folder='static', template_folder='templates')
+
+socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
+executor = ThreadPoolExecutor(max_workers=4)
+
+# 修復 CORS 配置
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://sign-language-translator-2025.onrender.com",
+            "https://*.ngrok-free.app",
+            "https://*.ngrok.io",
+            "http://localhost:*",
+            "http://127.0.0.1:*"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+        "max_age": 86400
     }
-    .glass-card {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .gradient-text {
-      background: linear-gradient(90deg, #4b5bd7, #a16fe2);
-      -webkit-background-clip: text;
-      color: transparent;
-    }
-    .status-online {
-      background-color: #4ade80;
-    }
-    .status-offline {
-      background-color: #f87171;
-    }
-    .btn-primary {
-      background: linear-gradient(90deg, #4b5bd7, #a16fe2);
-      color: white;
-    }
-    .btn-purple {
-      background: #6b46c1;
-      color: white;
-    }
-    .btn-success {
-      background: #48bb78;
-      color: white;
-    }
-    .btn-warning {
-      background: #f6e05e;
-      color: #744210;
-    }
-    .btn-gray {
-      background: #a0aec0;
-      color: white;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-20px); }
-    }
-    .chat-container {
-      background: rgba(255, 255, 255, 0.05);
-    }
-    .chat-message span {
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .error-message {
-      background-color: #fee2e2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
-    }
-  </style>
-</head>
-<body class="relative bg-gray-900 text-white">
-  <div class="floating-shapes">
-    <div class="shape w-20 h-20 absolute top-10 left-10"></div>
-    <div class="shape w-32 h-32 absolute bottom-10 right-10"></div>
-    <div class="shape w-16 h-16 absolute top-20 right-20"></div>
-  </div>
-  
-  <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-8">
-    <header class="text-center slide-in stagger-1">
-      <div class="glass-card rounded-3xl p-8 mb-8">
-        <h1 class="text-4xl font-bold gradient-text mb-2">
-          🚪 Collaborative Room Mode
-        </h1>
-        <p class="text-gray-300 text-lg">
-          Real-time translation for all users
-        </p>
-      </div>
-    </header>
+}, supports_credentials=True)
+
+
+# 設置日誌
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(), logging.FileHandler('app.log')]
+)
+logger.setLevel(logging.INFO)
+
+# Colab API 端點
+COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://9800214531fc.ngrok-free.app")  # 使用 Colab 的 ngrok URL
+COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
+COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
+COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
+
+# 手語映射表
+GESTURE_MAPPING = {
+    18: "Hello",
+    11: "Thank You",
+    7: "I Love You",
+    8: "Yes",
+    19: "Good Bye",
+    16: "Sorry",
+    0: "Unknown"
+}
+
+# --- SQLite 設置 ---
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
+
+@contextmanager
+def get_db():
+    db = None
+    try:
+        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=10)
+        db.row_factory = sqlite3.Row
+        yield db
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {str(e)}")
+        if db:
+            db.rollback()
+        raise
+    finally:
+        if db:
+            db.close()
+
+def init_db():
+    with get_db() as db:
+        db.execute('''CREATE TABLE IF NOT EXISTS translations
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user TEXT,
+                       text TEXT,
+                       gesture INTEGER,
+                       timestamp TEXT)''')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
+        db.commit()
+    logger.info("SQLite database initialized with index.")
+
+init_db()
+
+# 添加請求日誌中間件
+@app.before_request
+def log_request():
+    request_start_time = time.time()
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
+    logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
+    logger.info(f"Content-Length: {request.content_length}")
+    request.environ['request_start_time'] = request_start_time
+
+@app.after_request
+def after_request(response):
+    request_start_time = request.environ.get('request_start_time')
+    if request_start_time:
+        duration = time.time() - request_start_time
+        logger.info(f"Request completed in {duration:.2f} seconds")
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['ngrok-skip-browser-warning'] = 'true'
+    return response
+
+# 監控資源使用情況
+def log_resource_usage():
+    process = psutil.Process()
+    memory = process.memory_info().rss / 1024 / 1024
+    cpu = process.cpu_percent(interval=1)
+    logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+
+# --- 測試端點 ---
+@app.route('/test')
+def test():
+    log_resource_usage()
+    return jsonify({
+        'message': 'Server is running',
+        'timestamp': datetime.datetime.utcnow().isoformat(),
+        'endpoints': ['/health', '/predict', '/speech_to_text', '/api/history']
+    })
+
+# --- 頁面路由 ---
+@app.route('/')
+def index():
+    return send_from_directory('templates', 'index.html')
+
+@app.route('/live-translation')
+def live_translation():
+    return send_from_directory('templates', 'live-translation.html')
+
+@app.route('/room-mode')
+def room_mode():
+    return send_from_directory('templates', 'room-mode.html')
+
+@app.route('/speech-to-text')
+def speech_to_text_page():
+    return send_from_directory('templates', 'speech-to-text.html')
+
+@app.route('/history')
+def history():
+    return send_from_directory('templates', 'history.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+
+# --- API 路由 ---
+def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
+    if request.method == 'OPTIONS':
+        return '', 204
     
-    <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-bold gradient-text">Connection Status</h2>
-          <p class="text-gray-400 text-sm">All users connected to global mode</p>
-        </div>
-        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
-          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: Global
-        </div>
-      </div>
-      <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
-    </div>
-
-    <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
-      <div class="mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4 flex items-center">
-          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>
-          Live Chat & Translation
-        </h3>
-        <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-700"></div>
-        <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Type a message..." />
-          <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl">
-            <span class="relative z-10">Send</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-4">
-      <div class="text-center mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4">Translation Mode</h3>
-        <div class="flex gap-4 justify-center">
-          <button id="signLanguageBtn" class="btn btn-primary px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10">🤟 Sign Language</span>
-          </button>
-          <button id="speechToTextBtn" class="btn btn-success px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10">🎤 Speech to Text</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-5">
-      <div class="video-container mb-6">
-        <div class="video-inner">
-          <video id="preview" class="w-full aspect-video object-cover" autoplay muted></video>
-          <audio id="audioPreview" class="w-full rounded-2xl hidden" controls></audio>
-        </div>
-      </div>
-      
-      <div class="flex flex-wrap gap-4 justify-center mb-6">
-        <button id="startRecordBtn" class="btn btn-purple px-6 py-3 rounded-xl">
-          <span class="relative z-10">🎬 Start Recording</span>
-        </button>
-        <button id="stopRecordBtn" class="btn btn-warning px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10">⏹️ Stop Recording</span>
-        </button>
-        <button id="uploadBtn" class="btn btn-primary px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10">🚀 Upload & Translate</span>
-        </button>
-      </div>
-      
-      <div id="result" class="text-center text-lg font-medium p-4 rounded-xl bg-gray-700 border-2 border-gray-600">
-        <div class="text-gray-300">
-          👋 Ready to translate - Select a mode and start recording
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module">
-    // Server URL detection
-    function detectServerUrl() {
-      const currentHost = window.location.hostname;
-      const currentProtocol = window.location.protocol;
-      return `${currentProtocol}//${currentHost}`;
-    }
-
-    const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://9800214531fc.ngrok-free.app"; // 請更新為最新 ngrok URL
-    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
-    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
-      const chatContainer = document.getElementById('chatContainer');
-      const chatBox = document.getElementById('chatBox');
-      const chatInput = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendBtn');
-      const preview = document.getElementById('preview');
-      const audioPreview = document.getElementById('audioPreview');
-      const startRecordBtn = document.getElementById('startRecordBtn');
-      const stopRecordBtn = document.getElementById('stopRecordBtn');
-      const uploadBtn = document.getElementById('uploadBtn');
-      const result = document.getElementById('result');
-      const signLanguageBtn = document.getElementById('signLanguageBtn');
-      const speechToTextBtn = document.getElementById('speechToTextBtn');
-      let stream = null;
-      let mediaRecorder = null;
-      let recordedBlobs = [];
-      
-      // 连接到 COLAB 的 Socket.IO 服务器
-      let socket = io(COLAB_URL, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 15,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 60000
-      });
-      
-      let processedTranslations = new Set();
-      let isSignLanguageMode = true;
-
-      chatContainer.style.display = 'block';
-
-      // 顯示錯誤提示
-      function showError(message) {
-        roomError.textContent = message;
-        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
-      }
-
-      // 添加聊天消息
-      function addChatMessage(message, isSelf = false, isTranslated = false) {
-        const now = new Date().toLocaleTimeString();
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
-        const spanClass = isSelf ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
-                        isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
-                        'bg-gray-700 text-gray-300 border border-gray-600';
-        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message} <small class="text-xs opacity-70">[${now}]</small></span>`;
-        chatBox.appendChild(messageDiv);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      }
-
-      // WebSocket 事件處理
-      socket.on('connect', () => {
-        console.log('Connected to Colab server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', true);
-      });
-
-      // 处理来自 colab 的 message 事件
-      socket.on('message', (data) => {
-        console.log('Received message:', data);
-        if (data.msg && data.msg !== 'Connected to chat room') {
-          addChatMessage(data.msg, data.sid === socket.id);
-        }
-      });
-
-      // 处理来自 colab 的 new_message 事件
-      socket.on('new_message', (data) => {
-        console.log('Received new_message:', data);
-        addChatMessage(`${data.user}: ${data.message}`, data.user === 'You');
-      });
-
-      // 处理翻译结果
-      socket.on('translation', (data) => {
-        const key = `${data.user}-${data.text || data.error || 'unknown'}`;
-        if (!processedTranslations.has(key)) {
-          processedTranslations.add(key);
-          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, data.user === 'You', true);
-          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
-        }
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        showError(`⚠️ Failed to connect to server: ${error.message}. Retrying...`);
-        setTimeout(() => location.reload(), 10000);
-      });
-
-      socket.on('disconnect', (reason) => {
-        console.log('Disconnected:', reason);
-        showError(`⚠️ Disconnected: ${reason}. Attempting to reconnect...`);
-        socket.connect();
-      });
-
-      // 發送消息
-      sendBtn.onclick = () => {
-        const message = chatInput.value.trim();
-        if (message) {
-          // 发送到 colab 的 send_message 事件
-          socket.emit('send_message', { user: 'You', message: message });
-          addChatMessage(`You: ${message}`, true);
-          chatInput.value = '';
-        }
-      };
-
-      chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendBtn.click();
-        }
-      });
-
-      // 更新結果顯示
-      function updateResult(message, type = 'default') {
-        const resultEl = document.getElementById('result');
-        const colorClass = type === 'success' ? 'bg-green-900 border-green-800 text-green-200' : 
-                          type === 'error' ? 'bg-red-900 border-red-800 text-red-200' : 
-                          type === 'processing' ? 'bg-yellow-900 border-yellow-800 text-yellow-200' : 
-                          'bg-gray-700 border-gray-600 text-gray-300';
-        resultEl.className = `text-center text-lg font-medium p-4 rounded-xl border-2 ${colorClass}`;
-        resultEl.innerHTML = `<div>${message}</div>`;
-      }
-
-      // 初始化攝像頭
-      async function initCamera() {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          preview.srcObject = stream;
-          console.log('Camera started');
-          updateResult('📹 Camera initialized successfully - Ready to record!', 'success');
-        } catch (err) {
-          console.error('Failed to start webcam:', err);
-          updateResult(`❌ Cannot access camera: ${err.message}`, 'error');
-          alert('Please allow camera access to continue!');
-        }
-      }
-
-      // 初始化麥克風
-      async function initMicrophone() {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          audioPreview.srcObject = stream;
-          audioPreview.classList.remove('hidden');
-          preview.classList.add('hidden');
-          console.log('Microphone started');
-          updateResult('🎤 Microphone initialized successfully - Ready to record!', 'success');
-        } catch (err) {
-          console.error('Error accessing microphone:', err);
-          updateResult(`❌ Cannot access microphone: ${err.message}`, 'error');
-          alert('Please allow microphone access to continue!');
-        }
-      }
-
-      // 開始錄製
-      startRecordBtn.onclick = () => {
-        if (isSignLanguageMode) {
-          if (!stream) {
-            initCamera().then(() => startRecording());
-          } else if (!mediaRecorder) {
-            startRecording();
-          }
-        } else {
-          if (!stream) {
-            initMicrophone().then(() => startRecording());
-          } else if (!mediaRecorder) {
-            startRecording();
-          }
-        }
-      };
-
-      function startRecording() {
-        recordedBlobs = [];
-        const mimeType = isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus';
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedBlobs.push(event.data);
-          console.log(`${isSignLanguageMode ? 'Video' : 'Audio'} blob recorded:`, event.data);
-        };
-        mediaRecorder.onstop = () => {
-          console.log('Recording stopped');
-        };
-        mediaRecorder.onerror = (event) => {
-          console.error('MediaRecorder error:', event.error);
-          showError(`❌ Recording failed: ${event.error.message}`);
-        };
-        mediaRecorder.start(200);
-        startRecordBtn.disabled = true;
-        stopRecordBtn.disabled = false;
-        uploadBtn.disabled = true;
-        updateResult(`🔴 Recording ${isSignLanguageMode ? 'video' : 'audio'}...`, 'processing');
-      }
-
-      // 停止錄製
-      stopRecordBtn.onclick = () => {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-          mediaRecorder.stop();
-          startRecordBtn.disabled = false;
-          stopRecordBtn.disabled = true;
-          uploadBtn.disabled = false;
-          updateResult(isSignLanguageMode ? '✅ Video recording completed - Ready to upload!' : '✅ Audio recording completed - Ready to upload!', 'success');
-        }
-      };
-
-      // 切換到簽語模式
-      signLanguageBtn.onclick = () => {
-        isSignLanguageMode = true;
-        signLanguageBtn.classList.remove('btn-primary');
-        signLanguageBtn.classList.add('btn-purple');
-        speechToTextBtn.classList.remove('btn-success');
-        speechToTextBtn.classList.add('btn-success');
-        preview.classList.remove('hidden');
-        audioPreview.classList.add('hidden');
-        cleanupStream();
-        updateResult('Current Mode: Sign Language Translation', 'success');
-      };
-
-      // 切換到語音模式
-      speechToTextBtn.onclick = () => {
-        isSignLanguageMode = false;
-        speechToTextBtn.classList.remove('btn-success');
-        speechToTextBtn.classList.add('btn-purple');
-        signLanguageBtn.classList.remove('btn-purple');
-        signLanguageBtn.classList.add('btn-primary');
-        preview.classList.add('hidden');
-        audioPreview.classList.remove('hidden');
-        cleanupStream();
-        updateResult('Current Mode: Speech to Text Translation', 'success');
-      };
-
-      // 上傳並翻譯
-      uploadBtn.onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          const mediaId = crypto.randomUUID();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
-          updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
-          try {
-            const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors',
-              credentials: 'include'
-            });
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-            }
-            const resultData = await response.json();
-            if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
-              console.warn('No valid speech data');
-              return;
-            }
-            const translatedMessage = `You: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
-            updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
-            
-            // 发送翻译结果到 colab
-            socket.emit('translation', {
-              text: resultData.translation || resultData.text,
-              gesture: resultData.gesture || 0,
-              user: 'You',
-              error: resultData.error
-            });
-
-            // 保存历史记录
-            try {
-              const saveResponse = await fetch(SAVE_ENDPOINT, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  user: 'You',
-                  text: resultData.translation || resultData.text || resultData.error || 'Unknown result',
-                  gesture: resultData.gesture || 0,
-                  timestamp: new Date().toISOString(),
-                  video_id: isSignLanguageMode ? mediaId : null,
-                  audio_text: !isSignLanguageMode ? resultData.text : null
+    if file_key not in request.files:
+        return jsonify({'error': f'Missing {file_key} file'}), 400
+    
+    media_file = request.files[file_key]
+    logger.info(f"Processing {file_key} file: {media_file.filename}, content_length: {media_file.content_length}, content_type: {media_file.content_type}")
+    
+    if media_file.content_length is None or media_file.content_length == 0:
+        logger.warning(f"{file_key} file content_length is invalid ({media_file.content_length})")
+        try:
+            media_data = media_file.read(100)
+            logger.info(f"{file_key} file sample: {media_data}")
+            if not media_data:
+                return jsonify({'error': f'Empty {file_key} data'}), 400
+            media_file.seek(0)
+        except Exception as e:
+            logger.error(f"Failed to read {file_key} file: {e}")
+            return jsonify({'error': f'Invalid {file_key} file'}), 400
+    
+    try:
+        files = {file_key: (media_file.filename, media_file, media_file.content_type or content_type)}
+        media_id = str(uuid4())
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                headers = {'ngrok-skip-browser-warning': 'true'}
+                logger.info(f"Sending request to {endpoint}")
+                response = requests.post(endpoint, files=files, headers=headers, timeout=120)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Received result from Colab: {result}")
+                
+                text = result.get('text', 'No transcription' if file_key == 'audio' else 
+                                 GESTURE_MAPPING.get(result.get('gesture', gesture_default), 'Unknown gesture'))
+                if file_key == 'video' and result.get('predictions'):
+                    text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
+                
+                with get_db() as db:
+                    db.execute(
+                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                        ('anonymous', text, result.get('gesture', gesture_default), datetime.datetime.utcnow().isoformat())
+                    )
+                    db.commit()
+                
+                logger.info(f"Emitting {file_key} translation globally: {text}")
+                socketio.emit('translation', {
+                    'text': text,
+                    'gesture': result.get('gesture', gesture_default),
+                    'user': 'anonymous',
+                    'video_id': media_id if file_key == 'video' else None
                 })
-              });
-              if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-              const saveResult = await saveResponse.json();
-              console.log(`History saved for ${isSignLanguageMode ? 'video ID' : 'audio text'}:`, mediaId || resultData.text);
-            } catch (saveError) {
-              console.warn('Failed to save history:', saveError);
-            }
-          } catch (error) {
-            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-            updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
-            showError(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`);
-          } finally {
-            recordedBlobs = [];
-          }
-        } else {
-          updateResult('❌ Please record video or audio first!', 'error');
-        }
-      };
+                return jsonify({'translation': text if file_key == 'video' else {'text': text}, 
+                               'video_id': media_id if file_key == 'video' else None,
+                               'gesture': result.get('gesture', gesture_default)})
+            
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}, retrying...")
+                    time.sleep(2 ** attempt)
+                    continue
+                logger.error(f"Max retries reached for {file_key} request")
+                return jsonify({'error': f'{file_key} request timed out after max retries'}), 500
+            except requests.exceptions.RequestException as e:
+                logger.error(f"{file_key} request failed: {e}")
+                return jsonify({'error': f'{file_key} request failed: {str(e)}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error in {file_key} processing: {e}")
+        return jsonify({'error': f'Unexpected error processing {file_key}: {str(e)}'}), 500
 
-      // 清理媒體流
-      function cleanupStream() {
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-          stream = null;
-          preview.srcObject = null;
-          audioPreview.srcObject = null;
-          mediaRecorder = null;
-          startRecordBtn.disabled = false;
-          stopRecordBtn.disabled = true;
-          uploadBtn.disabled = true;
-        }
-      }
+@app.route('/predict', methods=['POST', 'OPTIONS'])
+def predict():
+    return process_media_request(COLAB_PREDICT_URL, 'video', 'video/webm;codecs=vp9')
 
-      window.onbeforeunload = () => cleanupStream();
-    });
-  </script>
-</body>
-</html>
+@app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
+def speech_to_text():
+    return process_media_request(COLAB_STT_URL, 'audio', 'audio/webm;codecs=opus', gesture_default=0)
+
+# --- 歷史記錄 API ---
+@app.route('/api/history', methods=['GET', 'OPTIONS'])
+def get_history():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    logger.info(f"Received history request from origin: {request.headers.get('Origin', 'No Origin')}")
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
+            history = [dict(row) for row in cursor.fetchall()]
+        logger.info(f"Returning {len(history)} history records")
+        return jsonify(history)
+    except Exception as e:
+        logger.error(f"Error fetching history: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# --- 健康檢查 ---
+@app.route('/health')
+def health_check():
+    log_resource_usage()
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.datetime.utcnow().isoformat(),
+        'colab_status': check_colab_status(),
+        'database': check_database_status()
+    })
+
+def check_colab_status() -> str:
+    try:
+        headers = {'ngrok-skip-browser-warning': 'true'}
+        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
+        return 'online' if response.status_code == 200 else 'offline'
+    except requests.RequestException as e:
+        logger.error(f"Colab health check failed: {e}")
+        return 'offline'
+
+def check_database_status() -> str:
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM translations')
+            count = cursor.fetchone()[0]
+            return f'online ({count} records)'
+    except sqlite3.Error as e:
+        logger.error(f"Database status check failed: {e}")
+        return 'offline'
+
+# --- 錯誤處理 ---
+@app.errorhandler(404)
+def not_found(error):
+    logger.warning(f"404 error: {request.url}")
+    return jsonify({'error': 'Not found', 'url': request.url}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({'error': 'Internal server error', 'details': str(error)}), 500
+
+if __name__ == '__main__':
+    logger.info("Starting Flask application...")
+    logger.info(f"Database path: {DATABASE_PATH}")
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
