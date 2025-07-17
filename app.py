@@ -207,10 +207,16 @@ def get_history():
         headers = {'ngrok-skip-browser-warning': 'true'}
         response = requests.get(COLAB_HISTORY_URL, headers=headers, timeout=10)
         response.raise_for_status()
-        return jsonify(response.json())
+        data = response.json()  # 嘗試解析 JSON
+        logger.debug(f"Raw response from Colab: {response.text}")  # 日誌原始回應
+        logger.debug(f"Parsed JSON data: {data}")  # 日誌解析後的數據
+        return jsonify(data)
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch history from Colab: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to fetch history from Colab: {str(e)}'}), 500
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON response from Colab: {e}, Raw response: {response.text}")
+        return jsonify({'error': f'Invalid JSON response from Colab: {str(e)}'}), 500
 
 # --- 健康檢查 ---
 @app.route('/health')
