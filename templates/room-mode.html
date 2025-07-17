@@ -84,14 +84,13 @@
     <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-bold gradient-text">Available Rooms</h2>
-          <p class="text-gray-400 text-sm">Join a room to start chatting</p>
+          <h2 class="text-xl font-bold gradient-text">Global Chat</h2>
+          <p class="text-gray-400 text-sm">All users in Room Mode can see messages</p>
         </div>
-        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center"></div>
+        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
+          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: Global
+        </div>
       </div>
-      
-      <div id="roomsList" class="flex gap-3 mb-4"></div>
-      <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
     </div>
 
     <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
@@ -162,14 +161,11 @@
 
     const FLASK_URL = detectServerUrl();
     const COLAB_URL = "https://d86288490610.ngrok-free.app"; // 更新為最新 URL
-    let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 初始值，動態更新
-    let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 初始值，動態更新
+    const PREDICT_ENDPOINT = `${FLASK_URL}/predict`; // 移除 room 參數
+    const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`; // 移除 room 參數
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
     document.addEventListener('DOMContentLoaded', () => {
-      const roomsList = document.getElementById('roomsList');
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
       const chatBox = document.getElementById('chatBox');
       const chatInput = document.getElementById('chatInput');
@@ -198,16 +194,17 @@
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
 
-      // 初始顯示 Chatbox，Chatbox 默認顯示，chatInput 啟用
+      // 初始顯示 Chatbox
       chatContainer.style.display = 'block';
-      chatInput.disabled = false;
 
       // 顯示錯誤提示
       function showError(message) {
+        const roomError = document.createElement('div');
+        roomError.id = 'roomError';
         roomError.textContent = message;
         roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm text-red-400';
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
+        document.querySelector('.glass-card:nth-child(2)').appendChild(roomError);
+        setTimeout(() => roomError.remove(), 5000);
       }
 
       // 添加聊天消息
@@ -222,48 +219,10 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
-      // 創建房間卡片，頁面加載，顯示三個房間卡片（Room 1、Room 2、Room 3），初始 userCount 為 0
-      function createRoomCard(roomId, userCount = 0) {
-        const card = document.createElement('div');
-        card.className = 'room-card p-4 rounded-xl shadow-md flex-1 min-w-0';
-        card.innerHTML = `
-          <div class="text-center">
-            <h3 class="text-lg font-bold gradient-text mb-2">${roomId}</h3>
-            <p class="text-gray-400 text-sm">Users: ${userCount}/2</p>
-            <button class="btn btn-primary btn-compact rounded-lg join-btn" data-room-id="${roomId}">
-              <span class="relative z-10">Join</span>
-            </button>
-          </div>
-        `;
-        roomsList.appendChild(card);
-      }
-
-      ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
-
-      // 加入房間，點擊 join-btn 更新 currentRoomDiv，但不發送 join_room 事件到後端
-      roomsList.addEventListener('click', (event) => {
-        const button = event.target.closest('.join-btn');
-        if (button) {
-          const roomId = button.getAttribute('data-room-id');
-          currentRoomDiv.innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: ${roomId}`;
-          chatContainer.classList.remove('hidden');
-          showError('✅ Successfully joined room!');
-          // 房間用戶數限制（2 人）僅在前端顯示，無後端驗證
-          PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`;
-          SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`;
-          addChatMessage('Welcome to the room! Start chatting or translating.', socket.id, false);
-        }
-      });
-
       // WebSocket 事件處理
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
         addChatMessage('🟢 Connected to chat room', socket.id, false);
-      });
-
-      socket.on('connect_status', (data) => {
-        console.log('Connect status:', data.message);
-        addChatMessage(data.message, socket.id, false);
       });
 
       socket.on('translation', (data) => {
@@ -293,12 +252,11 @@
       sendBtn.onclick = () => {
         const message = chatInput.value.trim();
         if (message) {
-          const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default';
           socket.emit('send_message', {
             user: socket.id,
-            message: message,
-            room: roomId
+            message: message
           });
+          addChatMessage(message, socket.id, false); // 本地顯示
           chatInput.value = '';
         }
       };
@@ -427,7 +385,7 @@
         updateResult('Current Mode: Speech to Text Translation', 'success');
       };
 
-      // 上傳並翻譯，選擇模式（簽語或語音），錄製並上傳。結果顯示在 result 區域，並通過 socket.emit('translation', ...) 發送，但後端未處理
+      // 上傳並翻譯
       uploadBtn.onclick = async () => {
         if (recordedBlobs.length) {
           const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
@@ -454,14 +412,12 @@
             }
             const translatedMessage = `anonymous: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
             updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
-            const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default';
             socket.emit('translation', {
               text: resultData.translation || resultData.text,
               gesture: resultData.gesture || 0,
               user: 'anonymous',
-              error: resultData.error,
-              room: roomId
-            });
+              error: resultData.error
+            }); // 移除 room 參數
 
             const saveResponse = await fetch(SAVE_ENDPOINT, {
               method: 'POST',
@@ -505,28 +461,6 @@
       }
 
       window.onbeforeunload = () => cleanupStream();
-
-      // 聊天，用戶輸入消息並發送，但由於後端未廣播，僅在本地顯示
-      sendBtn.onclick = () => {
-        const message = chatInput.value.trim();
-        if (message) {
-          const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default';
-          socket.emit('send_message', {
-            user: socket.id,
-            message: message,
-            room: roomId
-          });
-          addChatMessage(message, socket.id, false); // 僅在本地顯示
-          chatInput.value = '';
-        }
-      };
-
-      chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendBtn.click();
-        }
-      });
     });
   </script>
 </body>
