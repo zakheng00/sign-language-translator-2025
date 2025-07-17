@@ -12,7 +12,7 @@ import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, emit, leave_room
+from flask_socketio import SocketIO, emit
 from contextlib import contextmanager
 
 # --- Flask 設置 ---
@@ -202,15 +202,13 @@ def predict():
                         ('anonymous', text, gesture, datetime.datetime.utcnow().isoformat())
                     )
                     db.commit()
-                room = request.args.get('room', 'default')
-                logger.info(f"Emitting translation to room: {room}, text: {text}")
+                logger.info(f"Emitting translation globally: {text}")
                 socketio.emit('translation', {
                     'text': text,
                     'gesture': gesture,
                     'user': 'anonymous',
-                    'video_id': video_id,
-                    'room': room
-                }, room=room)
+                    'video_id': video_id
+                })  # 全局廣播，移除 room 參數
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
@@ -262,13 +260,11 @@ def speech_to_text():
                 ('anonymous', text, 0, datetime.datetime.utcnow().isoformat())
             )
             db.commit()
-        room = request.args.get('room', 'default')
-        logger.info(f"Emitting translation to room: {room}, text: {text}")
+        logger.info(f"Emitting translation globally: {text}")
         socketio.emit('translation', {
             'text': text,
-            'user': 'anonymous',
-            'room': room
-        }, room=room)
+            'user': 'anonymous'
+        })  # 全局廣播，移除 room 參數
         return jsonify({'text': text})
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}")
@@ -277,30 +273,15 @@ def speech_to_text():
         logger.error(f"Unexpected error in speech_to_text: {e}")
         return jsonify({'error': str(e)}), 500
 
-@socketio.on('join_room')
-def on_join(data):
-    room = data.get('room', 'default')
-    join_room(room)
-    logger.info(f"User joined room: {room}")
-    emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
-
-@socketio.on('leave_room')
-def on_leave(data):
-    room = data.get('room', 'default')
-    leave_room(room)
-    logger.info(f"User left room: {room}")
-
 @socketio.on('send_message')
 def handle_message(data):
-    room = data.get('room', 'default')
     message = data.get('message', '').strip()
     if message:
-        logger.info(f"Message from {data.get('user', 'anonymous')} in room {room}: {message}")
+        logger.info(f"Message from {data.get('user', 'anonymous')}: {message}")
         socketio.emit('new_message', {
             'user': data.get('user', 'anonymous'),
-            'message': message,
-            'room': room
-        }, room=room)
+            'message': message
+        })  # 全局廣播，移除 room 參數
 
 @socketio.on_error()
 def handle_error(e):
