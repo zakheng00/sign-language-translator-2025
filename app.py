@@ -180,7 +180,7 @@ def predict():
             return jsonify({'error': 'Invalid video file'}), 400
     
     try:
-        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/webm;codecs=vp9')}  # 改進為 webm 格式
         video_id = str(uuid4())
         max_retries = 3
         for attempt in range(max_retries):
@@ -279,7 +279,7 @@ def speech_to_text():
 
 @socketio.on('join_room')
 def on_join(data):
-    room = data['room']
+    room = data.get('room', 'default')  # 防護性獲取 room
     join_room(room)
     logger.info(f"User joined room: {room}")
     emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
@@ -290,7 +290,7 @@ def get_history():
     if request.method == 'OPTIONS':
         return '', 204
     
-    logger.info(f"Received history request from origin: {request.headers.get('Origin')}")
+    logger.info(f"Received history request from origin: {request.headers.get('Origin', 'No Origin')}")
     try:
         with get_db() as db:
             cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
