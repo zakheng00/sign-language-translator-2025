@@ -7,16 +7,66 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    /* [保持現有 CSS 不變] */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    /* ... (其余 CSS 保持不变) ... */
+    .floating-shapes .shape {
+      background: linear-gradient(45deg, #4b5bd7, #a16fe2);
+      opacity: 0.3;
+      border-radius: 50%;
+      animation: float 15s infinite;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .gradient-text {
+      background: linear-gradient(90deg, #4b5bd7, #a16fe2);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    .status-online {
+      background-color: #4ade80;
+    }
+    .status-offline {
+      background-color: #f87171;
+    }
+    .btn-primary {
+      background: linear-gradient(90deg, #4b5bd7, #a16fe2);
+      color: white;
+    }
+    .btn-purple {
+      background: #6b46c1;
+      color: white;
+    }
+    .btn-success {
+      background: #48bb78;
+      color: white;
+    }
+    .btn-warning {
+      background: #f6e05e;
+      color: #744210;
+    }
+    .btn-gray {
+      background: #a0aec0;
+      color: white;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-20px); }
+    }
+    .chat-container {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .chat-message span {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
   </style>
 </head>
-<body class="relative">
+<body class="relative bg-gray-900 text-white">
   <div class="floating-shapes">
-    <div class="shape"></div>
-    <div class="shape"></div>
-    <div class="shape"></div>
+    <div class="shape w-20 h-20 absolute top-10 left-10"></div>
+    <div class="shape w-32 h-32 absolute bottom-10 right-10"></div>
+    <div class="shape w-16 h-16 absolute top-20 right-20"></div>
   </div>
   
   <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-8">
@@ -25,7 +75,7 @@
         <h1 class="text-4xl font-bold gradient-text mb-2">
           🚪 Collaborative Room Mode
         </h1>
-        <p class="text-gray-600 text-lg">
+        <p class="text-gray-300 text-lg">
           Real-time translation rooms for seamless communication
         </p>
       </div>
@@ -35,9 +85,9 @@
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-bold gradient-text">Available Rooms</h2>
-          <p class="text-gray-600 text-sm">Max 2 users per room</p>
+          <p class="text-gray-400 text-sm">Max 2 users per room</p>
         </div>
-        <div id="currentRoom" class="text-sm font-medium text-gray-700 flex items-center"></div>
+        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center"></div>
       </div>
       
       <div id="roomsList" class="flex gap-3 mb-4"></div>
@@ -47,12 +97,12 @@
     <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
       <div class="mb-6">
         <h3 class="text-xl font-bold gradient-text mb-4 flex items-center">
-          <span class="status-indicator status-online"></span>
+          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>
           Live Chat & Translation
         </h3>
-        <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-200"></div>
+        <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-700"></div>
         <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-200 p-3 rounded-xl focus:border-blue-500 focus:outline-none transition-colors" placeholder="Translation results displayed here" disabled />
+          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Translation results displayed here" disabled />
           <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl" disabled>
             <span class="relative z-10">Send</span>
           </button>
@@ -94,8 +144,8 @@
         </button>
       </div>
       
-      <div id="result" class="text-center text-lg font-medium p-4 rounded-xl bg-gray-50 border-2 border-gray-200">
-        <div class="text-gray-500">
+      <div id="result" class="text-center text-lg font-medium p-4 rounded-xl bg-gray-700 border-2 border-gray-600">
+        <div class="text-gray-300">
           👋 Ready to translate - Select a mode and start recording
         </div>
       </div>
@@ -111,7 +161,7 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://558061a9e989.ngrok-free.app"; // 更新為最新 URL
+    const COLAB_URL = "https://05e138f0d96c.ngrok-free.app"; // 更新為最新 URL
     let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 初始值，動態更新
     let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 初始值，動態更新
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
@@ -143,47 +193,41 @@
         reconnectionAttempts: 15,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 60000 // 增加超時時間
+        timeout: 60000
       });
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
 
+      // 初始顯示 Chatbox
       chatContainer.style.display = 'block';
 
       // 顯示錯誤提示
       function showError(message) {
         roomError.textContent = message;
-        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
+        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm text-red-400';
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      // 添加聊天消息
-      function addChatMessage(message, isSelf = false, isTranslated = false) {
+      // 添加聊天消息（假聊天）
+      function addChatMessage(message, isTranslated = true) {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
-        const spanClass = isSelf ? 'bg-blue-500 text-white' : isTranslated ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-800';
+        messageDiv.className = `mb-3 chat-message text-left`;
+        const spanClass = isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 'bg-gray-700 text-gray-300';
         messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
       // 創建房間卡片
-      function createRoomCard(roomId, userCount = 0) {
-        const full = userCount >= 2;
-        const btnText = full ? 'Full' : 'Join';
-        const btnClass = full ? 'btn-gray cursor-not-allowed' : 'btn-primary';
+      function createRoomCard(roomId) {
         const card = document.createElement('div');
         card.className = 'room-card p-4 rounded-xl shadow-md flex-1 min-w-0';
         card.innerHTML = `
           <div class="text-center">
             <h3 class="text-lg font-bold gradient-text mb-2">${roomId}</h3>
-            <p class="text-gray-600 text-sm mb-3 flex items-center justify-center">
-              <span class="status-indicator ${full ? 'status-offline' : 'status-online'}"></span>
-              ${userCount}/2
-            </p>
-            <button ${full ? 'disabled' : ''} class="btn ${btnClass} btn-compact rounded-lg join-btn" data-room-id="${roomId}">
-              <span class="relative z-10">${btnText}</span>
+            <button class="btn btn-primary btn-compact rounded-lg join-btn" data-room-id="${roomId}">
+              <span class="relative z-10">Join</span>
             </button>
           </div>
         `;
@@ -192,27 +236,25 @@
 
       ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
 
-      // 房間切換事件
+      // 房間切換事件（假房間）
       roomsList.addEventListener('click', (event) => {
         const button = event.target.closest('.join-btn');
-        if (button && !button.disabled) {
+        if (button) {
           const roomId = button.getAttribute('data-room-id');
-          currentRoomDiv.innerHTML = `<span class="status-indicator status-online"></span>Connected: ${roomId}`;
+          currentRoomDiv.innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: ${roomId}`;
           chatContainer.classList.remove('hidden');
           showError('✅ Successfully joined room!');
-          roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-100 border border-green-200 text-green-800';
           socket.emit('join_room', { room: roomId });
           PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`;
           SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`;
+          addChatMessage('Welcome to the room! Translation will appear here.', false); // 初始消息
         }
       });
 
       // WebSocket 事件處理
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', true);
-        const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'Room1'; // 防護性處理
-        socket.emit('join_room', { room: roomId });
+        addChatMessage('🟢 Connected to chat room', false);
       });
 
       socket.on('connect_status', (data) => {
@@ -225,8 +267,7 @@
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
           const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, data.user !== 'anonymous', true);
-          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
+          addChatMessage(translatedMessage, true);
         }
       });
 
@@ -244,10 +285,10 @@
       // 更新結果顯示
       function updateResult(message, type = 'default') {
         const resultEl = document.getElementById('result');
-        const colorClass = type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
-                          type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 
-                          type === 'processing' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 
-                          'bg-gray-50 border-gray-200 text-gray-600';
+        const colorClass = type === 'success' ? 'bg-green-900 border-green-800 text-green-200' : 
+                          type === 'error' ? 'bg-red-900 border-red-800 text-red-200' : 
+                          type === 'processing' ? 'bg-yellow-900 border-yellow-800 text-yellow-200' : 
+                          'bg-gray-700 border-gray-600 text-gray-300';
         resultEl.className = `text-center text-lg font-medium p-4 rounded-xl border-2 ${colorClass}`;
         resultEl.innerHTML = `<div>${message}</div>`;
       }
@@ -383,9 +424,9 @@
               console.warn('No valid speech data');
               return;
             }
-            const translatedMessage = `User: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
+            const translatedMessage = `anonymous: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
             updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
-            const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default'; // 防護性處理
+            const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default';
             socket.emit('translation', {
               text: resultData.translation || resultData.text,
               gesture: resultData.gesture || 0,
