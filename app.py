@@ -18,6 +18,9 @@ from typing import Optional, Dict, Any
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
+socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
+executor = ThreadPoolExecutor(max_workers=4)
+
 # 修復 CORS 配置
 CORS(app, resources={
     r"/*": {
