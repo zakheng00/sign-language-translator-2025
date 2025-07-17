@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_URL = "https://74818917a514.ngrok-free.app/predict_colab"
-COLAB_STT_URL = "https://74818917a514.ngrok-free.app/speech_to_text"
+COLAB_URL = "https://a1ff84a19b46.ngrok-free.app/predict_colab"
+COLAB_STT_URL = "https://a1ff84a19b46.ngrok-free.app/speech_to_text"
 
 # 手語映射表
 GESTURE_MAPPING = {
