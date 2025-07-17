@@ -150,7 +150,7 @@ def speech_to_text_page():
 
 @app.route('/history')
 def history():
-    return render_template('history.html')
+    return send_from_directory('templates', 'history.html')  # 修正為 send_from_directory
 
 @app.route('/favicon.ico')
 def favicon():
@@ -208,7 +208,6 @@ def predict():
                     'gesture': gesture,
                     'user': 'anonymous',
                     'video_id': video_id,
-                    'sid': 'server',
                     'room': room
                 }, room=room)
                 return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
@@ -266,7 +265,6 @@ def speech_to_text():
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
-            'sid': 'server',
             'room': room
         }, room=room)
         return jsonify({'text': text})
@@ -276,12 +274,14 @@ def speech_to_text():
     except Exception as e:
         logger.error(f"Unexpected error in speech_to_text: {e}")
         return jsonify({'error': str(e)}), 500
-@socketio.on('join')
+
+@socketio.on('join_room')
 def on_join(data):
     room = data['room']
     join_room(room)
     logger.info(f"User joined room: {room}")
     emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
+
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
