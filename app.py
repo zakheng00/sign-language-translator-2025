@@ -8,11 +8,11 @@ import psutil
 import numpy as np
 import requests
 import json
+import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, emit
-from flask import Flask, render_template
 from contextlib import contextmanager
 
 # --- Flask 設置 ---
@@ -41,12 +41,10 @@ executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Colab API 端點 (請確認 URL 是否有效)
-COLAB_BASE_URL = "https://05e138f0d96c.ngrok-free.app"  # 統一基地址
+# Colab API 端點
+COLAB_BASE_URL = "https://e965ae982731.ngrok-free.app"  # 更新為最新 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
-COLAB_HISTORY_URL = f"{COLAB_BASE_URL}/api/history"
-COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -57,6 +55,41 @@ GESTURE_MAPPING = {
     19: "Good Bye",
     16: "Sorry"
 }
+
+# --- SQLite 設置 ---
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
+
+@contextmanager
+def get_db():
+    """上下文管理器，確保數據庫連接正確關閉"""
+    db = None
+    try:
+        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        db.row_factory = sqlite3.Row
+        yield db
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {str(e)}")
+        if db:
+            db.rollback()
+        raise
+    finally:
+        if db:
+            db.close()
+
+def init_db():
+    """初始化數據庫"""
+    with get_db() as db:
+        db.execute('''CREATE TABLE IF NOT EXISTS translations
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user TEXT,
+                       text TEXT,
+                       gesture INTEGER,
+                       timestamp TEXT)''')
+        db.commit()
+    logger.info("SQLite database initialized.")
+
+# 確保數據庫初始化
+init_db()
 
 # 添加 CORS 處理中間件
 @app.before_request
@@ -83,17 +116,8 @@ def test():
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'endpoints': [
-            '/health',
-            '/predict',
-            '/speech_to_text',
-            '/api/history'
-        ]
+        'endpoints': ['/predict', '/speech_to_text']
     })
-
-@app.route('/history')
-def history():
-    return render_template('history.html')
 
 # --- 頁面路由 ---
 @app.route('/')
@@ -111,10 +135,6 @@ def room_mode():
 @app.route('/speech-to-text')
 def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
-
-@app.route('/history-page')
-def history_page():
-    return send_from_directory('templates', 'history.html')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -147,7 +167,15 @@ def predict():
                 text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
                 if predictions:
                     text = GESTURE_MAPPING.get(predictions[0], text)
+                # 保存到數據庫
+                with get_db() as db:
+                    db.execute(
+                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                        ('anonymous', text, gesture, datetime.datetime.utcnow().isoformat())
+                    )
+                    db.commit()
                 room = request.args.get('room', 'default')
+                logger.info(f"Emitting translation to room: {room}, text: {text}")
                 socketio.emit('translation', {
                     'text': text,
                     'gesture': gesture,
@@ -186,7 +214,15 @@ def speech_to_text():
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
         text = result.get('text', 'No transcription')
+        # 保存到數據庫
+        with get_db() as db:
+            db.execute(
+                'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                ('anonymous', text, 0, datetime.datetime.utcnow().isoformat())
+            )
+            db.commit()
         room = request.args.get('room', 'default')
+        logger.info(f"Emitting translation to room: {room}, text: {text}")
         socketio.emit('translation', {
             'text': text,
             'user': 'anonymous',
@@ -194,55 +230,28 @@ def speech_to_text():
             'room': room
         }, room=room)
         return jsonify({'text': text})
-        
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
 
-@app.route('/api/history', methods=['GET', 'OPTIONS'])
-def get_history():
-    if request.method == 'OPTIONS':
-        return '', 204
-    try:
-        headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(COLAB_HISTORY_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()  # 嘗試解析 JSON
-        logger.debug(f"Raw response from Colab: {response.text}")  # 日誌原始回應
-        logger.debug(f"Parsed JSON data: {data}")  # 日誌解析後的數據
-        return jsonify(data)
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch history from Colab: {e}, Response: {getattr(response, 'text', 'No response')}")
-        return jsonify({'error': f'Failed to fetch history from Colab: {str(e)}'}), 500
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON response from Colab: {e}, Raw response: {response.text}")
-        return jsonify({'error': f'Invalid JSON response from Colab: {str(e)}'}), 500
+# --- SocketIO 事件處理 ---
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f"Client connected, sid: {request.sid}")
+    join_room('default')  # 默認加入 'default' 房間
 
-# --- 健康檢查 ---
-@app.route('/health')
-def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.datetime.utcnow().isoformat(),
-        'colab_status': check_colab_status(),
-        'database': check_database_status()
-    })
+@socketio.on('join')
+def handle_join(data):
+    room = data.get('room', 'default')
+    join_room(room)
+    logger.info(f"Client {request.sid} joined room: {room}")
+    emit('joined', {'room': room, 'sid': request.sid}, room=room)
 
-def check_colab_status():
-    """檢查 Colab 服務狀態"""
-    try:
-        headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
-        return 'online' if response.status_code == 200 else 'offline'
-    except:
-        return 'offline'
-
-def check_database_status():
-    """檢查數據庫狀態"""
-    try:
-        return 'offline'  # 移除 SQLite 後返回 offline
-    except:
-        return 'offline'
+@socketio.on('translation')
+def handle_translation(data):
+    logger.info(f"Received translation event: {data}")
+    room = data.get('room', 'default')
+    emit('translation', data, room=room)
 
 # --- 錯誤處理 ---
 @app.errorhandler(404)
@@ -253,6 +262,9 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    logger.info("Starting Flask application...")
+    logger.info(f"Database path: {DATABASE_PATH}")
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
