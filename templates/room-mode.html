@@ -242,8 +242,9 @@
       });
 
       socket.on('new_message', (data) => {
-        addChatMessage(`${data.user}: ${data.message}`, data.user !== 'anonymous');
-      });
+  console.log('Received new_message:', data);
+  addChatMessage(`${data.user}: ${data.message}`, data.user !== 'anonymous');
+});
 
       socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
