@@ -85,7 +85,7 @@
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-bold gradient-text">Available Rooms</h2>
-          <p class="text-gray-400 text-sm">Max 2 users per room</p>
+          <p class="text-gray-400 text-sm">Join a room to start chatting</p>
         </div>
         <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center"></div>
       </div>
@@ -102,8 +102,8 @@
         </h3>
         <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-700"></div>
         <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Translation results displayed here" disabled />
-          <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl" disabled>
+          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Type a message..." />
+          <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl">
             <span class="relative z-10">Send</span>
           </button>
         </div>
@@ -161,7 +161,7 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://d86288490610.ngrok-free.app"; // 更新為最新 URL
+    const COLAB_URL = "https://05e138f0d96c.ngrok-free.app"; // 更新為最新 URL
     let PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=Room1`; // 初始值，動態更新
     let SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=Room1`; // 初始值，動態更新
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
@@ -209,12 +209,14 @@
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      // 添加聊天消息（假聊天）
-      function addChatMessage(message, isTranslated = true) {
+      // 添加聊天消息
+      function addChatMessage(message, user = 'anonymous', isTranslated = false) {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-3 chat-message text-left`;
-        const spanClass = isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 'bg-gray-700 text-gray-300';
-        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message}</span>`;
+        messageDiv.className = `mb-3 chat-message ${user === socket.id ? 'text-right' : 'text-left'}`;
+        const spanClass = user === socket.id ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
+                        isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
+                        'bg-gray-700 text-gray-300 border border-gray-600';
+        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${user}: ${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
@@ -236,7 +238,7 @@
 
       ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
 
-      // 房間切換事件（假房間）
+      // 房間切換事件
       roomsList.addEventListener('click', (event) => {
         const button = event.target.closest('.join-btn');
         if (button) {
@@ -247,28 +249,31 @@
           socket.emit('join_room', { room: roomId });
           PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`;
           SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`;
-          addChatMessage('Welcome to the room! Translation will appear here.', false); // 初始消息
+          addChatMessage('Welcome to the room! Start chatting or translating.', socket.id, false);
         }
       });
 
       // WebSocket 事件處理
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', false);
+        addChatMessage('🟢 Connected to chat room', socket.id, false);
       });
 
       socket.on('connect_status', (data) => {
         console.log('Connect status:', data.message);
-        addChatMessage(data.message, false);
+        addChatMessage(data.message, socket.id, false);
       });
 
       socket.on('translation', (data) => {
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, true);
+          addChatMessage(data.text || data.error || 'Unknown result', data.user, true);
         }
+      });
+
+      socket.on('new_message', (data) => {
+        addChatMessage(data.message, data.user, false);
       });
 
       socket.on('connect_error', (error) => {
@@ -280,6 +285,27 @@
         console.log('Disconnected:', reason);
         showError(`⚠️ Disconnected: ${reason}. Attempting to reconnect...`);
         socket.connect();
+      });
+
+      // 發送消息
+      sendBtn.onclick = () => {
+        const message = chatInput.value.trim();
+        if (message) {
+          const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'default';
+          socket.emit('send_message', {
+            user: socket.id,
+            message: message,
+            room: roomId
+          });
+          chatInput.value = '';
+        }
+      };
+
+      chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendBtn.click();
+        }
       });
 
       // 更新結果顯示
