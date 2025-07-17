@@ -33,8 +33,8 @@ CORS(app, resources={
     }
 })
 
-# 使用 eventlet 作為異步模式
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=300, ping_interval=60)
+# 使用 eventlet 作為異步模式，增加超時設置
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=600, ping_interval=120)
 executor = ThreadPoolExecutor(max_workers=4)
 
 # 設置日誌
@@ -150,7 +150,7 @@ def speech_to_text_page():
 
 @app.route('/history')
 def history():
-    return send_from_directory('templates', 'history.html')  # 修正為 send_from_directory
+    return send_from_directory('templates', 'history.html')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -170,7 +170,8 @@ def predict():
     if video_file.content_length is None or video_file.content_length == 0:
         logger.warning(f"Video file content_length is invalid ({video_file.content_length}), attempting to verify data")
         try:
-            video_data = video_file.read()
+            video_data = video_file.read(100)  # 檢查前 100 字節
+            logger.info(f"Video file sample: {video_data}")
             if not video_data:
                 return jsonify({'error': 'Empty video data'}), 400
             video_file.seek(0)
@@ -185,6 +186,7 @@ def predict():
         for attempt in range(max_retries):
             try:
                 headers = {'ngrok-skip-browser-warning': 'true'}
+                logger.info(f"Sending request to {COLAB_PREDICT_URL}")
                 response = requests.post(COLAB_PREDICT_URL, files=files, headers=headers, timeout=120)
                 response.raise_for_status()
                 result = response.json()
@@ -194,7 +196,6 @@ def predict():
                 text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
                 if predictions:
                     text = GESTURE_MAPPING.get(predictions[0], text)
-                # 保存到本地數據庫
                 with get_db() as db:
                     db.execute(
                         'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
@@ -217,13 +218,13 @@ def predict():
                     time.sleep(2 ** attempt)
                     continue
                 logger.error("Max retries reached for Colab request")
-                raise
+                return jsonify({'error': 'Colab request timed out after max retries'}), 500
             except requests.exceptions.RequestException as e:
                 logger.error(f"Colab request failed: {e}")
-                raise
+                return jsonify({'error': f'Colab request failed: {str(e)}'}), 500
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
-        return jsonify({'error': f'Failed to process video on Colab: {str(e)}'}), 500
+        return jsonify({'error': f'Unexpected error processing video: {str(e)}'}), 500
 
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
@@ -238,7 +239,8 @@ def speech_to_text():
     if audio_file.content_length is None or audio_file.content_length == 0:
         logger.warning(f"Audio file content_length is invalid ({audio_file.content_length}), attempting to verify data")
         try:
-            audio_data = audio_file.read()
+            audio_data = audio_file.read(100)  # 檢查前 100 字節
+            logger.info(f"Audio file sample: {audio_data}")
             if not audio_data:
                 return jsonify({'error': 'Empty audio data'}), 400
             audio_file.seek(0)
@@ -248,12 +250,12 @@ def speech_to_text():
     
     try:
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
+        logger.info(f"Sending request to {COLAB_STT_URL}")
         response = requests.post(COLAB_STT_URL, files=files, headers={'ngrok-skip-browser-warning': 'true'}, timeout=120)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
         text = result.get('text', 'No transcription')
-        # 保存到本地數據庫
         with get_db() as db:
             db.execute(
                 'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
@@ -316,7 +318,8 @@ def check_colab_status():
         headers = {'ngrok-skip-browser-warning': 'true'}
         response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
-    except:
+    except Exception as e:
+        logger.error(f"Colab health check failed: {e}")
         return 'offline'
 
 def check_database_status():
@@ -326,7 +329,8 @@ def check_database_status():
             cursor = db.execute('SELECT COUNT(*) FROM translations')
             count = cursor.fetchone()[0]
             return f'online ({count} records)'
-    except:
+    except Exception as e:
+        logger.error(f"Database status check failed: {e}")
         return 'offline'
 
 # --- 錯誤處理 ---
@@ -338,7 +342,7 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
-    return jsonify({'error': 'Internal server error'}), 500
+    return jsonify({'error': 'Internal server error', 'details': str(error)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting Flask application...")
