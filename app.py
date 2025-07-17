@@ -276,7 +276,12 @@ def speech_to_text():
     except Exception as e:
         logger.error(f"Unexpected error in speech_to_text: {e}")
         return jsonify({'error': str(e)}), 500
-
+@socketio.on('join')
+def on_join(data):
+    room = data['room']
+    join_room(room)
+    logger.info(f"User joined room: {room}")
+    emit('connect_status', {'message': f'🟢 Joined room {room}'}, room=room)
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
