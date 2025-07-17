@@ -60,6 +60,11 @@
     .chat-message span {
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
+    .error-message {
+      background-color: #fee2e2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+    }
   </style>
 </head>
 <body class="relative bg-gray-900 text-white">
@@ -84,13 +89,16 @@
     <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-bold gradient-text">Global Chat</h2>
-          <p class="text-gray-400 text-sm">All users in Room Mode can see messages</p>
+          <h2 class="text-xl font-bold gradient-text">Available Rooms</h2>
+          <p class="text-gray-400 text-sm">Max 2 users per room (Decorative)</p>
         </div>
         <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
           <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: Global
         </div>
       </div>
+      
+      <div id="roomsList" class="flex gap-3 mb-4"></div>
+      <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
     </div>
 
     <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
@@ -160,12 +168,15 @@
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://d86288490610.ngrok-free.app"; // 更新為最新 URL
+    const COLAB_URL = "https://05e138f0d96c.ngrok-free.app"; // 更新為最新 URL
     const PREDICT_ENDPOINT = `${FLASK_URL}/predict`; // 移除 room 參數
     const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`; // 移除 room 參數
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
     document.addEventListener('DOMContentLoaded', () => {
+      const roomsList = document.getElementById('roomsList');
+      const currentRoomDiv = document.getElementById('currentRoom');
+      const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
       const chatBox = document.getElementById('chatBox');
       const chatInput = document.getElementById('chatInput');
@@ -199,42 +210,92 @@
 
       // 顯示錯誤提示
       function showError(message) {
-        const roomError = document.createElement('div');
-        roomError.id = 'roomError';
         roomError.textContent = message;
-        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm text-red-400';
-        document.querySelector('.glass-card:nth-child(2)').appendChild(roomError);
-        setTimeout(() => roomError.remove(), 5000);
+        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
+        roomError.classList.remove('hidden');
+        setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
       // 添加聊天消息
-      function addChatMessage(message, user = 'anonymous', isTranslated = false) {
+      function addChatMessage(message, isSelf = false, isTranslated = false) {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-3 chat-message ${user === socket.id ? 'text-right' : 'text-left'}`;
-        const spanClass = user === socket.id ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
+        messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
+        const spanClass = isSelf ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
                         isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
                         'bg-gray-700 text-gray-300 border border-gray-600';
-        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${user}: ${message}</span>`;
+        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message}</span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
+      // 創建房間卡片並模擬人數更新
+      function createRoomCard(roomId, userCount = 0) {
+        const full = userCount >= 2;
+        const btnText = full ? 'Full' : 'Join';
+        const btnClass = full ? 'btn-gray cursor-not-allowed' : 'btn-primary';
+        const card = document.createElement('div');
+        card.className = 'room-card p-4 rounded-xl shadow-md flex-1 min-w-0';
+        card.innerHTML = `
+          <div class="text-center">
+            <h3 class="text-lg font-bold gradient-text mb-2">${roomId}</h3>
+            <p class="text-gray-400 text-sm mb-3 flex items-center justify-center">
+              <span class="status-indicator ${full ? 'status-offline' : 'status-online'} w-3 h-3 rounded-full mr-1"></span>
+              ${userCount}/2
+            </p>
+            <button ${full ? 'disabled' : ''} class="btn ${btnClass} px-4 py-2 rounded-lg join-btn" data-room-id="${roomId}" data-user-count="${userCount}">
+              <span class="relative z-10">${btnText}</span>
+            </button>
+          </div>
+        `;
+        roomsList.appendChild(card);
+      }
+
+      ['Room 1', 'Room 2', 'Room 3'].forEach(roomId => createRoomCard(roomId));
+
+      // 房間點擊事件 - 模擬人數更新並啟用功能
+      roomsList.addEventListener('click', (event) => {
+        const button = event.target.closest('.join-btn');
+        if (button && !button.disabled) {
+          const roomId = button.getAttribute('data-room-id');
+          let userCount = parseInt(button.getAttribute('data-user-count'), 10);
+          if (userCount < 2) {
+            userCount += 1;
+            button.setAttribute('data-user-count', userCount);
+            button.parentElement.querySelector('p').textContent = 
+              `<span class="status-indicator ${userCount >= 2 ? 'status-offline' : 'status-online'} w-3 h-3 rounded-full mr-1"></span> ${userCount}/2`;
+            if (userCount >= 2) {
+              button.disabled = true;
+              button.className = 'btn btn-gray px-4 py-2 rounded-lg cursor-not-allowed';
+              button.textContent = 'Full';
+            }
+            currentRoomDiv.textContent = `Connected: ${roomId}`;
+            chatInput.disabled = false;
+            sendBtn.disabled = false;
+            startRecordBtn.disabled = false;
+            showError(`✅ Joined ${roomId} (User count: ${userCount})`);
+            roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-900 border border-green-800 text-green-200';
+          }
+        }
+      });
+
       // WebSocket 事件處理
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', socket.id, false);
+        addChatMessage('🟢 Connected to chat room', true);
       });
 
       socket.on('translation', (data) => {
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          addChatMessage(data.text || data.error || 'Unknown result', data.user, true);
+          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
+          addChatMessage(translatedMessage, data.user !== 'anonymous', true);
+          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
         }
       });
 
       socket.on('new_message', (data) => {
-        addChatMessage(data.message, data.user, false);
+        addChatMessage(`${data.user}: ${data.message}`, data.user !== 'anonymous');
       });
 
       socket.on('connect_error', (error) => {
@@ -252,11 +313,8 @@
       sendBtn.onclick = () => {
         const message = chatInput.value.trim();
         if (message) {
-          socket.emit('send_message', {
-            user: socket.id,
-            message: message
-          });
-          addChatMessage(message, socket.id, false); // 本地顯示
+          socket.emit('send_message', { user: 'User', message: message });
+          addChatMessage(`You: ${message}`, true);
           chatInput.value = '';
         }
       };
@@ -417,7 +475,7 @@
               gesture: resultData.gesture || 0,
               user: 'anonymous',
               error: resultData.error
-            }); // 移除 room 參數
+            }); // 移除 room 參數，實現全局廣播
 
             const saveResponse = await fetch(SAVE_ENDPOINT, {
               method: 'POST',
