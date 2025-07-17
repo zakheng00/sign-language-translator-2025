@@ -12,6 +12,7 @@ import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, emit
+from flask import Flask, render_template
 from contextlib import contextmanager
 
 # --- Flask 設置 ---
@@ -66,7 +67,9 @@ def test():
             '/speech_to_text'
         ]
     })
-
+@app.route('/history')
+def history():
+    return render_template('history.html')
 # --- 頁面路由 ---
 @app.route('/')
 def index():
