@@ -42,10 +42,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_URL = "https://46ee88ee25c9.ngrok-free.app/predict_colab"
-COLAB_STT_URL = "https://46ee88ee25c9.ngrok-free.app/speech_to_text"
-COLAB_URL1 = "https://46ee88ee25c9.ngrok-free.app"  # 替換為實際 URL
-COLAB_HISTORY_URL = f"{COLAB_URL1}/api/history"
+COLAB_BASE_URL = "https://46ee88ee25c9.ngrok-free.app"  # 統一基地址
+COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
+COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
+COLAB_HISTORY_URL = f"{COLAB_BASE_URL}/api/history"
+COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -85,7 +86,8 @@ def test():
         'endpoints': [
             '/health',
             '/predict',
-            '/speech_to_text'
+            '/speech_to_text',
+            '/api/history'
         ]
     })
 
@@ -135,9 +137,8 @@ def predict():
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # 添加 ngrok 頭部
                 headers = {'ngrok-skip-browser-warning': 'true'}
-                response = requests.post(COLAB_URL, files=files, headers=headers, timeout=60)
+                response = requests.post(COLAB_PREDICT_URL, files=files, headers=headers, timeout=60)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received prediction from Colab: {result}")
@@ -179,7 +180,6 @@ def speech_to_text():
         logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
         
-        # 添加 ngrok 頭部
         headers = {'ngrok-skip-browser-warning': 'true'}
         response = requests.post(COLAB_STT_URL, files=files, headers=headers, timeout=60)
         response.raise_for_status()
@@ -198,6 +198,7 @@ def speech_to_text():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
+
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
     if request.method == 'OPTIONS':
@@ -210,6 +211,7 @@ def get_history():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch history from Colab: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to fetch history from Colab: {str(e)}'}), 500
+
 # --- 健康檢查 ---
 @app.route('/health')
 def health_check():
@@ -224,7 +226,7 @@ def check_colab_status():
     """檢查 Colab 服務狀態"""
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", headers=headers, timeout=5)
+        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
     except:
         return 'offline'
@@ -245,3 +247,6 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
