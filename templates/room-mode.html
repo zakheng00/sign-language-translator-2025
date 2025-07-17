@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    /* [保持現有 CSS 不變] */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     * {
@@ -292,12 +291,7 @@
           Live Chat & Translation
         </h3>
         <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-200"></div>
-        <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-200 p-3 rounded-xl focus:border-blue-500 focus:outline-none transition-colors" placeholder="Type a message..." />
-          <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl">
-            <span class="relative z-10">Send</span>
-          </button>
-        </div>
+        <!-- 移除聊天輸入框和發送按鈕，實現假聊天 -->
       </div>
     </div>
 
@@ -363,8 +357,6 @@
       const roomError = document.getElementById('roomError');
       const chatContainer = document.getElementById('chatContainer');
       const chatBox = document.getElementById('chatBox');
-      const chatInput = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendBtn');
       const preview = document.getElementById('preview');
       const audioPreview = document.getElementById('audioPreview');
       const startRecordBtn = document.getElementById('startRecordBtn');
@@ -385,13 +377,11 @@
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 45000
-        // 移除 cors 選項，交由服務器處理
       });
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
 
       chatContainer.style.display = 'block';
-      chatInput.disabled = false;
 
       // 顯示錯誤提示
       function showError(message) {
@@ -444,7 +434,7 @@
           chatContainer.classList.remove('hidden');
           showError('✅ Successfully joined room!');
           roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm bg-green-100 border border-green-200 text-green-800';
-          socket.emit('join', { room: roomId });
+          socket.emit('join_room', { room: roomId }); // 修正為 join_room
           PREDICT_ENDPOINT = `${FLASK_URL}/predict?room=${roomId}`; // 動態更新
           SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text?room=${roomId}`; // 動態更新
         }
@@ -454,6 +444,8 @@
       socket.on('connect', () => {
         console.log('Connected to server, socket.connected:', socket.connected);
         addChatMessage('🟢 Connected to chat room', true);
+        const roomId = currentRoomDiv.textContent.split(':')[1]?.trim() || 'Room1';
+        socket.emit('join_room', { room: roomId }); // 自動加入當前房間
       });
 
       socket.on('connect_status', (data) => {
@@ -461,16 +453,12 @@
         addChatMessage(data.message, false);
       });
 
-      socket.on('receive_message', (data) => {
-        addChatMessage(`${data.user}: ${data.message}`, data.sid === socket.id);
-      });
-
       socket.on('translation', (data) => {
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const translatedMessage = `User: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, data.sid === socket.id, true);
+          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`; // 模擬對話
+          addChatMessage(translatedMessage, data.user === 'anonymous', true); // 假聊天，anonymous 為對方
           updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
         }
       });
@@ -486,22 +474,7 @@
         socket.connect(); // 嘗試自動重連
       });
 
-      // 發送消息
-      sendBtn.addEventListener('click', () => {
-        const msg = chatInput.value.trim();
-        if (msg && socket.connected) {
-          const roomId = currentRoomDiv.textContent.split(':')[1].trim();
-          socket.emit('send_message', { room: roomId, message: msg, sid: socket.id });
-          addChatMessage(msg, true);
-          chatInput.value = '';
-        } else {
-          showError('⚠️ Please connect to a room or check server status.');
-        }
-      });
-
-      chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendBtn.click();
-      });
+      // 移除 send_message 邏輯，僅依賴 translation 事件
 
       // 更新結果顯示
       function updateResult(message, type = 'default') {
@@ -650,9 +623,8 @@
             socket.emit('translation', {
               text: resultData.translation || resultData.text,
               gesture: resultData.gesture || 0,
-              user: 'anonymous',
+              user: 'anonymous', // 模擬對方消息
               error: resultData.error,
-              sid: socket.id,
               room: currentRoomDiv.textContent.split(':')[1].trim()
             });
 
