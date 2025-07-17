@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_BASE_URL = "https://46ee88ee25c9.ngrok-free.app"  # 統一基地址
+COLAB_BASE_URL = "https://05e138f0d96c.ngrok-free.app"  # 統一基地址
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HISTORY_URL = f"{COLAB_BASE_URL}/api/history"
