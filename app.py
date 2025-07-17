@@ -196,7 +196,18 @@ def speech_to_text():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
-
+@app.route('/api/history', methods=['GET', 'OPTIONS'])
+def get_history():
+    if request.method == 'OPTIONS':
+        return '', 204
+    try:
+        headers = {'ngrok-skip-browser-warning': 'true'}
+        response = requests.get(COLAB_HISTORY_URL, headers=headers, timeout=10)
+        response.raise_for_status()
+        return jsonify(response.json())
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch history from Colab: {e}, Response: {getattr(response, 'text', 'No response')}")
+        return jsonify({'error': f'Failed to fetch history from Colab: {str(e)}'}), 500
 # --- 健康檢查 ---
 @app.route('/health')
 def health_check():
