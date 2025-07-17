@@ -14,7 +14,6 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, emit
 from flask import Flask, render_template
 from contextlib import contextmanager
-import sqlite3
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -43,10 +42,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Colab API 端點 (請確認 URL 是否有效)
-COLAB_URL = "https://1aa98e78d123.ngrok-free.app"  # 更新為最新的 Colab ngrok URL
-COLAB_PREDICT_URL = f"{COLAB_URL}/predict_colab"
-COLAB_STT_URL = f"{COLAB_URL}/speech_to_text"
-COLAB_HISTORY_URL = f"{COLAB_URL}/api/history"
+COLAB_URL = "https://1aa98e78d123.ngrok-free.app/predict_colab"
+COLAB_STT_URL = "https://1aa98e78d123.ngrok-free.app/speech_to_text"
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -77,31 +74,6 @@ def after_request(response):
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
-# --- SQLite 設置 ---
-@contextmanager
-def get_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-def init_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'translations.db')
-    with get_db() as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS translations
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                         user TEXT,
-                         text TEXT,
-                         gesture INTEGER,
-                         timestamp TEXT)''')
-        conn.commit()
-    logger.info(f"SQLite database initialized at {db_path}")
-
-# 啟動時初始化數據庫
-init_db()
-
 # --- 測試端點 ---
 @app.route('/test')
 def test():
@@ -111,8 +83,7 @@ def test():
         'endpoints': [
             '/health',
             '/predict',
-            '/speech_to_text',
-            '/api/history'
+            '/speech_to_text'
         ]
     })
 
@@ -162,8 +133,9 @@ def predict():
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                # 添加 ngrok 頭部
                 headers = {'ngrok-skip-browser-warning': 'true'}
-                response = requests.post(COLAB_PREDICT_URL, files=files, headers=headers, timeout=60)
+                response = requests.post(COLAB_URL, files=files, headers=headers, timeout=60)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received prediction from Colab: {result}")
@@ -172,13 +144,6 @@ def predict():
                 text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
                 if predictions:
                     text = GESTURE_MAPPING.get(predictions[0], text)
-                
-                # 保存到本地數據庫
-                with get_db() as conn:
-                    conn.execute('INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
-                                 ('anonymous', text, gesture, datetime.datetime.utcnow().isoformat()))
-                    conn.commit()
-                
                 room = request.args.get('room', 'default')
                 socketio.emit('translation', {
                     'text': text,
@@ -212,19 +177,13 @@ def speech_to_text():
         logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
         
+        # 添加 ngrok 頭部
         headers = {'ngrok-skip-browser-warning': 'true'}
         response = requests.post(COLAB_STT_URL, files=files, headers=headers, timeout=60)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
         text = result.get('text', 'No transcription')
-        
-        # 保存到本地數據庫
-        with get_db() as conn:
-            conn.execute('INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
-                         ('anonymous', text, 0, datetime.datetime.utcnow().isoformat()))
-            conn.commit()
-        
         room = request.args.get('room', 'default')
         socketio.emit('translation', {
             'text': text,
@@ -237,21 +196,6 @@ def speech_to_text():
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
         return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
-
-# --- 歷史記錄 ---
-@app.route('/api/history', methods=['GET', 'OPTIONS'])
-def get_history():
-    if request.method == 'OPTIONS':
-        return '', 204
-    try:
-        with get_db() as conn:
-            cursor = conn.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
-            history = [dict(id=row[0], user=row[1], text=row[2], gesture=row[3], timestamp=row[4]) for row in cursor.fetchall()]
-        logger.info(f"Returning {len(history)} history records")
-        return jsonify(history)
-    except Exception as e:
-        logger.error(f"Error fetching history: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 # --- 健康檢查 ---
 @app.route('/health')
@@ -267,7 +211,7 @@ def check_colab_status():
     """檢查 Colab 服務狀態"""
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(f"{COLAB_URL}/health", headers=headers, timeout=5)
+        response = requests.get(f"{COLAB_URL.replace('/predict_colab', '/health')}", headers=headers, timeout=5)
         return 'online' if response.status_code == 200 else 'offline'
     except:
         return 'offline'
@@ -275,9 +219,7 @@ def check_colab_status():
 def check_database_status():
     """檢查數據庫狀態"""
     try:
-        with get_db() as conn:
-            conn.execute('SELECT 1')
-            return 'online'
+        return 'offline'  # 移除 SQLite 後返回 offline
     except:
         return 'offline'
 
@@ -290,6 +232,3 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
-
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
