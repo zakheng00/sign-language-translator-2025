@@ -41,10 +41,11 @@ executor = ThreadPoolExecutor(max_workers=4)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Colab API 端點
+# Colab API 端點 (請確認 URL 是否有效)
 COLAB_BASE_URL = "https://e965ae982731.ngrok-free.app"  # 更新為最新 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
+COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -91,17 +92,15 @@ def init_db():
 # 確保數據庫初始化
 init_db()
 
-# 添加 CORS 處理中間件
+# 添加請求日誌中間件
 @app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify({})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', "*")
-        response.headers.add('Access-Control-Allow-Methods', "*")
-        response.headers.add('ngrok-skip-browser-warning', 'true')
-        return response
+def log_request():
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
+    logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
+    logger.info(f"Content-Length: {request.content_length}")
 
+# 添加響應頭中間件
 @app.after_request
 def after_request(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -110,13 +109,26 @@ def after_request(response):
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
+# 監控資源使用情況
+def log_resource_usage():
+    process = psutil.Process()
+    memory = process.memory_info().rss / 1024 / 1024  # MB
+    cpu = process.cpu_percent(interval=1)
+    logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+
 # --- 測試端點 ---
 @app.route('/test')
 def test():
+    log_resource_usage()
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'endpoints': ['/predict', '/speech_to_text']
+        'endpoints': [
+            '/health',
+            '/predict',
+            '/speech_to_text',
+            '/api/history'
+        ]
     })
 
 # --- 頁面路由 ---
@@ -136,6 +148,10 @@ def room_mode():
 def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
 
+@app.route('/history')
+def history():
+    return render_template('history.html')
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
@@ -150,15 +166,26 @@ def predict():
         return jsonify({'error': 'Missing video file'}), 400
     
     video_file = request.files['video']
+    logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}, content_type: {video_file.content_type}")
+    if video_file.content_length is None or video_file.content_length == 0:
+        logger.warning(f"Video file content_length is invalid ({video_file.content_length}), attempting to verify data")
+        try:
+            video_data = video_file.read()
+            if not video_data:
+                return jsonify({'error': 'Empty video data'}), 400
+            video_file.seek(0)
+        except Exception as e:
+            logger.error(f"Failed to read video file: {e}")
+            return jsonify({'error': 'Invalid video file'}), 400
+    
     try:
-        logger.info(f"Processing video file: {video_file.filename}, content_length: {video_file.content_length}, content_type: {video_file.content_type}")
-        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/webm')}
-        
+        files = {'video': (video_file.filename, video_file, video_file.content_type or 'video/mp4')}
+        video_id = str(uuid4())
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 headers = {'ngrok-skip-browser-warning': 'true'}
-                response = requests.post(COLAB_PREDICT_URL, files=files, headers=headers, timeout=60)
+                response = requests.post(COLAB_PREDICT_URL, files=files, headers=headers, timeout=120)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received prediction from Colab: {result}")
@@ -167,7 +194,7 @@ def predict():
                 text = GESTURE_MAPPING.get(gesture, 'Unknown gesture') if gesture else 'No translation'
                 if predictions:
                     text = GESTURE_MAPPING.get(predictions[0], text)
-                # 保存到數據庫
+                # 保存到本地數據庫
                 with get_db() as db:
                     db.execute(
                         'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
@@ -180,17 +207,21 @@ def predict():
                     'text': text,
                     'gesture': gesture,
                     'user': 'anonymous',
+                    'video_id': video_id,
                     'sid': 'server',
                     'room': room
                 }, room=room)
-                return jsonify({'translation': text, 'gesture': gesture})
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Colab request failed (attempt {attempt + 1}/{max_retries}): {e}, Response: {getattr(response, 'text', 'No response')}")
+                return jsonify({'translation': text, 'video_id': video_id, 'gesture': gesture})
+            except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}, retrying...")
+                    time.sleep(2 ** attempt)
                     continue
+                logger.error("Max retries reached for Colab request")
                 raise
-                
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Colab request failed: {e}")
+                raise
     except Exception as e:
         logger.error(f"Unexpected error in predict: {e}")
         return jsonify({'error': f'Failed to process video on Colab: {str(e)}'}), 500
@@ -204,17 +235,26 @@ def speech_to_text():
         return jsonify({'error': 'Missing audio file'}), 400
     
     audio_file = request.files['audio']
+    logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
+    if audio_file.content_length is None or audio_file.content_length == 0:
+        logger.warning(f"Audio file content_length is invalid ({audio_file.content_length}), attempting to verify data")
+        try:
+            audio_data = audio_file.read()
+            if not audio_data:
+                return jsonify({'error': 'Empty audio data'}), 400
+            audio_file.seek(0)
+        except Exception as e:
+            logger.error(f"Failed to read audio file: {e}")
+            return jsonify({'error': 'Invalid audio file'}), 400
+    
     try:
-        logger.info(f"Processing audio file: {audio_file.filename}, content_length: {audio_file.content_length}, content_type: {audio_file.content_type}")
         files = {'audio': (audio_file.filename, audio_file, audio_file.content_type or 'audio/webm;codecs=opus')}
-        
-        headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.post(COLAB_STT_URL, files=files, headers=headers, timeout=60)
+        response = requests.post(COLAB_STT_URL, files=files, headers={'ngrok-skip-browser-warning': 'true'}, timeout=120)
         response.raise_for_status()
         result = response.json()
         logger.info(f"Received speech to text result from Colab: {result}")
         text = result.get('text', 'No transcription')
-        # 保存到數據庫
+        # 保存到本地數據庫
         with get_db() as db:
             db.execute(
                 'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
@@ -231,27 +271,58 @@ def speech_to_text():
         }, room=room)
         return jsonify({'text': text})
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Colab for speech to text: {e}, Response: {getattr(response, 'text', 'No response')}")
+        logger.error(f"Failed to connect to Colab for speech to text: {e}")
         return jsonify({'error': f'Failed to process audio on Colab: {str(e)}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error in speech_to_text: {e}")
+        return jsonify({'error': str(e)}), 500
 
-# --- SocketIO 事件處理 ---
-@socketio.on('connect')
-def handle_connect():
-    logger.info(f"Client connected, sid: {request.sid}")
-    join_room('default')  # 默認加入 'default' 房間
+# --- 歷史記錄 API ---
+@app.route('/api/history', methods=['GET', 'OPTIONS'])
+def get_history():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    logger.info(f"Received history request from origin: {request.headers.get('Origin')}")
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
+            history = [dict(row) for row in cursor.fetchall()]
+        logger.info(f"Returning {len(history)} history records")
+        return jsonify(history)
+    except Exception as e:
+        logger.error(f"Error fetching history: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-@socketio.on('join')
-def handle_join(data):
-    room = data.get('room', 'default')
-    join_room(room)
-    logger.info(f"Client {request.sid} joined room: {room}")
-    emit('joined', {'room': room, 'sid': request.sid}, room=room)
+# --- 健康檢查 ---
+@app.route('/health')
+def health_check():
+    log_resource_usage()
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.datetime.utcnow().isoformat(),
+        'colab_status': check_colab_status(),
+        'database': check_database_status()
+    })
 
-@socketio.on('translation')
-def handle_translation(data):
-    logger.info(f"Received translation event: {data}")
-    room = data.get('room', 'default')
-    emit('translation', data, room=room)
+def check_colab_status():
+    """檢查 Colab 服務狀態"""
+    try:
+        headers = {'ngrok-skip-browser-warning': 'true'}
+        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
+        return 'online' if response.status_code == 200 else 'offline'
+    except:
+        return 'offline'
+
+def check_database_status():
+    """檢查數據庫狀態"""
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM translations')
+            count = cursor.fetchone()[0]
+            return f'online ({count} records)'
+    except:
+        return 'offline'
 
 # --- 錯誤處理 ---
 @app.errorhandler(404)
