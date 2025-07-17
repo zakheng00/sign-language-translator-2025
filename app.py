@@ -34,10 +34,6 @@ CORS(app, resources={
     }
 }, supports_credentials=True)
 
-# 使用 eventlet 作為異步模式
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
-                    ping_timeout=600, ping_interval=120, async_handlers=True)
-executor = ThreadPoolExecutor(max_workers=8)
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -242,19 +238,6 @@ def predict():
 @app.route('/speech_to_text', methods=['POST', 'OPTIONS'])
 def speech_to_text():
     return process_media_request(COLAB_STT_URL, 'audio', 'audio/webm;codecs=opus', gesture_default=0)
-
-@socketio.on('send_message')
-def handle_message(data):
-    message = data.get('message', '').strip()
-    if message:
-        user = data.get('user', 'anonymous')
-        logger.info(f"Message from {user}: {message}")
-        socketio.emit('new_message', {'user': user, 'message': message}, broadcast=True)
-
-@socketio.on_error()
-def handle_error(e):
-    logger.error(f"Socket.IO error: {e}")
-    emit('error', {'message': 'An internal error occurred'}, broadcast=True)
 
 # --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
