@@ -189,7 +189,9 @@
       let stream = null;
       let mediaRecorder = null;
       let recordedBlobs = [];
-      let socket = io(FLASK_URL, {
+      
+      // 连接到 COLAB 的 Socket.IO 服务器
+      let socket = io(COLAB_URL, {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
         forceNew: true,
@@ -199,6 +201,7 @@
         reconnectionDelayMax: 5000,
         timeout: 60000
       });
+      
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
 
@@ -227,24 +230,34 @@
 
       // WebSocket 事件處理
       socket.on('connect', () => {
-        console.log('Connected to server, socket.connected:', socket.connected);
+        console.log('Connected to Colab server, socket.connected:', socket.connected);
         addChatMessage('🟢 Connected to chat room', true);
       });
 
+      // 处理来自 colab 的 message 事件
+      socket.on('message', (data) => {
+        console.log('Received message:', data);
+        if (data.msg && data.msg !== 'Connected to chat room') {
+          addChatMessage(data.msg, data.sid === socket.id);
+        }
+      });
+
+      // 处理来自 colab 的 new_message 事件
+      socket.on('new_message', (data) => {
+        console.log('Received new_message:', data);
+        addChatMessage(`${data.user}: ${data.message}`, data.user === 'You');
+      });
+
+      // 处理翻译结果
       socket.on('translation', (data) => {
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
           const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, data.user !== 'anonymous', true);
+          addChatMessage(translatedMessage, data.user === 'You', true);
           updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
         }
       });
-
-      socket.on('new_message', (data) => {
-  console.log('Received new_message:', data);
-  addChatMessage(`${data.user}: ${data.message}`, data.user !== 'anonymous');
-});
 
       socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
@@ -262,7 +275,8 @@
       sendBtn.onclick = () => {
         const message = chatInput.value.trim();
         if (message) {
-          socket.emit('send_message', { user: 'User', message: message });
+          // 发送到 colab 的 send_message 事件
+          socket.emit('send_message', { user: 'You', message: message });
           addChatMessage(`You: ${message}`, true);
           chatInput.value = '';
         }
@@ -417,30 +431,37 @@
               console.warn('No valid speech data');
               return;
             }
-            const translatedMessage = `anonymous: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
+            const translatedMessage = `You: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
             updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
+            
+            // 发送翻译结果到 colab
             socket.emit('translation', {
               text: resultData.translation || resultData.text,
               gesture: resultData.gesture || 0,
-              user: 'anonymous',
+              user: 'You',
               error: resultData.error
             });
 
-            const saveResponse = await fetch(SAVE_ENDPOINT, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user: 'anonymous',
-                text: resultData.translation || resultData.text || resultData.error || 'Unknown result',
-                gesture: resultData.gesture || 0,
-                timestamp: new Date().toISOString(),
-                video_id: isSignLanguageMode ? mediaId : null,
-                audio_text: !isSignLanguageMode ? resultData.text : null
-              })
-            });
-            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-            const saveResult = await saveResponse.json();
-            console.log(`History saved for ${isSignLanguageMode ? 'video ID' : 'audio text'}:`, mediaId || resultData.text);
+            // 保存历史记录
+            try {
+              const saveResponse = await fetch(SAVE_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  user: 'You',
+                  text: resultData.translation || resultData.text || resultData.error || 'Unknown result',
+                  gesture: resultData.gesture || 0,
+                  timestamp: new Date().toISOString(),
+                  video_id: isSignLanguageMode ? mediaId : null,
+                  audio_text: !isSignLanguageMode ? resultData.text : null
+                })
+              });
+              if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+              const saveResult = await saveResponse.json();
+              console.log(`History saved for ${isSignLanguageMode ? 'video ID' : 'audio text'}:`, mediaId || resultData.text);
+            } catch (saveError) {
+              console.warn('Failed to save history:', saveError);
+            }
           } catch (error) {
             console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
             updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
