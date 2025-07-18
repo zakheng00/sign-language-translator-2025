@@ -1,1 +1,51 @@
-
+{
+  "header": "Penterjemah Bahasa Isyarat",
+  "index": {
+    "title": "Selamat Datang ke Penterjemah Bahasa Isyarat",
+    "description": "Terjemah bahasa isyarat dan ucapan dalam masa nyata",
+    "liveTranslation": "Terjemahan Langsung",
+    "roomMode": "Mod Bilik",
+    "speechToText": "Ucapan ke Teks",
+    "history": "Sejarah",
+    "settings": "Tetapan"
+  },
+  "liveTranslation": {
+    "title": "Terjemahan Langsung",
+    "description": "Tangkap dan terjemah bahasa isyarat dalam masa nyata",
+    "start": "Mula Menangkap",
+    "stop": "Hentikan Menangkap"
+  },
+  "roomMode": {
+    "title": "Mod Bilik",
+    "description": "Berkolaborasi dalam bilik terjemahan bersama",
+    "joinRoom": "Sertai Bilik",
+    "sendMessage": "Hantar Mesej"
+  },
+  "speechToText": {
+    "title": "Ucapan ke Teks",
+    "description": "Tukar perkataan yang dituturkan kepada teks",
+    "record": "Mula Merakam",
+    "stop": "Hentikan Merakam",
+    "transcription": "Hasil Transkripsi"
+  },
+  "history": {
+    "title": "Sejarah Terjemahan",
+    "description": "Lihat terjemahan anda yang lalu",
+    "noRecords": "Tiada rekod terjemahan ditemui",
+    "delete": "Padam"
+  },
+  "settings": {
+    "title": "Tetapan Sistem",
+    "description": "Sesuaikan pengalaman anda dengan tetapan bahasa, maklum balas, dan pengurusan sejarah",
+    "languageTitle": "Tetapan Bahasa",
+    "language": "Bahasa semasa: ",
+    "english": "Bahasa Inggeris",
+    "malay": "Bahasa Melayu",
+    "feedbackTitle": "Maklum Balas",
+    "feedbackPlaceholder": "Kongsi maklum balas atau cadangan anda...",
+    "submitFeedback": "Hantar Maklum Balas",
+    "historyTitle": "Pengurusan Sejarah",
+    "historyDescription": "Kosongkan semua rekod sejarah terjemahan. Tindakan ini tidak boleh dibatalkan.",
+    "clearHistory": "Kosongkan Semua Sejarah"
+  }
+}
