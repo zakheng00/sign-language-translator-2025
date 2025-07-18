@@ -1,517 +1,425 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Speech to Text - Audio Transcription</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        * {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
-        }
-        
-        .floating-shapes {
-            position: fixed;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            pointer-events: none;
-            z-index: 0;
-            top: 0;
-            left: 0;
-        }
-        
-        .shape {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: float 6s ease-in-out infinite;
-        }
-        
-        .shape:nth-child(1) {
-            width: 80px;
-            height: 80px;
-            top: 10%;
-            left: 10%;
-            animation-delay: 0s;
-        }
-        
-        .shape:nth-child(2) {
-            width: 120px;
-            height: 120px;
-            top: 20%;
-            right: 10%;
-            animation-delay: 2s;
-        }
-        
-        .shape:nth-child(3) {
-            width: 60px;
-            height: 60px;
-            bottom: 20%;
-            left: 20%;
-            animation-delay: 4s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(180deg); }
-        }
-        
-        .gradient-text {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .slide-in {
-            animation: slideIn 0.8s ease-out forwards;
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        
-        @keyframes slideIn {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .stagger-1 { animation-delay: 0.1s; }
-        .stagger-2 { animation-delay: 0.2s; }
-        .stagger-3 { animation-delay: 0.3s; }
-        .stagger-4 { animation-delay: 0.4s; }
-        
-        .btn {
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transform: translateY(0);
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-        
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .btn-purple {
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-            color: white;
-        }
-        
-        .btn-yellow {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: white;
-        }
-        
-        .btn-blue {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-        }
-        
-        .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-            transition: left 0.5s ease;
-        }
-        
-        .btn:hover::before {
-            left: 100%;
-        }
-        
-        .audio-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            padding: 4px;
-        }
-        
-        .audio-inner {
-            background: #000;
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .recording-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            background: #ef4444;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: pulse 1s infinite;
-        }
-        
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        
-        .status-online { background: #10b981; animation: pulse 2s infinite; }
-        .status-offline { background: #6b7280; }
-        
-        #result {
-            margin-top: 20px;
-            font-size: 18px;
-            transition: all 0.3s ease;
-        }
-        
-        .result-success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #059669;
-        }
-        
-        .result-error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #dc2626;
-        }
-        
-        .result-processing {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            color: #d97706;
-        }
-        
-        .result-default {
-            background: rgba(107, 114, 128, 0.1);
-            border: 1px solid rgba(107, 114, 128, 0.3);
-            color: #4b5563;
-        }
-        
-        .audio-wave {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            margin: 10px 0;
-        }
-        
-        .wave-bar {
-            width: 4px;
-            height: 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 2px;
-            animation: wave 1s ease-in-out infinite;
-        }
-        
-        .wave-bar:nth-child(1) { animation-delay: 0s; }
-        .wave-bar:nth-child(2) { animation-delay: 0.1s; }
-        .wave-bar:nth-child(3) { animation-delay: 0.2s; }
-        .wave-bar:nth-child(4) { animation-delay: 0.3s; }
-        .wave-bar:nth-child(5) { animation-delay: 0.4s; }
-        
-        @keyframes wave {
-            0%, 100% { height: 20px; }
-            50% { height: 40px; }
-        }
-        
-        .hidden { display: none; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-i18n="speechToText.title">Speech to Text</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/i18next@23.15.1/dist/umd/i18next.min.js"></script>
+  <script src="https://unpkg.com/i18next-http-backend@2.5.1/i18nextHttpBackend.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn {
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      padding: 12px 24px;
+      cursor: pointer;
+      transform: translateY(0);
+    }
+    
+    .btn:before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s ease;
+    }
+    
+    .btn:hover:before {
+      left: 100%;
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn:disabled:hover {
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .floating-shapes {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+      top: 0;
+      left: 0;
+    }
+    
+    .shape {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      animation: float 6s ease-in-out infinite;
+    }
+    
+    .shape:nth-child(1) {
+      width: 80px;
+      height: 80px;
+      top: 10%;
+      left: 10%;
+      animation-delay: 0s;
+    }
+    
+    .shape:nth-child(2) {
+      width: 120px;
+      height: 120px;
+      top: 20%;
+      right: 10%;
+      animation-delay: 2s;
+    }
+    
+    .shape:nth-child(3) {
+      width: 60px;
+      height: 60px;
+      bottom: 20%;
+      left: 20%;
+      animation-delay: 4s;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(180deg); }
+    }
+    
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .slide-in {
+      animation: slideIn 0.8s ease-out forwards;
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    
+    @keyframes slideIn {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .stagger-1 { animation-delay: 0.1s; }
+    .stagger-2 { animation-delay: 0.2s; }
+    .stagger-3 { animation-delay: 0.3s; }
+    
+    .status-bar {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .status-success {
+      color: #059669;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    
+    .status-error {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+  </style>
 </head>
 <body class="relative">
-    <div class="floating-shapes">
-        <div class="shape"></div>
-        <div class="shape"></div>
-        <div class="shape"></div>
-    </div>
+  <div class="floating-shapes">
+    <div class="shape"></div>
+    <div class="shape"></div>
+    <div class="shape"></div>
+  </div>
+  
+  <div class="relative z-10 max-w-4xl mx-auto p-8 space-y-8">
+    <header class="text-center slide-in stagger-1">
+      <div class="glass-card rounded-3xl p-8 mb-8">
+        <h1 class="text-4xl font-bold gradient-text mb-2" data-i18n="speechToText.title">
+          Speech to Text
+        </h1>
+        <p class="text-gray-600 text-lg" data-i18n="speechToText.description">
+          Convert spoken words to text
+        </p>
+      </div>
+    </header>
     
-    <div class="relative z-10 max-w-2xl mx-auto p-8 space-y-8">
-        <header class="text-center slide-in stagger-1">
-            <div class="glass-card rounded-3xl p-8 mb-8">
-                <h1 class="text-4xl font-bold gradient-text mb-2">
-                    🎤 Speech to Text
-                </h1>
-                <p class="text-gray-600 text-lg">
-                    Record your audio and get instant text transcription
-                </p>
-            </div>
-        </header>
-        
-        <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
-            <div class="text-center mb-6">
-                <h2 class="text-2xl font-bold gradient-text mb-2">Audio Recording</h2>
-                <p class="text-gray-600">Click "Start Recording" to begin audio capture</p>
-            </div>
-            
-            <div class="audio-container mb-6">
-                <div class="audio-inner">
-                    <audio id="preview" class="w-full rounded-2xl" controls></audio>
-                </div>
-            </div>
-            
-            <div id="audioWave" class="audio-wave hidden">
-                <div class="wave-bar"></div>
-                <div class="wave-bar"></div>
-                <div class="wave-bar"></div>
-                <div class="wave-bar"></div>
-                <div class="wave-bar"></div>
-            </div>
-            
-            <div class="flex flex-wrap gap-4 justify-center mb-6">
-                <button id="startBtn" class="btn btn-purple px-8 py-4 rounded-xl text-lg">
-                    <span class="relative z-10">🎬 Start Recording</span>
-                </button>
-                <button id="stopBtn" class="btn btn-yellow px-8 py-4 rounded-xl text-lg" disabled>
-                    <span class="relative z-10">⏹️ Stop Recording</span>
-                </button>
-                <button id="uploadBtn" class="btn btn-blue px-8 py-4 rounded-xl text-lg" disabled>
-                    <span class="relative z-10">🚀 Transcribe</span>
-                </button>
-            </div>
-            
-            <div id="result" class="text-center text-lg font-medium p-6 rounded-xl result-default border-2">
-                <div class="flex items-center justify-center">
-                    <span class="status-indicator status-offline"></span>
-                    Click "Start Recording" to begin
-                </div>
-            </div>
+    <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
+      <h2 class="text-2xl font-bold gradient-text mb-4" data-i18n="speechToText.title">Speech to Text</h2>
+      <div id="statusBar" class="status-bar text-sm mb-4">
+        <div class="flex items-center">
+          <span data-i18n="speechToText.statusReady">Status: Ready</span>
         </div>
-        
-        <div class="glass-card rounded-3xl p-8 slide-in stagger-3">
-            <div class="text-center">
-                <h3 class="text-xl font-bold gradient-text mb-4">
-                    <span class="status-indicator status-online"></span>
-                    Real-time Connection Status
-                </h3>
-                <p class="text-gray-600">
-                    Connected to transcription service for instant results
-                </p>
-            </div>
-        </div>
+      </div>
+      <div class="flex flex-wrap gap-4">
+        <button id="recordBtn" class="btn btn-primary" data-i18n="speechToText.record">Start Recording</button>
+        <button id="stopBtn" class="btn btn-primary" disabled data-i18n="speechToText.stop">Stop Recording</button>
+      </div>
+      <div id="waveform" class="mt-4 h-24 bg-gray-100 rounded-xl"></div>
+      <div id="transcription" class="mt-4 p-4 bg-gray-100 rounded-xl" data-i18n="[placeholder]speechToText.transcription">Transcription Result</div>
     </div>
+  </div>
 
-    <script type="module">
-        // Server URL detection
-        function detectServerUrl() {
-            const currentHost = window.location.hostname;
-            const currentProtocol = window.location.protocol;
-            return `${currentProtocol}//${currentHost}`; // Use Render domain
+  <script type="module">
+    // Server URL detection
+    function detectServerUrl() {
+      const currentHost = window.location.hostname;
+      const currentProtocol = window.location.protocol;
+      return `${currentProtocol}//${currentHost}`;
+    }
+
+    const FLASK_URL = detectServerUrl();
+    const socket = io(FLASK_URL, {
+      transports: ['websocket'],
+      cors_allowed_origins: ["https://sign-language-translator-2025.onrender.com"]
+    });
+
+    // Initialize i18next with HTTP backend
+    i18next.use(i18nextHttpBackend).init({
+      lng: 'en',
+      backend: {
+        loadPath: '/static/i18n/{{lng}}.json'
+      }
+    }, function(err, t) {
+      if (err) {
+        console.error('i18next initialization failed:', err);
+        return;
+      }
+      updateContent();
+    });
+
+    function updateContent() {
+      document.querySelectorAll('[data-i18n]').forEach(element => {
+        const key = element.getAttribute('data-i18n');
+        if (key.startsWith('[placeholder]')) {
+          element.placeholder = i18next.t(key.replace('[placeholder]', ''));
+        } else {
+          element.textContent = i18next.t(key);
         }
+      });
+      document.title = i18next.t('header');
+    }
 
-        const FLASK_URL = detectServerUrl();
-        const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 修正為根 URL
-        const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
-        const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const preview = document.getElementById('preview');
-            const result = document.getElementById('result');
-            const audioWave = document.getElementById('audioWave');
-            let stream;
-            let mediaRecorder;
-            let recordedBlobs = [];
-            let socket = io(FLASK_URL, {
-                path: '/socket.io',
-                transports: ['websocket', 'polling'],
-                reconnection: true,
-                reconnectionAttempts: 15,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000,
-                timeout: 45000
-                // 移除 cors 選項，交由服務器處理
-            });
-
-            function updateResult(message, type = 'default') {
-                const resultEl = document.getElementById('result');
-                const colorClass = type === 'success' ? 'result-success' : 
-                                  type === 'error' ? 'result-error' : 
-                                  type === 'processing' ? 'result-processing' : 
-                                  'result-default';
-                
-                resultEl.className = `text-center text-lg font-medium p-6 rounded-xl border-2 ${colorClass}`;
-                
-                let statusIndicator = '';
-                if (type === 'success') {
-                    statusIndicator = '<span class="status-indicator status-online"></span>';
-                } else if (type === 'error') {
-                    statusIndicator = '<span class="status-indicator status-offline"></span>';
-                } else if (type === 'processing') {
-                    statusIndicator = '<span class="recording-indicator"></span>';
-                } else {
-                    statusIndicator = '<span class="status-indicator status-offline"></span>';
-                }
-                
-                resultEl.innerHTML = `<div class="flex items-center justify-center">${statusIndicator}${message}</div>`;
-            }
-
-            async function startMicrophone() {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    preview.srcObject = stream;
-                    console.log('Microphone access granted');
-                    updateResult('🎤 Microphone initialized successfully', 'success');
-                } catch (error) {
-                    console.error('Microphone access error:', error);
-                    updateResult("❌ Cannot access microphone!", 'error');
-                    alert('Please allow microphone access to continue.');
-                }
-            }
-
-            startBtn.onclick = () => {
-                startMicrophone().then(() => {
-                    if (stream && !mediaRecorder) {
-                        recordedBlobs = [];
-                        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-                        mediaRecorder.ondataavailable = event => {
-                            if (event.data.size > 0) recordedBlobs.push(event.data);
-                        };
-                        mediaRecorder.onstop = () => {
-                            stopBtn.disabled = true;
-                            uploadBtn.disabled = false;
-                            preview.srcObject = null;
-                            audioWave.classList.add('hidden');
-                            updateResult('✅ Recording completed - Ready to transcribe!', 'success');
-                        };
-                        mediaRecorder.start(1000);
-                        startBtn.disabled = true;
-                        stopBtn.disabled = false;
-                        audioWave.classList.remove('hidden');
-                        updateResult("🔴 Recording in progress...", 'processing');
-                    }
-                }).catch(err => {
-                    updateResult(`❌ Recording initialization failed: ${err.message}`, 'error');
-                });
-            };
-
-            stopBtn.onclick = () => {
-                if (mediaRecorder) {
-                    mediaRecorder.stop();
-                    if (stream) stream.getTracks().forEach(track => track.stop());
-                    startBtn.disabled = false;
-                }
-            };
-
-            uploadBtn.onclick = async () => {
-                if (recordedBlobs.length) {
-                    const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
-                    const formData = new FormData();
-                    const audioId = crypto.randomUUID(); // Generate unique audio ID
-                    formData.append('audio', blob, `recording_${audioId}.webm`);
-                    updateResult("⏳ Transcribing audio...", 'processing');
-                    try {
-                        const response = await fetch(SPEECH_ENDPOINT, {
-                            method: 'POST',
-                            body: formData,
-                            mode: 'cors',
-                            credentials: 'include'
-                        });
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        const resultData = await response.json();
-                        const transcription = resultData.text || resultData.error || 'Unknown result';
-                        updateResult(`✅ Transcription Result: ${transcription}`, 'success');
-                        socket.emit('translation', {
-                            text: transcription,
-                            user: 'User',
-                            error: resultData.error,
-                            sid: socket.id
-                        });
-
-                        // Save to history
-                        const saveResponse = await fetch(SAVE_ENDPOINT, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                user: 'anonymous',
-                                text: transcription,
-                                gesture: 0, // Not applicable for speech-to-text
-                                timestamp: new Date().toISOString(),
-                                audio_text: transcription
-                            })
-                        });
-                        if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-                        const saveResult = await saveResponse.json();
-                        console.log('History saved for audio ID:', audioId);
-                    } catch (error) {
-                        console.error('Transcription failed:', error);
-                        updateResult(`❌ Transcription failed: ${error.message}`, 'error');
-                    }
-                } else {
-                    updateResult("❌ Please record audio first!", 'error');
-                }
-            };
-
-            socket.on('connect', () => {
-                console.log('Connected to server');
-                updateResult('✅ Connected to transcription service', 'success');
-            });
-
-            socket.on('translation', (data) => {
-                updateResult(`✅ ${data.user}: ${data.text || data.error || 'Unknown result'}`, 'success');
-            });
-
-            socket.on('connect_error', (error) => {
-                console.error('Connection error:', error);
-                updateResult(`⚠️ Connection failed: ${error.message}. Retrying...`, 'error');
-            });
-
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                updateResult(`⚠️ Disconnected. Attempting to reconnect...`, 'error');
-            });
-
-            window.addEventListener('beforeunload', () => {
-                if (socket) socket.disconnect();
-                if (stream) stream.getTracks().forEach(track => track.stop());
-            });
+    async function fetchData(endpoint, options = {}) {
+      try {
+        const response = await fetch(endpoint, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+            ...options.headers
+          },
+          mode: 'cors'
         });
-    </script>
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        return await response.json();
+      } catch (error) {
+        console.error(`Fetch failed for ${endpoint}:`, error);
+        throw error;
+      }
+    }
+
+    async function loadCurrentLanguage() {
+      try {
+        const data = await fetchData(`${FLASK_URL}/api/settings`, { method: 'GET' });
+        const lang = data.language === 'ms' ? 'ms' : 'en';
+        i18next.changeLanguage(lang, (err) => {
+          if (err) {
+            console.error('Failed to change language:', err);
+            return;
+          }
+          updateContent();
+        });
+      } catch (error) {
+        console.error('Failed to load language settings:', error);
+      }
+    }
+
+    socket.on('language_change', (data) => {
+      const lang = data.language === 'ms' ? 'ms' : 'en';
+      i18next.changeLanguage(lang, (err) => {
+        if (err) {
+          console.error('Failed to change language:', err);
+          return;
+        }
+        updateContent();
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const recordBtn = document.getElementById('recordBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const waveform = document.getElementById('waveform');
+      const transcription = document.getElementById('transcription');
+      const statusBar = document.getElementById('statusBar');
+
+      let mediaRecorder;
+      let audioChunks = [];
+
+      function updateStatus(message, type = 'default') {
+        const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+        statusBar.innerHTML = `
+          <div class="flex items-center">
+            <span class="mr-2">${statusIcon}</span>
+            <span>${i18next.t(`speechToText.status${message}`) || message}</span>
+          </div>
+        `;
+        statusBar.className = `status-bar text-sm ${type === 'success' ? 'status-success' : type === 'error' ? 'status-error' : ''}`;
+      }
+
+      async function startRecording() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+          audioChunks = [];
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+          
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.webm');
+            
+            try {
+              const response = await fetchData(`${FLASK_URL}/speech_to_text`, {
+                method: 'POST',
+                body: formData
+              });
+              if (response.error) {
+                updateStatus(response.error, 'error');
+              } else {
+                transcription.textContent = response.text || i18next.t('speechToText.transcription');
+                updateStatus('TranscriptionSuccessful', 'success');
+              }
+            } catch (error) {
+              updateStatus(`TranscriptionFailed: ${error.message}`, 'error');
+            }
+            
+            stream.getTracks().forEach(track => track.stop());
+            recordBtn.disabled = false;
+            stopBtn.disabled = true;
+          };
+          
+          mediaRecorder.start();
+          recordBtn.disabled = true;
+          stopBtn.disabled = false;
+          updateStatus('Recording', 'default');
+          
+          // Simple waveform visualization
+          const audioContext = new AudioContext();
+          const analyser = audioContext.createAnalyser();
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          analyser.fftSize = 2048;
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          
+          function drawWaveform() {
+            if (mediaRecorder.state !== 'recording') return;
+            analyser.getByteTimeDomainData(dataArray);
+            waveform.innerHTML = '';
+            const canvas = document.createElement('canvas');
+            canvas.width = waveform.clientWidth;
+            canvas.height = waveform.clientHeight;
+            waveform.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgb(200, 200, 200)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'rgb(0, 0, 0)';
+            ctx.beginPath();
+            const sliceWidth = canvas.width / bufferLength;
+            let x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              const v = dataArray[i] / 128.0;
+              const y = (v * canvas.height) / 2;
+              if (i === 0) {
+                ctx.moveTo(x, y);
+              } else {
+                ctx.lineTo(x, y);
+              }
+              x += sliceWidth;
+            }
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+            requestAnimationFrame(drawWaveform);
+          }
+          
+          drawWaveform();
+        } catch (error) {
+          updateStatus(`RecordingFailed: ${error.message}`, 'error');
+          recordBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+        }
+      }
+
+      recordBtn.addEventListener('click', startRecording);
+      stopBtn.addEventListener('click', stopRecording);
+
+      // Initialize
+      loadCurrentLanguage();
+    });
+  </script>
 </body>
 </html>
