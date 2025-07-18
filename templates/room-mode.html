@@ -30,6 +30,9 @@
     .status-offline {
       background-color: #f87171;
     }
+    .status-waiting {
+      background-color: #fbbf24;
+    }
     .btn-primary {
       background: linear-gradient(90deg, #4b5bd7, #a16fe2);
       color: white;
@@ -50,6 +53,22 @@
       background: #a0aec0;
       color: white;
     }
+    .btn-red {
+      background: #ef4444;
+      color: white;
+    }
+    .room-card {
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    .room-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+    .room-full {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
     @keyframes float {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-20px); }
@@ -65,6 +84,11 @@
       border: 1px solid #fecaca;
       color: #dc2626;
     }
+    .success-message {
+      background-color: #d1fae5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
   </style>
 </head>
 <body class="relative bg-gray-900 text-white">
@@ -78,28 +102,78 @@
     <header class="text-center slide-in stagger-1">
       <div class="glass-card rounded-3xl p-8 mb-8">
         <h1 class="text-4xl font-bold gradient-text mb-2">
-          🚪 Collaborative Room Mode
+          🚪 Translation Room Mode
         </h1>
         <p class="text-gray-300 text-lg">
-          Real-time translation for all users
+          Join a room and chat with other users
         </p>
       </div>
     </header>
-    
-    <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
+
+    <!-- Room Selection -->
+    <div id="roomSelection" class="glass-card rounded-3xl p-8 slide-in stagger-2">
+      <h2 class="text-2xl font-bold gradient-text mb-6 text-center">Choose a Room</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="room-card glass-card rounded-2xl p-6 text-center" data-room="room1">
+          <h3 class="text-xl font-bold mb-2">🌟 Room Alpha</h3>
+          <p class="text-gray-400 mb-4">General Discussion</p>
+          <div class="mb-4">
+            <span class="status-indicator status-waiting w-3 h-3 rounded-full inline-block mr-2"></span>
+            <span id="room1-count" class="text-sm">0/2 users</span>
+          </div>
+          <button class="btn btn-primary px-6 py-2 rounded-xl w-full join-room-btn" data-room="room1">
+            Join Room
+          </button>
+        </div>
+        
+        <div class="room-card glass-card rounded-2xl p-6 text-center" data-room="room2">
+          <h3 class="text-xl font-bold mb-2">🎯 Room Beta</h3>
+          <p class="text-gray-400 mb-4">Learning & Practice</p>
+          <div class="mb-4">
+            <span class="status-indicator status-waiting w-3 h-3 rounded-full inline-block mr-2"></span>
+            <span id="room2-count" class="text-sm">0/2 users</span>
+          </div>
+          <button class="btn btn-primary px-6 py-2 rounded-xl w-full join-room-btn" data-room="room2">
+            Join Room
+          </button>
+        </div>
+        
+        <div class="room-card glass-card rounded-2xl p-6 text-center" data-room="room3">
+          <h3 class="text-xl font-bold mb-2">🚀 Room Gamma</h3>
+          <p class="text-gray-400 mb-4">Advanced Users</p>
+          <div class="mb-4">
+            <span class="status-indicator status-waiting w-3 h-3 rounded-full inline-block mr-2"></span>
+            <span id="room3-count" class="text-sm">0/2 users</span>
+          </div>
+          <button class="btn btn-primary px-6 py-2 rounded-xl w-full join-room-btn" data-room="room3">
+            Join Room
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current Room Status -->
+    <div id="roomStatus" class="glass-card rounded-3xl p-6 slide-in stagger-3" style="display: none;">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-bold gradient-text">Connection Status</h2>
-          <p class="text-gray-400 text-sm">All users connected to global mode</p>
+          <h2 class="text-xl font-bold gradient-text">Current Room</h2>
+          <p id="roomName" class="text-gray-400 text-sm"></p>
         </div>
-        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
-          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Connected: Global
+        <div class="flex items-center gap-4">
+          <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
+            <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>
+            <span id="roomUserCount">1/2 users</span>
+          </div>
+          <button id="leaveRoomBtn" class="btn btn-red px-4 py-2 rounded-xl text-sm">
+            Leave Room
+          </button>
         </div>
       </div>
       <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
     </div>
 
-    <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
+    <!-- Chat Container -->
+    <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-4" style="display: none;">
       <div class="mb-6">
         <h3 class="text-xl font-bold gradient-text mb-4 flex items-center">
           <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>
@@ -115,7 +189,8 @@
       </div>
     </div>
 
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-4">
+    <!-- Translation Mode -->
+    <div id="translationMode" class="glass-card rounded-3xl p-8 slide-in stagger-5" style="display: none;">
       <div class="text-center mb-6">
         <h3 class="text-xl font-bold gradient-text mb-4">Translation Mode</h3>
         <div class="flex gap-4 justify-center">
@@ -129,10 +204,11 @@
       </div>
     </div>
 
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-5">
+    <!-- Recording Area -->
+    <div id="recordingArea" class="glass-card rounded-3xl p-8 slide-in stagger-6" style="display: none;">
       <div class="video-container mb-6">
         <div class="video-inner">
-          <video id="preview" class="w-full aspect-video object-cover" autoplay muted></video>
+          <video id="preview" class="w-full aspect-video object-cover rounded-2xl" autoplay muted></video>
           <audio id="audioPreview" class="w-full rounded-2xl hidden" controls></audio>
         </div>
       </div>
@@ -172,12 +248,30 @@
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
+      // 模拟房间数据
+      const rooms = {
+        room1: { name: 'Room Alpha', users: 0, maxUsers: 2 },
+        room2: { name: 'Room Beta', users: 0, maxUsers: 2 },
+        room3: { name: 'Room Gamma', users: 0, maxUsers: 2 }
+      };
+
+      let currentRoomId = null;
+      let isSignLanguageMode = true;
+      let stream = null;
+      let mediaRecorder = null;
+      let recordedBlobs = [];
+
+      // DOM Elements
+      const roomSelection = document.getElementById('roomSelection');
+      const roomStatus = document.getElementById('roomStatus');
       const chatContainer = document.getElementById('chatContainer');
+      const translationMode = document.getElementById('translationMode');
+      const recordingArea = document.getElementById('recordingArea');
       const chatBox = document.getElementById('chatBox');
       const chatInput = document.getElementById('chatInput');
       const sendBtn = document.getElementById('sendBtn');
+      const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+      const roomError = document.getElementById('roomError');
       const preview = document.getElementById('preview');
       const audioPreview = document.getElementById('audioPreview');
       const startRecordBtn = document.getElementById('startRecordBtn');
@@ -186,36 +280,38 @@
       const result = document.getElementById('result');
       const signLanguageBtn = document.getElementById('signLanguageBtn');
       const speechToTextBtn = document.getElementById('speechToTextBtn');
-      let stream = null;
-      let mediaRecorder = null;
-      let recordedBlobs = [];
-      
-      // 连接到 COLAB 的 Socket.IO 服务器
-      let socket = io(COLAB_URL, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 15,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 60000
-      });
-      
-      let processedTranslations = new Set();
-      let isSignLanguageMode = true;
 
-      chatContainer.style.display = 'block';
+      // Update room display
+      function updateRoomDisplay() {
+        Object.keys(rooms).forEach(roomId => {
+          const room = rooms[roomId];
+          const countElement = document.getElementById(`${roomId}-count`);
+          const roomCard = document.querySelector(`[data-room="${roomId}"]`);
+          const joinBtn = roomCard.querySelector('.join-room-btn');
+          
+          countElement.textContent = `${room.users}/${room.maxUsers} users`;
+          
+          if (room.users >= room.maxUsers) {
+            roomCard.classList.add('room-full');
+            joinBtn.disabled = true;
+            joinBtn.textContent = 'Room Full';
+          } else {
+            roomCard.classList.remove('room-full');
+            joinBtn.disabled = false;
+            joinBtn.textContent = 'Join Room';
+          }
+        });
+      }
 
-      // 顯示錯誤提示
-      function showError(message) {
+      // Show message
+      function showMessage(message, type = 'error') {
         roomError.textContent = message;
-        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
+        roomError.className = `text-center mt-2 p-3 rounded-xl text-sm ${type === 'success' ? 'success-message' : 'error-message'}`;
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      // 添加聊天消息
+      // Add chat message
       function addChatMessage(message, isSelf = false, isTranslated = false) {
         const now = new Date().toLocaleTimeString();
         const messageDiv = document.createElement('div');
@@ -228,59 +324,91 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
-      // WebSocket 事件處理
-      socket.on('connect', () => {
-        console.log('Connected to Colab server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', true);
-      });
-
-      // 处理来自 colab 的 message 事件
-      socket.on('message', (data) => {
-        console.log('Received message:', data);
-        if (data.msg && data.msg !== 'Connected to chat room') {
-          addChatMessage(data.msg, data.sid === socket.id);
+      // Join room
+      function joinRoom(roomId) {
+        const room = rooms[roomId];
+        if (room.users >= room.maxUsers) {
+          showMessage('Room is full!', 'error');
+          return;
         }
-      });
 
-      // 处理来自 colab 的 new_message 事件
-      socket.on('new_message', (data) => {
-        console.log('Received new_message:', data);
-        addChatMessage(`${data.user}: ${data.message}`, data.user === 'You');
-      });
-
-      // 处理翻译结果
-      socket.on('translation', (data) => {
-        const key = `${data.user}-${data.text || data.error || 'unknown'}`;
-        if (!processedTranslations.has(key)) {
-          processedTranslations.add(key);
-          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
-          addChatMessage(translatedMessage, data.user === 'You', true);
-          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
+        // Leave current room if in one
+        if (currentRoomId) {
+          leaveRoom();
         }
+
+        // Join new room
+        room.users++;
+        currentRoomId = roomId;
+        
+        // Update UI
+        document.getElementById('roomName').textContent = room.name;
+        document.getElementById('roomUserCount').textContent = `${room.users}/${room.maxUsers} users`;
+        
+        // Show room interface
+        roomSelection.style.display = 'none';
+        roomStatus.style.display = 'block';
+        chatContainer.style.display = 'block';
+        translationMode.style.display = 'block';
+        recordingArea.style.display = 'block';
+        
+        updateRoomDisplay();
+        
+        // Add welcome message
+        addChatMessage(`Welcome to ${room.name}! You are user ${room.users}/${room.maxUsers}`, false, false);
+        
+        showMessage(`Successfully joined ${room.name}!`, 'success');
+      }
+
+      // Leave room
+      function leaveRoom() {
+        if (!currentRoomId) return;
+
+        const room = rooms[currentRoomId];
+        room.users = Math.max(0, room.users - 1);
+        
+        // Update UI
+        roomSelection.style.display = 'block';
+        roomStatus.style.display = 'none';
+        chatContainer.style.display = 'none';
+        translationMode.style.display = 'none';
+        recordingArea.style.display = 'none';
+        
+        // Clear chat
+        chatBox.innerHTML = '';
+        
+        // Clean up media
+        cleanupStream();
+        
+        currentRoomId = null;
+        updateRoomDisplay();
+        
+        showMessage('Left the room', 'success');
+      }
+
+      // Event listeners for room buttons
+      document.querySelectorAll('.join-room-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const roomId = e.target.dataset.room;
+          joinRoom(roomId);
+        });
       });
 
-      socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        showError(`⚠️ Failed to connect to server: ${error.message}. Retrying...`);
-        setTimeout(() => location.reload(), 10000);
-      });
+      leaveRoomBtn.addEventListener('click', leaveRoom);
 
-      socket.on('disconnect', (reason) => {
-        console.log('Disconnected:', reason);
-        showError(`⚠️ Disconnected: ${reason}. Attempting to reconnect...`);
-        socket.connect();
-      });
-
-      // 發送消息
-      sendBtn.onclick = () => {
+      // Chat functionality
+      sendBtn.addEventListener('click', () => {
         const message = chatInput.value.trim();
-        if (message) {
-          // 发送到 colab 的 send_message 事件
-          socket.emit('send_message', { user: 'You', message: message });
+        if (message && currentRoomId) {
           addChatMessage(`You: ${message}`, true);
           chatInput.value = '';
+          
+          // Simulate receiving a response (in real app, this would be from server)
+          setTimeout(() => {
+            addChatMessage(`User ${rooms[currentRoomId].users === 1 ? 2 : 1}: Thanks for your message!`, false);
+          }, 1000);
         }
-      };
+      });
 
       chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -289,7 +417,7 @@
         }
       });
 
-      // 更新結果顯示
+      // Update result display
       function updateResult(message, type = 'default') {
         const resultEl = document.getElementById('result');
         const colorClass = type === 'success' ? 'bg-green-900 border-green-800 text-green-200' : 
@@ -300,7 +428,7 @@
         resultEl.innerHTML = `<div>${message}</div>`;
       }
 
-      // 初始化攝像頭
+      // Initialize camera
       async function initCamera() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -314,7 +442,7 @@
         }
       }
 
-      // 初始化麥克風
+      // Initialize microphone
       async function initMicrophone() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -330,8 +458,13 @@
         }
       }
 
-      // 開始錄製
-      startRecordBtn.onclick = () => {
+      // Start recording
+      startRecordBtn.addEventListener('click', () => {
+        if (!currentRoomId) {
+          showMessage('Please join a room first!', 'error');
+          return;
+        }
+        
         if (isSignLanguageMode) {
           if (!stream) {
             initCamera().then(() => startRecording());
@@ -345,23 +478,27 @@
             startRecording();
           }
         }
-      };
+      });
 
       function startRecording() {
         recordedBlobs = [];
         const mimeType = isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus';
         mediaRecorder = new MediaRecorder(stream, { mimeType });
+        
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) recordedBlobs.push(event.data);
           console.log(`${isSignLanguageMode ? 'Video' : 'Audio'} blob recorded:`, event.data);
         };
+        
         mediaRecorder.onstop = () => {
           console.log('Recording stopped');
         };
+        
         mediaRecorder.onerror = (event) => {
           console.error('MediaRecorder error:', event.error);
-          showError(`❌ Recording failed: ${event.error.message}`);
+          showMessage(`❌ Recording failed: ${event.error.message}`, 'error');
         };
+        
         mediaRecorder.start(200);
         startRecordBtn.disabled = true;
         stopRecordBtn.disabled = false;
@@ -369,8 +506,8 @@
         updateResult(`🔴 Recording ${isSignLanguageMode ? 'video' : 'audio'}...`, 'processing');
       }
 
-      // 停止錄製
-      stopRecordBtn.onclick = () => {
+      // Stop recording
+      stopRecordBtn.addEventListener('click', () => {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
           startRecordBtn.disabled = false;
@@ -378,10 +515,10 @@
           uploadBtn.disabled = false;
           updateResult(isSignLanguageMode ? '✅ Video recording completed - Ready to upload!' : '✅ Audio recording completed - Ready to upload!', 'success');
         }
-      };
+      });
 
-      // 切換到簽語模式
-      signLanguageBtn.onclick = () => {
+      // Mode switching
+      signLanguageBtn.addEventListener('click', () => {
         isSignLanguageMode = true;
         signLanguageBtn.classList.remove('btn-primary');
         signLanguageBtn.classList.add('btn-purple');
@@ -391,10 +528,9 @@
         audioPreview.classList.add('hidden');
         cleanupStream();
         updateResult('Current Mode: Sign Language Translation', 'success');
-      };
+      });
 
-      // 切換到語音模式
-      speechToTextBtn.onclick = () => {
+      speechToTextBtn.addEventListener('click', () => {
         isSignLanguageMode = false;
         speechToTextBtn.classList.remove('btn-success');
         speechToTextBtn.classList.add('btn-purple');
@@ -404,77 +540,86 @@
         audioPreview.classList.remove('hidden');
         cleanupStream();
         updateResult('Current Mode: Speech to Text Translation', 'success');
-      };
+      });
 
-      // 上傳並翻譯
-      uploadBtn.onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          const mediaId = crypto.randomUUID();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
-          updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
-          try {
-            const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors',
-              credentials: 'include'
-            });
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-            }
-            const resultData = await response.json();
-            if (!resultData.text && !resultData.gesture && !resultData.error && !isSignLanguageMode) {
-              console.warn('No valid speech data');
-              return;
-            }
-            const translatedMessage = `You: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`;
-            updateResult(`✅ Translation Result: ${resultData.translation || resultData.text || resultData.error || 'Unknown result'}`, 'success');
-            
-            // 发送翻译结果到 colab
-            socket.emit('translation', {
-              text: resultData.translation || resultData.text,
-              gesture: resultData.gesture || 0,
-              user: 'You',
-              error: resultData.error
-            });
-
-            // 保存历史记录
-            try {
-              const saveResponse = await fetch(SAVE_ENDPOINT, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  user: 'You',
-                  text: resultData.translation || resultData.text || resultData.error || 'Unknown result',
-                  gesture: resultData.gesture || 0,
-                  timestamp: new Date().toISOString(),
-                  video_id: isSignLanguageMode ? mediaId : null,
-                  audio_text: !isSignLanguageMode ? resultData.text : null
-                })
-              });
-              if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-              const saveResult = await saveResponse.json();
-              console.log(`History saved for ${isSignLanguageMode ? 'video ID' : 'audio text'}:`, mediaId || resultData.text);
-            } catch (saveError) {
-              console.warn('Failed to save history:', saveError);
-            }
-          } catch (error) {
-            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-            updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
-            showError(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`);
-          } finally {
-            recordedBlobs = [];
-          }
-        } else {
-          updateResult('❌ Please record video or audio first!', 'error');
+      // Upload and translate
+      uploadBtn.addEventListener('click', async () => {
+        if (!currentRoomId) {
+          showMessage('Please join a room first!', 'error');
+          return;
         }
-      };
 
-      // 清理媒體流
+        if (recordedBlobs.length === 0) {
+          updateResult('❌ Please record video or audio first!', 'error');
+          return;
+        }
+
+        const blob = new Blob(recordedBlobs, { 
+          type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' 
+        });
+        
+        const formData = new FormData();
+        const mediaId = crypto.randomUUID();
+        formData.append(
+          isSignLanguageMode ? 'video' : 'audio', 
+          blob, 
+          `recording_${mediaId}.webm`
+        );
+        
+        updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
+        
+        try {
+          const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData,
+            mode: 'cors',
+            credentials: 'include'
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
+          }
+          
+          const resultData = await response.json();
+          console.log('Translation result:', resultData);
+          
+          // 修复：正确提取文本结果
+          let translatedText = '';
+          if (isSignLanguageMode) {
+            translatedText = resultData.translation || resultData.text || 'Unknown gesture';
+          } else {
+            // 修复 speech-to-text 响应处理
+            if (resultData.text) {
+              translatedText = resultData.text;
+            } else if (resultData.translation && resultData.translation.text) {
+              translatedText = resultData.translation.text;
+            } else {
+              translatedText = 'No speech detected';
+            }
+          }
+          
+          updateResult(`✅ Translation Result: ${translatedText}`, 'success');
+          
+          // Add to chat
+          addChatMessage(`You (translated): ${translatedText}`, true, true);
+          
+          // Simulate other user response
+          setTimeout(() => {
+            addChatMessage(`User ${rooms[currentRoomId].users === 1 ? 2 : 1}: I received your translation!`, false);
+          }, 1000);
+          
+        } catch (error) {
+          console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+          updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
+          showMessage(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
+        } finally {
+          recordedBlobs = [];
+        }
+      });
+
+      // Clean up media stream
       function cleanupStream() {
         if (stream) {
           stream.getTracks().forEach(track => track.stop());
@@ -488,7 +633,16 @@
         }
       }
 
-      window.onbeforeunload = () => cleanupStream();
+      // Initialize room display
+      updateRoomDisplay();
+
+      // Clean up on page unload
+      window.addEventListener('beforeunload', () => {
+        cleanupStream();
+        if (currentRoomId) {
+          leaveRoom();
+        }
+      });
     });
   </script>
 </body>
