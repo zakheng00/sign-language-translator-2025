@@ -529,16 +529,13 @@
             }
             
             const displayText = resultData.text || `Gesture ${resultData.gesture}` || 'Unknown result';
-            updateResult(`✅ Translation Result: ${displayText}`, 'success');
-            
-            // 发送翻译结果到 colab socket
-            socket.emit('translation', {
-              text: displayText,
-              gesture: resultData.gesture || 0,
-              user: 'You',
-              sid: socket.id
-            });
-
+updateResult(`✅ Translation Result: ${displayText}`, 'success');
+socket.emit('translation', {
+  text: displayText,
+  gesture: resultData.gesture || 0,
+  user: 'You',
+  sid: socket.id
+});
             // 保存历史记录
             try {
               const saveResponse = await fetch(SAVE_ENDPOINT, {
