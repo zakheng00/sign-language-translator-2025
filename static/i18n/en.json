@@ -1,1 +1,51 @@
-
+{
+  "header": "Sign Language Translator",
+  "index": {
+    "title": "Welcome to Sign Language Translator",
+    "description": "Translate sign language and speech in real-time",
+    "liveTranslation": "Live Translation",
+    "roomMode": "Room Mode",
+    "speechToText": "Speech to Text",
+    "history": "History",
+    "settings": "Settings"
+  },
+  "liveTranslation": {
+    "title": "Live Translation",
+    "description": "Capture and translate sign language in real-time",
+    "start": "Start Capture",
+    "stop": "Stop Capture"
+  },
+  "roomMode": {
+    "title": "Room Mode",
+    "description": "Collaborate in a shared translation room",
+    "joinRoom": "Join Room",
+    "sendMessage": "Send Message"
+  },
+  "speechToText": {
+    "title": "Speech to Text",
+    "description": "Convert spoken words to text",
+    "record": "Start Recording",
+    "stop": "Stop Recording",
+    "transcription": "Transcription Result"
+  },
+  "history": {
+    "title": "Translation History",
+    "description": "View your past translations",
+    "noRecords": "No translation records found",
+    "delete": "Delete"
+  },
+  "settings": {
+    "title": "System Settings",
+    "description": "Customize your experience with language, feedback, and history management",
+    "languageTitle": "Language Settings",
+    "language": "Current language: ",
+    "english": "English",
+    "malay": "Malay (Bahasa Melayu)",
+    "feedbackTitle": "Feedback",
+    "feedbackPlaceholder": "Share your feedback or suggestions...",
+    "submitFeedback": "Submit Feedback",
+    "historyTitle": "History Management",
+    "historyDescription": "Clear all translation history records. This action cannot be undone.",
+    "clearHistory": "Clear All History"
+  }
+}
