@@ -175,7 +175,15 @@
       const currentProtocol = window.location.protocol;
       return `${currentProtocol}//${currentHost}`;
     }
-
+  GESTURE_MAPPING = {
+    18: "Hello",
+    11: "Thank You",
+    7: "I Love You",
+    8: "Yes",
+    19: "Good Bye",
+    16: "Sorry",
+    0: "Unknown"
+}
     const FLASK_URL = detectServerUrl();
     const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 請更新為最新 ngrok URL
     
@@ -480,98 +488,98 @@
       };
 
       // 上傳並翻譯 - 修正版本
-      uploadBtn.onclick = async () => {
-        if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
-          const formData = new FormData();
-          const mediaId = crypto.randomUUID();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
-          
-          updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
-          
-          try {
-            const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
-            console.log('Sending request to:', endpoint);
-            
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              body: formData,
-              headers: {
-                'ngrok-skip-browser-warning': 'true'  // 添加ngrok跳过浏览器警告的header
-              }
-            });
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-            }
-            
-            const resultData = await response.json();
-            console.log('Response data:', resultData);
-            
-            // 检查响应数据
-            if (resultData.error) {
-              throw new Error(resultData.error);
-            }
-            
-            // 对于语音转文本，检查是否有文本结果
-            if (!isSignLanguageMode && !resultData.text) {
-              console.warn('No text recognized from speech');
-              updateResult('❌ No speech recognized, please try again', 'error');
-              return;
-            }
-            
-            // 对于手语翻译，检查是否有手势结果
-            if (isSignLanguageMode && resultData.gesture === undefined) {
-              console.warn('No gesture recognized from video');
-              updateResult('❌ No gesture recognized, please try again', 'error');
-              return;
-            }
-            
-            const displayText = resultData.text || `Gesture ${resultData.gesture}` || 'Unknown result';
-updateResult(`✅ Translation Result: ${displayText}`, 'success');
-socket.emit('translation', {
-  text: displayText,
-  gesture: resultData.gesture || 0,
-  user: 'You',
-  sid: socket.id
-});
-            // 保存历史记录
-            try {
-              const saveResponse = await fetch(SAVE_ENDPOINT, {
-                method: 'POST',
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'ngrok-skip-browser-warning': 'true'
-                },
-                body: JSON.stringify({
-                  user: 'You',
-                  text: displayText,
-                  gesture: resultData.gesture || 0,
-                  timestamp: new Date().toISOString()
-                })
-              });
-              
-              if (!saveResponse.ok) {
-                console.warn('Failed to save history:', await saveResponse.text());
-              } else {
-                console.log('History saved successfully');
-              }
-            } catch (saveError) {
-              console.warn('Failed to save history:', saveError);
-            }
-            
-          } catch (error) {
-            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-            updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
-            showError(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`);
-          } finally {
-            recordedBlobs = [];
-          }
-        } else {
-          updateResult('❌ Please record video or audio first!', 'error');
+     uploadBtn.onclick = async () => {
+  if (recordedBlobs.length) {
+    const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
+    const formData = new FormData();
+    const mediaId = crypto.randomUUID();
+    formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
+    
+    updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
+    
+    try {
+      const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
+      console.log('Sending request to:', endpoint);
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
         }
-      };
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
+      }
+      
+      const resultData = await response.json();
+      console.log('Response data:', resultData);
+      
+      if (resultData.error) {
+        throw new Error(resultData.error);
+      }
+      
+      if (!isSignLanguageMode && !resultData.text) {
+        console.warn('No text recognized from speech');
+        updateResult('❌ No speech recognized, please try again', 'error');
+        return;
+      }
+      
+      if (isSignLanguageMode && resultData.gesture === undefined) {
+        console.warn('No gesture recognized from video');
+        updateResult('❌ No gesture recognized, please try again', 'error');
+        return;
+      }
+      
+      // 使用映射表轉換 gesture
+      const gestureText = gestureMap[resultData.gesture] || `Gesture ${resultData.gesture}`;
+      const displayText = isSignLanguageMode ? gestureText : resultData.text || 'Unknown result';
+      updateResult(`✅ Translation Result: ${displayText}`, 'success');
+      
+      socket.emit('translation', {
+        text: displayText,
+        gesture: resultData.gesture || 0,
+        user: 'You',
+        sid: socket.id
+      });
+
+      try {
+        const saveResponse = await fetch(SAVE_ENDPOINT, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+          body: JSON.stringify({
+            user: 'You',
+            text: displayText,
+            gesture: resultData.gesture || 0,
+            timestamp: new Date().toISOString()
+          })
+        });
+        
+        if (!saveResponse.ok) {
+          console.warn('Failed to save history:', await saveResponse.text());
+        } else {
+          console.log('History saved successfully');
+        }
+      } catch (saveError) {
+        console.warn('Failed to save history:', saveError);
+      }
+      
+    } catch (error) {
+      console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+      updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
+      showError(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`);
+    } finally {
+      recordedBlobs = [];
+    }
+  } else {
+    updateResult('❌ Please record video or audio first!', 'error');
+  }
+};
 
       // 清理媒體流
       function cleanupStream() {
