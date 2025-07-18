@@ -14,6 +14,16 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
+from flask_babel import Babel, _
+from flask import session, flash, render_template, redirect, url_for
+
+app.config['BABEL_DEFAULT_LOCALE'] = 'en'
+app.config['BABEL_TRANSLATION_DIRECTORIES'] = 'translations'
+babel = Babel(app)
+
+@babel.localeselector
+def get_locale():
+    return session.get('language', 'en')
 
 # --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -160,7 +170,34 @@ def history():
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
+@app.route('/settings')
+def settings_page():
+    current_language = session.get('language', 'en')
+    return render_template('settings.html', language=current_language)
 
+@app.route('/set_language', methods=['POST'])
+def set_language():
+    lang = request.form.get('language', 'en')
+    session['language'] = lang
+    flash(_('Language changed to English') if lang == 'en' else _('Language changed to Malay'))
+    return redirect(url_for('settings_page'))
+
+@app.route('/feedback', methods=['POST'])
+def feedback():
+    feedback_text = request.form.get('feedback')
+    if feedback_text:
+        with open('feedback.txt', 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.datetime.utcnow()} - {feedback_text}\n")
+        flash(_('Thank you for your feedback!'))
+    return redirect(url_for('settings_page'))
+
+@app.route('/clear_history', methods=['POST'])
+def clear_history():
+    with get_db() as db:
+        db.execute('DELETE FROM translations')
+        db.commit()
+    flash(_('History cleared!'))
+    return redirect(url_for('settings_page'))
 # --- API 路由 ---
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
