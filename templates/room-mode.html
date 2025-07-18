@@ -175,7 +175,7 @@
       const currentProtocol = window.location.protocol;
       return `${currentProtocol}//${currentHost}`;
     }
-  GESTURE_MAPPING = {
+  const gestureMap = {
     18: "Hello",
     11: "Thank You",
     7: "I Love You",
@@ -183,7 +183,7 @@
     19: "Good Bye",
     16: "Sorry",
     0: "Unknown"
-}
+};
     const FLASK_URL = detectServerUrl();
     const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 請更新為最新 ngrok URL
     
