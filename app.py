@@ -15,8 +15,13 @@ from flask_socketio import SocketIO, emit
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
 
-# Flask 設置
+@babel.localeselector
+def get_locale():
+    return session.get('language', 'en')
+
+# --- Flask 設置 ---
 app = Flask(__name__, static_folder='static', template_folder='templates')
+
 socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -36,6 +41,7 @@ CORS(app, resources={
     }
 }, supports_credentials=True)
 
+
 # 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -46,7 +52,7 @@ logging.basicConfig(
 logger.setLevel(logging.INFO)
 
 # Colab API 端點
-COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://7d1d03ca5ce8.ngrok-free.app")
+COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://7d1d03ca5ce8.ngrok-free.app")  # 使用 Colab 的 ngrok URL
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
@@ -62,7 +68,7 @@ GESTURE_MAPPING = {
     0: "Unknown"
 }
 
-# SQLite 設置
+# --- SQLite 設置 ---
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
 @contextmanager
@@ -90,19 +96,12 @@ def init_db():
                        gesture INTEGER,
                        timestamp TEXT)''')
         db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
-        db.execute('''CREATE TABLE IF NOT EXISTS settings
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       language TEXT DEFAULT 'en')''')
-        db.execute('''CREATE TABLE IF NOT EXISTS feedback
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       feedback TEXT,
-                       timestamp TEXT)''')
         db.commit()
-    logger.info("SQLite database initialized with translations, settings, and feedback tables.")
+    logger.info("SQLite database initialized with index.")
 
 init_db()
 
-# 請求日誌中間件
+# 添加請求日誌中間件
 @app.before_request
 def log_request():
     request_start_time = time.time()
@@ -131,17 +130,17 @@ def log_resource_usage():
     cpu = process.cpu_percent(interval=1)
     logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
 
-# 測試端點
+# --- 測試端點 ---
 @app.route('/test')
 def test():
     log_resource_usage()
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'endpoints': ['/health', '/predict', '/speech_to_text', '/api/history', '/settings', '/api/settings', '/api/feedback', '/api/clear_history']
+        'endpoints': ['/health', '/predict', '/speech_to_text', '/api/history']
     })
 
-# 頁面路由
+# --- 頁面路由 ---
 @app.route('/')
 def index():
     return send_from_directory('templates', 'index.html')
@@ -162,15 +161,11 @@ def speech_to_text_page():
 def history():
     return send_from_directory('templates', 'history.html')
 
-@app.route('/settings')
-def settings():
-    return send_from_directory('templates', 'settings.html')
-
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
 
-# API 路由
+# --- API 路由 ---
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
         return '', 204
@@ -251,7 +246,7 @@ def predict():
 def speech_to_text():
     return process_media_request(COLAB_STT_URL, 'audio', 'audio/webm;codecs=opus', gesture_default=0)
 
-# 歷史記錄 API
+# --- 歷史記錄 API ---
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
     if request.method == 'OPTIONS':
@@ -268,68 +263,7 @@ def get_history():
         logger.error(f"Error fetching history: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# 語言設置端點
-@app.route('/api/settings', methods=['GET', 'POST', 'OPTIONS'])
-def handle_settings():
-    logger.info(f"Received settings request from origin: {request.headers.get('Origin')}")
-    if request.method == 'OPTIONS':
-        return '', 204
-    try:
-        with get_db() as db:
-            if request.method == 'GET':
-                cursor = db.execute('SELECT language FROM settings ORDER BY id DESC LIMIT 1')
-                row = cursor.fetchone()
-                language = row['language'] if row else 'en'
-                return jsonify({'language': language})
-            elif request.method == 'POST':
-                data = request.get_json()
-                if not data or 'language' not in data or data['language'] not in ['en', 'ms']:
-                    return jsonify({'error': 'Invalid language selection'}), 400
-                db.execute('INSERT INTO settings (language) VALUES (?)', (data['language'],))
-                db.commit()
-                logger.info(f"Language set to: {data['language']}")
-                return jsonify({'message': 'Language updated successfully', 'language': data['language']})
-    except Exception as e:
-        logger.error(f"Error handling settings: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# 反饋端點
-@app.route('/api/feedback', methods=['POST', 'OPTIONS'])
-def handle_feedback():
-    logger.info(f"Received feedback request from origin: {request.headers.get('Origin')}")
-    if request.method == 'OPTIONS':
-        return '', 204
-    try:
-        data = request.get_json()
-        if not data or 'feedback' not in data or not data['feedback'].strip():
-            return jsonify({'error': 'Feedback cannot be empty'}), 400
-        with get_db() as db:
-            db.execute('INSERT INTO feedback (feedback, timestamp) VALUES (?, ?)',
-                       (data['feedback'], datetime.datetime.utcnow().isoformat()))
-            db.commit()
-        logger.info("Feedback saved successfully")
-        return jsonify({'message': 'Feedback submitted successfully'})
-    except Exception as e:
-        logger.error(f"Error saving feedback: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# 清除所有歷史記錄端點
-@app.route('/api/clear_history', methods=['DELETE', 'OPTIONS'])
-def clear_history():
-    logger.info(f"Received clear history request from origin: {request.headers.get('Origin')}")
-    if request.method == 'OPTIONS':
-        return '', 204
-    try:
-        with get_db() as db:
-            db.execute('DELETE FROM translations')
-            db.commit()
-        logger.info("All history records cleared successfully")
-        return jsonify({'message': 'All history cleared successfully'})
-    except Exception as e:
-        logger.error(f"Error clearing history: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# 健康檢查
+# --- 健康檢查 ---
 @app.route('/health')
 def health_check():
     log_resource_usage()
@@ -359,7 +293,7 @@ def check_database_status() -> str:
         logger.error(f"Database status check failed: {e}")
         return 'offline'
 
-# 錯誤處理
+# --- 錯誤處理 ---
 @app.errorhandler(404)
 def not_found(error):
     logger.warning(f"404 error: {request.url}")
