@@ -1,1 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ _('Settings') }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-lg mx-auto bg-white p-6 rounded-lg shadow">
+    <h1 class="text-xl font-bold mb-4">{{ _('Settings') }}</h1>
+    <form action="{{ url_for('set_language') }}" method="POST" class="mb-4">
+      <label class="block mb-2 font-semibold">{{ _('Select Language') }}</label>
+      <select name="language" class="border p-2 w-full rounded">
+        <option value="en" {% if language == 'en' %}selected{% endif %}>English</option>
+        <option value="ms" {% if language == 'ms' %}selected{% endif %}>Bahasa Melayu</option>
+      </select>
+      <button class="mt-3 bg-blue-500 text-white px-4 py-2 rounded">{{ _('Save') }}</button>
+    </form>
+    <form action="{{ url_for('feedback') }}" method="POST" class="mb-4">
+      <label class="block mb-2 font-semibold">{{ _('Feedback') }}</label>
+      <textarea name="feedback" rows="3" class="border p-2 w-full rounded"></textarea>
+      <button class="mt-3 bg-green-500 text-white px-4 py-2 rounded">{{ _('Send') }}</button>
+    </form>
+    <form action="{{ url_for('clear_history') }}" method="POST">
+      <button class="bg-red-500 text-white px-4 py-2 rounded">{{ _('Clear History') }}</button>
+    </form>
+    <div class="mt-4">
+      <a href="/" class="text-blue-500 underline">← {{ _('Back to Home') }}</a>
+    </div>
+  </div>
+</body>
+</html>
 
