@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pertuturan ke Teks (Melayu) - Penterjemah Bahasa Isyarat</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 </head>
 <body class="bg-gradient-to-br from-teal-100 to-blue-200 min-h-screen flex flex-col">
@@ -39,7 +38,7 @@
 
     <footer class="bg-gray-800 text-white py-4">
         <div class="container mx-auto text-center">
-            <p>&copy; 2025 Penterjemah Bahasa Isyarat. Hak cipta terpelihara.</p>
+            <p>© 2025 Penterjemah Bahasa Isyarat. Hak cipta terpelihara.</p>
         </div>
     </footer>
 
@@ -50,31 +49,29 @@
             noTranscription: { en: "No transcription detected.", ms: "Tiada transkripsi dikesan." },
             result: { en: "Result", ms: "Keputusan" },
             error: { en: "Error", ms: "Ralat" },
-            socketError: { en: "Connection to server failed.", ms: "Sambungan ke pelayan gagal." }
+            serverError: { en: "Server error, please try again later.", ms: "Ralat pelayan, sila cuba lagi kemudian." },
+            timeoutError: { en: "Request timed out, please check server status.", ms: "Permintaan telah tamat masa, sila semak status pelayan." }
         };
 
-        // 動態獲取 COLAB_URL
         async function fetchColabUrl() {
             try {
-                const response = await fetch('/health', { headers: { 'ngrok-skip-browser-warning': 'true' } });
+                const response = await fetch('/health', {
+                    headers: { 'ngrok-skip-browser-warning': 'true' },
+                    timeout: 10000 // 10秒超時
+                });
                 if (response.ok) {
                     const data = await response.json();
-                    return data.colab_url || window.location.origin;
+                    return data.colab_url || 'https://sign-language-translator-2025.onrender.com';
                 }
             } catch (error) {
                 console.error('Failed to fetch COLAB_URL:', error);
             }
-            return window.location.origin;
+            return 'https://sign-language-translator-2025.onrender.com';
         }
 
         (async () => {
             const FLASK_URL = await fetchColabUrl();
             const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text_malay`;
-            const socket = io(FLASK_URL, {
-                path: '/socket.io',
-                transports: ['websocket', 'polling'],
-                timeout: 30000
-            });
 
             let mediaRecorder;
             let recordedBlobs = [];
@@ -92,24 +89,6 @@
                     status === 'processing' ? 'text-blue-600' : 'text-gray-800'
                 }`;
             }
-
-            socket.on('connect', () => {
-                console.log('Socket.IO connected:', socket.id);
-            });
-
-            socket.on('connect_error', (error) => {
-                console.error('Socket.IO connection error:', error);
-                updateResult(TRANSLATIONS.socketError[localStorage.getItem('language') || 'ms'], 'error');
-            });
-
-            socket.on('translation', (data) => {
-                console.log('Received translation:', data);
-                if (data.error) {
-                    updateResult(`${TRANSLATIONS.error[localStorage.getItem('language') || 'ms']}: ${data.error}`, 'error');
-                } else {
-                    updateResult(`${TRANSLATIONS.result[localStorage.getItem('language') || 'ms']}: ${data.text}`, 'success');
-                }
-            });
 
             startRecordingBtn.onclick = async () => {
                 try {
@@ -134,6 +113,7 @@
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 startRecordingBtn.classList.remove('hidden');
                 stopRecordingBtn.classList.add('hidden');
+                uploadBtn.click(); // 自動觸發上傳
             };
 
             audioInput.onchange = () => {
@@ -154,22 +134,22 @@
                         const response = await fetch(SPEECH_ENDPOINT, {
                             method: 'POST',
                             body: formData,
-                            headers: { 'ngrok-skip-browser-warning': 'true' }
+                            headers: { 'ngrok-skip-browser-warning': 'true' },
+                            timeout: 180000 // 180秒超時
                         });
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        const resultData = await response.json();
-                        const transcription = resultData.text || resultData.error || TRANSLATIONS.noTranscription[localStorage.getItem('language') || 'ms'];
-                        updateResult(`${TRANSLATIONS.result[localStorage.getItem('language') || 'ms']}: ${transcription}`, resultData.text ? 'success' : 'error');
-                        if (resultData.text) {
-                            socket.emit('translation', {
-                                text: transcription,
-                                user: 'Pengguna',
-                                language: 'ms',
-                                engine: resultData.engine || 'whisper',
-                                error: resultData.error,
-                                sid: socket.id
-                            });
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({}));
+                            let errorMessage = errorData.error || `HTTP error! status: ${response.status}`;
+                            if (response.status === 504) {
+                                errorMessage = TRANSLATIONS.timeoutError[localStorage.getItem('language') || 'ms'];
+                            } else if (response.status === 500) {
+                                errorMessage = TRANSLATIONS.serverError[localStorage.getItem('language') || 'ms'];
+                            }
+                            throw new Error(errorMessage);
                         }
+                        const resultData = await response.json();
+                        const transcription = resultData.translation?.text || TRANSLATIONS.noTranscription[localStorage.getItem('language') || 'ms'];
+                        updateResult(`${TRANSLATIONS.result[localStorage.getItem('language') || 'ms']}: ${transcription}`, resultData.translation?.text ? 'success' : 'error');
                     } catch (error) {
                         console.error('Transcription failed:', error);
                         updateResult(`${TRANSLATIONS.error[localStorage.getItem('language') || 'ms']}: ${error.message}`, 'error');
