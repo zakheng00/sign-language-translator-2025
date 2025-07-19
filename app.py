@@ -49,16 +49,16 @@ logger.setLevel(logging.INFO)
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(os.environ.get('COLAB_BASE_URL', 'https://28c0a5dfc447.ngrok-free.app') + '/health', headers=headers, timeout=5)
+        response = requests.get(os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app') + '/health', headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
             return data.get('colab_url', os.environ.get('COLAB_BASE_URL', 'https://28c0a5dfc447.ngrok-free.app'))
         else:
             logger.warning("Failed to fetch dynamic Colab URL, using fallback")
-            return os.environ.get('COLAB_BASE_URL', 'https://28c0a5dfc447.ngrok-free.app')
+            return os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app')
     except requests.RequestException as e:
         logger.error(f"Failed to fetch Colab URL: {e}")
-        return os.environ.get('COLAB_BASE_URL', 'https://28c0a5dfc447.ngrok-free.app')
+        return os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app')
 
 COLAB_BASE_URL = get_colab_base_url()
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
