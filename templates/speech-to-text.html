@@ -1,266 +1,64 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ms">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Speech to Text - Audio Transcription</title>
+    <title>Pertuturan ke Teks - Transkripsi Audio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        * {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
-        }
-        
-        .floating-shapes {
-            position: fixed;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            pointer-events: none;
-            z-index: 0;
-            top: 0;
-            left: 0;
-        }
-        
-        .shape {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: float 6s ease-in-out infinite;
-        }
-        
-        .shape:nth-child(1) {
-            width: 80px;
-            height: 80px;
-            top: 10%;
-            left: 10%;
-            animation-delay: 0s;
-        }
-        
-        .shape:nth-child(2) {
-            width: 120px;
-            height: 120px;
-            top: 20%;
-            right: 10%;
-            animation-delay: 2s;
-        }
-        
-        .shape:nth-child(3) {
-            width: 60px;
-            height: 60px;
-            bottom: 20%;
-            left: 20%;
-            animation-delay: 4s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(180deg); }
-        }
-        
-        .gradient-text {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .slide-in {
-            animation: slideIn 0.8s ease-out forwards;
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        
-        @keyframes slideIn {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
+        * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; overflow-x: hidden; }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1); }
+        .floating-shapes { position: fixed; width: 100%; height: 100%; overflow: hidden; pointer-events: none; z-index: 0; top: 0; left: 0; }
+        .shape { position: absolute; background: rgba(255, 255, 255, 0.1); border-radius: 50%; animation: float 6s ease-in-out infinite; }
+        .shape:nth-child(1) { width: 80px; height: 80px; top: 10%; left: 10%; animation-delay: 0s; }
+        .shape:nth-child(2) { width: 120px; height: 120px; top: 20%; right: 10%; animation-delay: 2s; }
+        .shape:nth-child(3) { width: 60px; height: 60px; bottom: 20%; left: 20%; animation-delay: 4s; }
+        @keyframes float { 0%, 100% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-20px) rotate(180deg); } }
+        .gradient-text { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; background-clip: text; color: transparent; fallback-color: #333; }
+        .slide-in { animation: slideIn 0.8s ease-out forwards; opacity: 0; transform: translateY(30px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateY(0); } }
         .stagger-1 { animation-delay: 0.1s; }
         .stagger-2 { animation-delay: 0.2s; }
         .stagger-3 { animation-delay: 0.3s; }
-        .stagger-4 { animation-delay: 0.4s; }
-        
-        .btn {
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transform: translateY(0);
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-        
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .btn-purple {
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-            color: white;
-        }
-        
-        .btn-yellow {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: white;
-        }
-        
-        .btn-blue {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-        }
-        
-        .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-            transition: left 0.5s ease;
-        }
-        
-        .btn:hover::before {
-            left: 100%;
-        }
-        
-        .audio-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            padding: 4px;
-        }
-        
-        .audio-inner {
-            background: #000;
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .recording-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            background: #ef4444;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: pulse 1s infinite;
-        }
-        
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        
+        .btn { position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: none; border-radius: 12px; font-weight: 600; cursor: pointer; transform: translateY(0); }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn:disabled:hover { transform: none; box-shadow: none; }
+        .btn-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; }
+        .btn-yellow { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .btn-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+        .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent); transition: left 0.5s ease; }
+        .btn:hover::before { left: 100%; }
+        .audio-container { position: relative; overflow: hidden; border-radius: 20px; background: linear-gradient(135deg, #667eea, #764ba2); padding: 4px; }
+        .audio-inner { background: #000; border-radius: 16px; overflow: hidden; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .recording-indicator { display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 50%; margin-right: 8px; animation: pulse 1s infinite; }
+        .status-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         .status-online { background: #10b981; animation: pulse 2s infinite; }
         .status-offline { background: #6b7280; }
-        
-        #result {
-            margin-top: 20px;
-            font-size: 18px;
-            transition: all 0.3s ease;
-        }
-        
-        .result-success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #059669;
-        }
-        
-        .result-error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #dc2626;
-        }
-        
-        .result-processing {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            color: #d97706;
-        }
-        
-        .result-default {
-            background: rgba(107, 114, 128, 0.1);
-            border: 1px solid rgba(107, 114, 128, 0.3);
-            color: #4b5563;
-        }
-        
-        .audio-wave {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            margin: 10px 0;
-        }
-        
-        .wave-bar {
-            width: 4px;
-            height: 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 2px;
-            animation: wave 1s ease-in-out infinite;
-        }
-        
+        #result { margin-top: 20px; font-size: 18px; transition: all 0.3s ease; }
+        .result-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #059669; }
+        .result-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #dc2626; }
+        .result-processing { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: #d97706; }
+        .result-default { background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.3); color: #4b5563; }
+        .audio-wave { display: flex; align-items: center; justify-content: center; gap: 4px; margin: 10px 0; }
+        .wave-bar { width: 4px; height: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 2px; animation: wave 1s ease-in-out infinite; }
         .wave-bar:nth-child(1) { animation-delay: 0s; }
         .wave-bar:nth-child(2) { animation-delay: 0.1s; }
         .wave-bar:nth-child(3) { animation-delay: 0.2s; }
         .wave-bar:nth-child(4) { animation-delay: 0.3s; }
         .wave-bar:nth-child(5) { animation-delay: 0.4s; }
-        
-        @keyframes wave {
-            0%, 100% { height: 20px; }
-            50% { height: 40px; }
-        }
-        
+        @keyframes wave { 0%, 100% { height: 20px; } 50% { height: 40px; } }
         .hidden { display: none; }
+        .nav-links { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 20px; padding: 12px 24px; margin-bottom: 20px; }
+        .nav-links a { color: rgba(255, 255, 255, 0.9); text-decoration: none; padding: 8px 16px; border-radius: 12px; transition: all 0.3s ease; }
+        .nav-links a:hover { background: rgba(255, 255, 255, 0.2); color: white; }
     </style>
 </head>
 <body class="relative">
@@ -269,31 +67,33 @@
         <div class="shape"></div>
         <div class="shape"></div>
     </div>
-    
     <div class="relative z-10 max-w-2xl mx-auto p-8 space-y-8">
         <header class="text-center slide-in stagger-1">
-            <div class="glass-card rounded-3xl p-8 mb-8">
-                <h1 class="text-4xl font-bold gradient-text mb-2">
-                    🎤 Speech to Text
+            <nav class="nav-links flex justify-center gap-4 mb-4">
+                <a href="/" id="homeLink">Laman Utama</a>
+                <a href="/live-translation" id="liveTranslationLink">Terjemahan Langsung</a>
+                <a href="/room-mode" id="roomModeLink">Mod Bilik</a>
+                <a href="/speech-to-text" id="speechToTextLink">Pertuturan ke Teks</a>
+                <a href="/history" id="historyLink">Sejarah</a>
+                <a href="/settings" id="settingsLink">Tetapan</a>
+            </nav>
+            <div class="glass-card rounded-3xl p-8 mb-8 pulse">
+                <h1 class="text-4xl font-bold gradient-text mb-2" id="mainTitle">
+                    <i class="fas fa-microphone"></i> Pertuturan ke Teks
                 </h1>
-                <p class="text-gray-600 text-lg">
-                    Record your audio and get instant text transcription
-                </p>
+                <p class="text-gray-600 text-lg" id="mainSubtitle">Rakam audio anda dan dapatkan transkripsi teks segera</p>
             </div>
         </header>
-        
         <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
             <div class="text-center mb-6">
-                <h2 class="text-2xl font-bold gradient-text mb-2">Audio Recording</h2>
-                <p class="text-gray-600">Click "Start Recording" to begin audio capture</p>
+                <h2 class="text-2xl font-bold gradient-text mb-2" id="recordingTitle">Rakaman Audio</h2>
+                <p class="text-gray-600" id="recordingDesc">Klik "Mulakan Rakaman" untuk memulakan tangkapan audio</p>
             </div>
-            
             <div class="audio-container mb-6">
                 <div class="audio-inner">
                     <audio id="preview" class="w-full rounded-2xl" controls></audio>
                 </div>
             </div>
-            
             <div id="audioWave" class="audio-wave hidden">
                 <div class="wave-bar"></div>
                 <div class="wave-bar"></div>
@@ -301,60 +101,149 @@
                 <div class="wave-bar"></div>
                 <div class="wave-bar"></div>
             </div>
-            
             <div class="flex flex-wrap gap-4 justify-center mb-6">
                 <button id="startBtn" class="btn btn-purple px-8 py-4 rounded-xl text-lg">
-                    <span class="relative z-10">🎬 Start Recording</span>
+                    <span class="relative z-10" id="startBtnText"><i class="fas fa-video"></i> Mulakan Rakaman</span>
                 </button>
                 <button id="stopBtn" class="btn btn-yellow px-8 py-4 rounded-xl text-lg" disabled>
-                    <span class="relative z-10">⏹️ Stop Recording</span>
+                    <span class="relative z-10" id="stopBtnText"><i class="fas fa-stop"></i> Hentikan Rakaman</span>
                 </button>
                 <button id="uploadBtn" class="btn btn-blue px-8 py-4 rounded-xl text-lg" disabled>
-                    <span class="relative z-10">🚀 Transcribe</span>
+                    <span class="relative z-10" id="uploadBtnText"><i class="fas fa-upload"></i> Transkrip</span>
                 </button>
             </div>
-            
             <div id="result" class="text-center text-lg font-medium p-6 rounded-xl result-default border-2">
-                <div class="flex items-center justify-center">
-                    <span class="status-indicator status-offline"></span>
-                    Click "Start Recording" to begin
+                <div class="flex items-center justify-center" id="resultText">
+                    <span class="status-indicator status-offline"></span>Klik "Mulakan Rakaman" untuk memulakan
                 </div>
             </div>
         </div>
-        
         <div class="glass-card rounded-3xl p-8 slide-in stagger-3">
             <div class="text-center">
-                <h3 class="text-xl font-bold gradient-text mb-4">
-                    <span class="status-indicator status-online"></span>
-                    Real-time Connection Status
+                <h3 class="text-xl font-bold gradient-text mb-4" id="connectionStatusTitle">
+                    <span class="status-indicator status-online"></span>Status Sambungan Masa Nyata
                 </h3>
-                <p class="text-gray-600">
-                    Connected to transcription service for instant results
-                </p>
+                <p class="text-gray-600" id="connectionStatusDesc">Bersambung ke perkhidmatan transkripsi untuk hasil segera</p>
             </div>
         </div>
     </div>
-
     <script type="module">
-   import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+        const TRANSLATIONS = {
+            speechToText: {
+                en: {
+                    title: "Speech to Text - Audio Transcription",
+                    mainTitle: "🎤 Speech to Text",
+                    mainSubtitle: "Record your audio and get instant text transcription",
+                    homeLink: "Home",
+                    liveTranslationLink: "Live Translation",
+                    roomModeLink: "Room Mode",
+                    speechToTextLink: "Speech to Text",
+                    historyLink: "History",
+                    settingsLink: "Settings",
+                    recordingTitle: "Audio Recording",
+                    recordingDesc: "Click \"Start Recording\" to begin audio capture",
+                    startBtnText: "🎬 Start Recording",
+                    stopBtnText: "⏹️ Stop Recording",
+                    uploadBtnText: "🚀 Transcribe",
+                    resultText: "Click \"Start Recording\" to begin",
+                    connectionStatusTitle: "Real-time Connection Status",
+                    connectionStatusDesc: "Connected to transcription service for instant results",
+                    microphoneSuccess: "🎤 Microphone initialized successfully",
+                    microphoneError: "❌ Cannot access microphone!",
+                    recordingProcessing: "🔴 Recording in progress...",
+                    recordingSuccess: "✅ Recording completed - Ready to transcribe!",
+                    transcribeProcessing: "⏳ Transcribing audio...",
+                    transcribeError: "❌ Transcription failed: {error}",
+                    noAudioError: "❌ Please record audio first!",
+                    connectionSuccess: "✅ Connected to transcription service",
+                    connectionError: "⚠️ Connection failed: {error}. Retrying...",
+                    disconnectError: "⚠️ Disconnected. Attempting to reconnect...",
+                    transcriptionResult: "✅ Transcription Result: {result}"
+                },
+                ms: {
+                    title: "Pertuturan ke Teks - Transkripsi Audio",
+                    mainTitle: "<i class='fas fa-microphone'></i> Pertuturan ke Teks",
+                    mainSubtitle: "Rakam audio anda dan dapatkan transkripsi teks segera",
+                    homeLink: "Laman Utama",
+                    liveTranslationLink: "Terjemahan Langsung",
+                    roomModeLink: "Mod Bilik",
+                    speechToTextLink: "Pertuturan ke Teks",
+                    historyLink: "Sejarah",
+                    settingsLink: "Tetapan",
+                    recordingTitle: "Rakaman Audio",
+                    recordingDesc: "Klik \"Mulakan Rakaman\" untuk memulakan tangkapan audio",
+                    startBtnText: "<i class='fas fa-video'></i> Mulakan Rakaman",
+                    stopBtnText: "<i class='fas fa-stop'></i> Hentikan Rakaman",
+                    uploadBtnText: "<i class='fas fa-upload'></i> Transkrip",
+                    resultText: "Klik \"Mulakan Rakaman\" untuk memulakan",
+                    connectionStatusTitle: "Status Sambungan Masa Nyata",
+                    connectionStatusDesc: "Bersambung ke perkhidmatan transkripsi untuk hasil segera",
+                    microphoneSuccess: "<i class='fas fa-microphone'></i> Mikrofon diinisialisasi dengan jayanya",
+                    microphoneError: "❌ Tidak dapat mengakses mikrofon!",
+                    recordingProcessing: "🔴 Sedang merakam...",
+                    recordingSuccess: "✅ Rakaman selesai - Sedia untuk transkrip!",
+                    transcribeProcessing: "⏳ Sedang mentranskrip audio...",
+                    transcribeError: "❌ Transkripsi gagal: {error}",
+                    noAudioError: "❌ Sila rakam audio terlebih dahulu!",
+                    connectionSuccess: "✅ Berjaya bersambung ke perkhidmatan transkripsi",
+                    connectionError: "⚠️ Sambungan gagal: {error}. Sedang mencuba semula...",
+                    disconnectError: "⚠️ Terputus. Sedang mencuba menyambung semula...",
+                    transcriptionResult: "✅ Hasil Transkripsi: {result}"
+                }
+            }
+        };
 
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-        // Server URL detection
-        function detectServerUrl() {
-            const currentHost = window.location.hostname;
-            const currentProtocol = window.location.protocol;
-            return `${currentProtocol}//${currentHost}`; // Use Render domain
+        function applyLanguage(lang) {
+            localStorage.setItem('language', lang);
+            const translations = TRANSLATIONS.speechToText[lang];
+
+            document.title = translations.title;
+            document.getElementById('mainTitle').innerHTML = translations.mainTitle;
+            document.getElementById('mainSubtitle').textContent = translations.mainSubtitle;
+            document.getElementById('homeLink').textContent = translations.homeLink;
+            document.getElementById('liveTranslationLink').textContent = translations.liveTranslationLink;
+            document.getElementById('roomModeLink').textContent = translations.roomModeLink;
+            document.getElementById('speechToTextLink').textContent = translations.speechToTextLink;
+            document.getElementById('historyLink').textContent = translations.historyLink;
+            document.getElementById('settingsLink').textContent = translations.settingsLink;
+            document.getElementById('recordingTitle').textContent = translations.recordingTitle;
+            document.getElementById('recordingDesc').textContent = translations.recordingDesc;
+            document.getElementById('startBtnText').innerHTML = translations.startBtnText;
+            document.getElementById('stopBtnText').innerHTML = translations.stopBtnText;
+            document.getElementById('uploadBtnText').innerHTML = translations.uploadBtnText;
+            document.getElementById('resultText').innerHTML = `<span class="status-indicator status-offline"></span>${translations.resultText}`;
+            document.getElementById('connectionStatusTitle').innerHTML = `<span class="status-indicator status-online"></span>${translations.connectionStatusTitle}`;
+            document.getElementById('connectionStatusDesc').textContent = translations.connectionStatusDesc;
+
+            console.log(`Bahasa ditukar ke: ${lang}`);
         }
 
-        const FLASK_URL = detectServerUrl();
-        const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 修正為根 URL
-        const SPEECH_ENDPOINT = `${FLASK_URL}/speech_to_text`;
-        const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
-
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('speech-to-text.html DOM telah dimuat sepenuhnya');
+
+            function detectServerUrl() {
+                const currentHost = window.location.hostname;
+                const currentProtocol = window.location.protocol;
+                const port = window.location.port ? `:${window.location.port}` : '';
+                return `${currentProtocol}//${currentHost}${port}`;
+            }
+
+            const FLASK_URL = detectServerUrl();
+            const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app";
+            const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;
+            const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+
+            const socket = io(COLAB_URL, {
+                path: '/socket.io',
+                transports: ['websocket', 'polling'],
+                forceNew: true,
+                reconnection: true,
+                reconnectionAttempts: 15,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 45000
+            });
+
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
             const uploadBtn = document.getElementById('uploadBtn');
@@ -364,38 +253,43 @@ document.addEventListener('DOMContentLoaded', () => {
             let stream;
             let mediaRecorder;
             let recordedBlobs = [];
-            let socket = io(FLASK_URL, {
-                path: '/socket.io',
-                transports: ['websocket', 'polling'],
-                reconnection: true,
-                reconnectionAttempts: 15,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000,
-                timeout: 45000
-                // 移除 cors 選項，交由服務器處理
-            });
 
             function updateResult(message, type = 'default') {
-                const resultEl = document.getElementById('result');
+                const translations = TRANSLATIONS.speechToText[localStorage.getItem('language') || 'ms'];
+                let displayMessage = message;
+                if (message.includes('Microphone initialized successfully')) {
+                    displayMessage = translations.microphoneSuccess;
+                } else if (message.includes('Cannot access microphone')) {
+                    displayMessage = translations.microphoneError;
+                } else if (message.includes('Recording in progress')) {
+                    displayMessage = translations.recordingProcessing;
+                } else if (message.includes('Recording completed')) {
+                    displayMessage = translations.recordingSuccess;
+                } else if (message.includes('Transcribing audio')) {
+                    displayMessage = translations.transcribeProcessing;
+                } else if (message.includes('Transcription failed')) {
+                    displayMessage = translations.transcribeError.replace('{error}', message.match(/: (.+)/)[1]);
+                } else if (message.includes('Please record audio first')) {
+                    displayMessage = translations.noAudioError;
+                } else if (message.includes('Connected to transcription service')) {
+                    displayMessage = translations.connectionSuccess;
+                } else if (message.includes('Connection failed')) {
+                    displayMessage = translations.connectionError.replace('{error}', message.match(/: (.+)/)[1]);
+                } else if (message.includes('Disconnected')) {
+                    displayMessage = translations.disconnectError;
+                } else if (message.includes('Transcription Result')) {
+                    displayMessage = translations.transcriptionResult.replace('{result}', message.match(/: (.+)/)[1]);
+                }
                 const colorClass = type === 'success' ? 'result-success' : 
                                   type === 'error' ? 'result-error' : 
                                   type === 'processing' ? 'result-processing' : 
                                   'result-default';
-                
-                resultEl.className = `text-center text-lg font-medium p-6 rounded-xl border-2 ${colorClass}`;
-                
-                let statusIndicator = '';
-                if (type === 'success') {
-                    statusIndicator = '<span class="status-indicator status-online"></span>';
-                } else if (type === 'error') {
-                    statusIndicator = '<span class="status-indicator status-offline"></span>';
-                } else if (type === 'processing') {
-                    statusIndicator = '<span class="recording-indicator"></span>';
-                } else {
-                    statusIndicator = '<span class="status-indicator status-offline"></span>';
-                }
-                
-                resultEl.innerHTML = `<div class="flex items-center justify-center">${statusIndicator}${message}</div>`;
+                const statusIndicator = type === 'success' ? '<span class="status-indicator status-online"></span>' :
+                                       type === 'error' ? '<span class="status-indicator status-offline"></span>' :
+                                       type === 'processing' ? '<span class="recording-indicator"></span>' :
+                                       '<span class="status-indicator status-offline"></span>';
+                result.className = `text-center text-lg font-medium p-6 rounded-xl border-2 ${colorClass}`;
+                result.innerHTML = `<div class="flex items-center justify-center">${statusIndicator}${displayMessage}</div>`;
             }
 
             async function startMicrophone() {
@@ -403,11 +297,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     preview.srcObject = stream;
                     console.log('Microphone access granted');
-                    updateResult('🎤 Microphone initialized successfully', 'success');
+                    updateResult('Microphone initialized successfully', 'success');
                 } catch (error) {
                     console.error('Microphone access error:', error);
-                    updateResult("❌ Cannot access microphone!", 'error');
-                    alert('Please allow microphone access to continue.');
+                    updateResult('Cannot access microphone!', 'error');
+                    alert('Sila benarkan akses mikrofon untuk meneruskan.');
                 }
             }
 
@@ -424,23 +318,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             uploadBtn.disabled = false;
                             preview.srcObject = null;
                             audioWave.classList.add('hidden');
-                            updateResult('✅ Recording completed - Ready to transcribe!', 'success');
+                            updateResult('Recording completed', 'success');
                         };
                         mediaRecorder.start(1000);
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
                         audioWave.classList.remove('hidden');
-                        updateResult("🔴 Recording in progress...", 'processing');
+                        updateResult('Recording in progress', 'processing');
                     }
                 }).catch(err => {
-                    updateResult(`❌ Recording initialization failed: ${err.message}`, 'error');
+                    updateResult(`Recording initialization failed: ${err.message}`, 'error');
                 });
             };
 
             stopBtn.onclick = () => {
-                if (mediaRecorder) {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                     mediaRecorder.stop();
                     if (stream) stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                    mediaRecorder = null;
                     startBtn.disabled = false;
                 }
             };
@@ -449,74 +345,83 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (recordedBlobs.length) {
                     const blob = new Blob(recordedBlobs, { type: 'audio/webm;codecs=opus' });
                     const formData = new FormData();
-                    const audioId = crypto.randomUUID(); // Generate unique audio ID
+                    const audioId = crypto.randomUUID();
                     formData.append('audio', blob, `recording_${audioId}.webm`);
-                    updateResult("⏳ Transcribing audio...", 'processing');
+                    updateResult('Transcribing audio', 'processing');
                     try {
                         const response = await fetch(SPEECH_ENDPOINT, {
                             method: 'POST',
                             body: formData,
-                            mode: 'cors',
-                            credentials: 'include'
+                            headers: { 'ngrok-skip-browser-warning': 'true' }
                         });
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const resultData = await response.json();
-                        const transcription = resultData.text || resultData.error || 'Unknown result';
-                        updateResult(`✅ Transcription Result: ${transcription}`, 'success');
+                        const transcription = resultData.text || resultData.error || 'Tidak dikenali';
+                        updateResult(`Transcription Result: ${transcription}`, 'success');
                         socket.emit('translation', {
                             text: transcription,
-                            user: 'User',
+                            user: 'Pengguna',
                             error: resultData.error,
                             sid: socket.id
                         });
 
-                        // Save to history
                         const saveResponse = await fetch(SAVE_ENDPOINT, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'ngrok-skip-browser-warning': 'true'
+                            },
                             body: JSON.stringify({
                                 user: 'anonymous',
                                 text: transcription,
-                                gesture: 0, // Not applicable for speech-to-text
+                                gesture: 0,
                                 timestamp: new Date().toISOString(),
                                 audio_text: transcription
                             })
                         });
                         if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-                        const saveResult = await saveResponse.json();
                         console.log('History saved for audio ID:', audioId);
                     } catch (error) {
                         console.error('Transcription failed:', error);
-                        updateResult(`❌ Transcription failed: ${error.message}`, 'error');
+                        updateResult(`Transcription failed: ${error.message}`, 'error');
                     }
+                    recordedBlobs = [];
                 } else {
-                    updateResult("❌ Please record audio first!", 'error');
+                    updateResult('Please record audio first', 'error');
                 }
             };
 
             socket.on('connect', () => {
                 console.log('Connected to server');
-                updateResult('✅ Connected to transcription service', 'success');
+                updateResult('Connected to transcription service', 'success');
             });
 
             socket.on('translation', (data) => {
-                updateResult(`✅ ${data.user}: ${data.text || data.error || 'Unknown result'}`, 'success');
+                updateResult(`${data.user}: ${data.text || data.error || 'Tidak dikenali'}`, 'success');
             });
 
             socket.on('connect_error', (error) => {
                 console.error('Connection error:', error);
-                updateResult(`⚠️ Connection failed: ${error.message}. Retrying...`, 'error');
+                updateResult(`Connection failed: ${error.message}. Retrying...`, 'error');
             });
 
             socket.on('disconnect', () => {
                 console.log('Disconnected from server');
-                updateResult(`⚠️ Disconnected. Attempting to reconnect...`, 'error');
+                updateResult('Disconnected. Attempting to reconnect...', 'error');
+            });
+
+            socket.on('language_changed', (data) => {
+                console.log('Menerima acara language_changed:', data);
+                applyLanguage(data.language);
             });
 
             window.addEventListener('beforeunload', () => {
                 if (socket) socket.disconnect();
                 if (stream) stream.getTracks().forEach(track => track.stop());
             });
+
+            const currentLang = localStorage.getItem('language') || 'ms';
+            applyLanguage(currentLang);
         });
     </script>
 </body>
