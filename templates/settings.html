@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -264,29 +265,26 @@
   <script type="module">
     import { TRANSLATIONS, applyLanguage } from './static/translations.js';
 
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-    // Server URL detection
-    function detectServerUrl() {
-      const currentHost = window.location.hostname;
-      const currentProtocol = window.location.protocol;
-      return `${currentProtocol}//${currentHost}`;
-    }
-
-    const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app";
-    const ENDPOINTS = {
-      SETTINGS: `${COLAB_URL}/api/settings`,
-      FEEDBACK: `${COLAB_URL}/api/feedback`,
-      CLEAR_HISTORY: `${COLAB_URL}/api/clear_history`
-    };
-
-    // Language translations
-    
-
     document.addEventListener('DOMContentLoaded', () => {
+      // 初始化語言
+      let currentLang = localStorage.getItem('language') || 'en';
+      applyLanguage('settings', currentLang);
+
+      // Server URL detection
+      function detectServerUrl() {
+        const currentHost = window.location.hostname;
+        const currentProtocol = window.location.protocol;
+        return `${currentProtocol}//${currentHost}`;
+      }
+
+      const FLASK_URL = detectServerUrl();
+      const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app";
+      const ENDPOINTS = {
+        SETTINGS: `${FLASK_URL}/api/settings`,
+        FEEDBACK: `${FLASK_URL}/api/feedback`,
+        CLEAR_HISTORY: `${FLASK_URL}/api/clear_history`
+      };
+
       const languageStatus = document.getElementById('languageStatus');
       const feedbackStatus = document.getElementById('feedbackStatus');
       const historyStatus = document.getElementById('historyStatus');
@@ -295,9 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const feedbackInput = document.getElementById('feedbackInput');
       const submitFeedbackBtn = document.getElementById('submitFeedbackBtn');
       const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-
-      let currentLang = localStorage.getItem('language') || 'en';
-      applyLanguage(currentLang);
 
       function updateStatus(element, message, type = 'loading') {
         const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⏳';
@@ -312,22 +307,6 @@ document.addEventListener('DOMContentLoaded', () => {
           type === 'error' ? 'status-error' : 
           'status-loading'
         }`;
-      }
-
-      function applyLanguage(lang) {
-        currentLang = lang;
-        localStorage.setItem('language', lang);
-        document.querySelector('h1').textContent = `⚙️ ${TRANSLATIONS[lang].title}`;
-        document.querySelector('header p').textContent = TRANSLATIONS[lang].subtitle;
-        document.querySelectorAll('h2')[0].textContent = TRANSLATIONS[lang].languageTitle;
-        document.querySelectorAll('h2')[1].textContent = TRANSLATIONS[lang].feedbackTitle;
-        document.querySelectorAll('h2')[2].textContent = TRANSLATIONS[lang].historyTitle;
-        feedbackInput.placeholder = TRANSLATIONS[lang].feedbackPlaceholder;
-        submitFeedbackBtn.querySelector('span').textContent = TRANSLATIONS[lang].submitFeedback;
-        clearHistoryBtn.querySelector('span').textContent = TRANSLATIONS[lang].clearHistory;
-        updateStatus(languageStatus, TRANSLATIONS[lang].languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia'), 'success');
-        updateStatus(feedbackStatus, TRANSLATIONS[lang].feedbackStatus);
-        updateStatus(historyStatus, TRANSLATIONS[lang].historyStatus);
       }
 
       async function fetchData(endpoint, options = {}) {
@@ -351,35 +330,35 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       langEnBtn.addEventListener('click', async () => {
-        updateStatus(languageStatus, TRANSLATIONS[currentLang].languageStatusLoading, 'loading');
+        updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusLoading, 'loading');
         try {
           await fetchData(ENDPOINTS.SETTINGS, {
             method: 'POST',
             body: JSON.stringify({ language: 'en' })
           });
-          applyLanguage('en');
+          applyLanguage('settings', 'en');
         } catch (error) {
-          updateStatus(languageStatus, TRANSLATIONS[currentLang].languageStatusError.replace('{error}', error.message), 'error');
+          updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
       });
 
       langMsBtn.addEventListener('click', async () => {
-        updateStatus(languageStatus, TRANSLATIONS[currentLang].languageStatusLoading, 'loading');
+        updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusLoading, 'loading');
         try {
           await fetchData(ENDPOINTS.SETTINGS, {
             method: 'POST',
             body: JSON.stringify({ language: 'ms' })
           });
-          applyLanguage('ms');
+          applyLanguage('settings', 'ms');
         } catch (error) {
-          updateStatus(languageStatus, TRANSLATIONS[currentLang].languageStatusError.replace('{error}', error.message), 'error');
+          updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
       });
 
       submitFeedbackBtn.addEventListener('click', async () => {
         const feedback = feedbackInput.value.trim();
         if (!feedback) {
-          updateStatus(feedbackStatus, TRANSLATIONS[currentLang].feedbackError.replace('{error}', 'Feedback cannot be empty'), 'error');
+          updateStatus(feedbackStatus, TRANSLATIONS.settings[currentLang].feedbackError.replace('{error}', 'Feedback cannot be empty'), 'error');
           return;
         }
         updateStatus(feedbackStatus, 'Submitting feedback...', 'loading');
@@ -388,24 +367,25 @@ document.addEventListener('DOMContentLoaded', () => {
             method: 'POST',
             body: JSON.stringify({ feedback })
           });
-          updateStatus(feedbackStatus, TRANSLATIONS[currentLang].feedbackSuccess, 'success');
+          updateStatus(feedbackStatus, TRANSLATIONS.settings[currentLang].feedbackSuccess, 'success');
           feedbackInput.value = '';
         } catch (error) {
-          updateStatus(feedbackStatus, TRANSLATIONS[currentLang].feedbackError.replace('{error}', error.message), 'error');
+          updateStatus(feedbackStatus, TRANSLATIONS.settings[currentLang].feedbackError.replace('{error}', error.message), 'error');
         }
       });
 
       clearHistoryBtn.addEventListener('click', async () => {
-        if (!confirm(TRANSLATIONS[currentLang].historyTitle + ': Are you sure you want to clear all translation history?')) return;
+        if (!confirm(TRANSLATIONS.settings[currentLang].historyTitle + ': Are you sure you want to clear all translation history?')) return;
         updateStatus(historyStatus, 'Clearing history...', 'loading');
         try {
           await fetchData(ENDPOINTS.CLEAR_HISTORY, { method: 'DELETE' });
-          updateStatus(historyStatus, TRANSLATIONS[currentLang].historySuccess, 'success');
+          updateStatus(historyStatus, TRANSLATIONS.settings[currentLang].historySuccess, 'success');
         } catch (error) {
-          updateStatus(historyStatus, TRANSLATIONS[currentLang].historyError.replace('{error}', error.message), 'error');
+          updateStatus(historyStatus, TRANSLATIONS.settings[currentLang].historyError.replace('{error}', error.message), 'error');
         }
       });
     });
   </script>
 </body>
 </html>
+```
