@@ -293,6 +293,30 @@
     const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
     const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
 
+    const TRANSLATIONS = {
+  en: {
+    title: "Live Translation",
+    subtitle: "Capture and translate sign language in real-time",
+    startRecording: "Start Recording",
+    stopRecording: "Stop Recording",
+    transcribe: "Transcribe",
+    statusDefault: "Click 'Start Recording' to begin",
+    statusRecording: "Recording in progress...",
+    statusSuccess: "Translation: {result}",
+    statusError: "Error: {error}"
+  },
+  ms: {
+    title: "Terjemahan Langsung",
+    subtitle: "Tangkap dan terjemah bahasa isyarat dalam masa nyata",
+    startRecording: "Mula Rakaman",
+    stopRecording: "Henti Rakaman",
+    transcribe: "Terjemah",
+    statusDefault: "Klik 'Mula Rakaman' untuk memulakan",
+    statusRecording: "Sedang merakam...",
+    statusSuccess: "Terjemahan: {result}",
+    statusError: "Ralat: {error}"
+  }
+};
     let stream;
     let mediaRecorder;
     let recordedBlobs = [];
