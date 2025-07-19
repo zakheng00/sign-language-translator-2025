@@ -290,6 +290,7 @@ def save_settings():
         if language not in ['en', 'ms']:
             return jsonify({'error': 'Invalid language code'}), 400
         logger.info(f"Language setting saved: {language}")
+        socketio.emit('language_changed', {'language': language})  # 廣播語言變更
         return jsonify({'message': 'Language setting saved successfully', 'language': language})
     except Exception as e:
         logger.error(f"Error saving settings: {str(e)}")
