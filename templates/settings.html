@@ -262,6 +262,12 @@
   </div>
 
   <script type="module">
+    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 初始化語言
+    let currentLang = localStorage.getItem('language') || 'en';
+    applyLanguage('speechToText', currentLang);
     // Server URL detection
     function detectServerUrl() {
       const currentHost = window.location.hostname;
