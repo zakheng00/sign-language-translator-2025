@@ -164,6 +164,10 @@ def live_translation():
 def room_mode():
     return send_from_directory('templates', 'room-mode.html')
 
+@app.route('/speech-to-text-malay')
+def speech_to_text_page_malay():
+    return send_from_directory('templates', 'speech-to-text-malay.html')
+
 @app.route('/speech-to-text')
 def speech_to_text_page():
     return send_from_directory('templates', 'speech-to-text.html')
