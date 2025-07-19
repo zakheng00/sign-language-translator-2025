@@ -1,6 +1,9 @@
-```javascript
-// 共用的 TRANSLATIONS 對象，包含所有頁面的翻譯
-const TRANSLATIONS = {
+
+// Define currentLang globally
+window.currentLang = localStorage.getItem('language') || 'en';
+
+// Communal TRANSLATIONS object containing translations for all pages
+export const TRANSLATIONS = {
   index: {
     en: {
       title: "Sign Language Translator",
@@ -135,14 +138,22 @@ const TRANSLATIONS = {
       feedbackTitle: "Feedback",
       feedbackPlaceholder: "Type your feedback here...",
       feedbackStatus: "Submit your feedback to help us improve",
+      feedbackStatusLoading: "Submitting feedback...",
       feedbackSuccess: "Feedback submitted successfully!",
       feedbackError: "Failed to submit feedback: {error}",
       historyTitle: "Clear History",
       historyStatus: "Clear all translation history",
+      historyStatusLoading: "Clearing history...",
       historySuccess: "Translation history cleared successfully!",
       historyError: "Failed to clear history: {error}",
       submitFeedback: "Submit Feedback",
-      clearHistory: "Clear All History"
+      clearHistory: "Clear All History",
+      indexLink: "Home",
+      liveTranslationLink: "Live Translation",
+      roomModeLink: "Room Mode",
+      speechToTextLink: "Speech to Text",
+      historyLink: "History",
+      settingsLink: "Settings"
     },
     ms: {
       title: "Tetapan Sistem",
@@ -153,31 +164,39 @@ const TRANSLATIONS = {
       feedbackTitle: "Maklum Balas",
       feedbackPlaceholder: "Taip maklum balas anda di sini...",
       feedbackStatus: "Hantar maklum balas anda untuk membantu kami memperbaiki",
+      feedbackStatusLoading: "Menghantar maklum balas...",
       feedbackSuccess: "Maklum balas berjaya dihantar!",
       feedbackError: "Gagal menghantar maklum balas: {error}",
       historyTitle: "Kosongkan Sejarah",
       historyStatus: "Kosongkan semua sejarah terjemahan",
+      historyStatusLoading: "Mengosongkan sejarah...",
       historySuccess: "Sejarah terjemahan berjaya dikosongkan!",
       historyError: "Gagal mengosongkan sejarah: {error}",
       submitFeedback: "Hantar Maklum Balas",
-      clearHistory: "Kosongkan Semua Sejarah"
+      clearHistory: "Kosongkan Semua Sejarah",
+      indexLink: "Laman Utama",
+      liveTranslationLink: "Terjemahan Langsung",
+      roomModeLink: "Mod Bilik",
+      speechToTextLink: "Pertuturan ke Teks",
+      historyLink: "Sejarah",
+      settingsLink: "Tetapan"
     }
   }
 };
 
-// 通用 applyLanguage 函數，根據頁面名稱和語言更新 UI
-function applyLanguage(page, lang) {
-  currentLang = lang;
+// Universal applyLanguage function to update UI based on page and language
+export function applyLanguage(page, lang) {
+  window.currentLang = lang;
   localStorage.setItem('language', lang);
   const translations = TRANSLATIONS[page][lang];
 
-  // 更新通用元素（假設所有頁面有 h1 和 header p）
+  // Update common elements (assuming all pages have h1 and header p)
   const titleElement = document.querySelector('h1');
   const subtitleElement = document.querySelector('header p');
-  if (titleElement) titleElement.textContent = translations.title;
+  if (titleElement) titleElement.textContent = page === 'settings' ? `⚙️ ${translations.title}` : translations.title;
   if (subtitleElement) subtitleElement.textContent = translations.subtitle;
 
-  // 頁面特定更新
+  // Page-specific updates
   switch (page) {
     case 'index':
       const navLinks = document.querySelectorAll('.nav-link');
@@ -252,10 +271,19 @@ function applyLanguage(page, lang) {
       if (feedbackInput) feedbackInput.placeholder = translations.feedbackPlaceholder;
       if (submitFeedbackBtn) submitFeedbackBtn.querySelector('span').textContent = translations.submitFeedback;
       if (clearHistoryBtn) clearHistoryBtn.querySelector('span').textContent = translations.clearHistory;
-      if (languageStatus) languageStatus.textContent = translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia');
-      if (feedbackStatus) feedbackStatus.textContent = translations.feedbackStatus;
-      if (historyStatus) historyStatus.textContent = translations.historyStatus;
+      if (languageStatus) languageStatus.innerHTML = `
+        <div class="flex items-center">
+          <span class="mr-2">✅</span>
+          <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+        </div>`;
+      if (feedbackStatus) feedbackStatus.innerHTML = `
+        <div class="flex items-center">
+          <span>${translations.feedbackStatus}</span>
+        </div>`;
+      if (historyStatus) historyStatus.innerHTML = `
+        <div class="flex items-center">
+          <span>${translations.historyStatus}</span>
+        </div>`;
       break;
   }
 }
-```
