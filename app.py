@@ -47,7 +47,7 @@ logging.basicConfig(
 logger.setLevel(logging.INFO)
 
 # Colab API 端點
-COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://3820beaf0806.ngrok-free.app")
+COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', "https://28c0a5dfc447.ngrok-free.app")
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
