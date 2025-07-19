@@ -1,4 +1,3 @@
-
 // Define currentLang globally
 window.currentLang = localStorage.getItem('language') || 'en';
 
