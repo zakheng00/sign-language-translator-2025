@@ -336,6 +336,34 @@
     </div>
 
     <script type="module">
+        const TRANSLATIONS = {
+  en: {
+    title: "Speech to Text",
+    subtitle: "Record your audio and get instant text transcription",
+    startRecording: "Start Recording",
+    stopRecording: "Stop Recording",
+    transcribe: "Transcribe",
+    statusDefault: "Click 'Start Recording' to begin",
+    statusRecording: "Recording in progress...",
+    statusSuccess: "Transcription Result: {result}",
+    statusError: "Error: {error}",
+    statusConnected: "Connected to transcription service",
+    statusDisconnected: "Disconnected. Attempting to reconnect..."
+  },
+  ms: {
+    title: "Pertuturan ke Teks",
+    subtitle: "Rakam audio anda dan dapatkan transkripsi teks segera",
+    startRecording: "Mula Rakaman",
+    stopRecording: "Henti Rakaman",
+    transcribe: "Terjemah",
+    statusDefault: "Klik 'Mula Rakaman' untuk memulakan",
+    statusRecording: "Sedang merakam...",
+    statusSuccess: "Keputusan Transkripsi: {result}",
+    statusError: "Ralat: {error}",
+    statusConnected: "Bersambung ke perkhidmatan transkripsi",
+    statusDisconnected: "Terputus. Sedang cuba menyambung semula..."
+  }
+};
         // Server URL detection
         function detectServerUrl() {
             const currentHost = window.location.hostname;
