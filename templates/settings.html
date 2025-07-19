@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign Language Translation System - Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
@@ -205,6 +206,13 @@
   
   <div class="relative z-10 max-w-4xl mx-auto p-8 space-y-8">
     <header class="text-center slide-in stagger-1">
+      <nav class="flex justify-center gap-4 mb-4">
+        <a href="/" class="text-blue-600 hover:underline">Home</a>
+        <a href="/live-translation" class="text-blue-600 hover:underline">Live Translation</a>
+        <a href="/room-mode" class="text-blue-600 hover:underline">Room Mode</a>
+        <a href="/speech-to-text" class="text-blue-600 hover:underline">Speech to Text</a>
+        <a href="/history" class="text-blue-600 hover:underline">History</a>
+      </nav>
       <div class="glass-card rounded-3xl p-8 mb-8">
         <h1 class="text-4xl font-bold gradient-text mb-2">
           ⚙️ System Settings
@@ -274,7 +282,8 @@
       function detectServerUrl() {
         const currentHost = window.location.hostname;
         const currentProtocol = window.location.protocol;
-        return `${currentProtocol}//${currentHost}`;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${currentProtocol}//${currentHost}${port}`;
       }
 
       const FLASK_URL = detectServerUrl();
@@ -285,6 +294,12 @@
         CLEAR_HISTORY: `${FLASK_URL}/api/clear_history`
       };
 
+      // 初始化 Socket.IO
+      const socket = io(FLASK_URL, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling']
+      });
+
       const languageStatus = document.getElementById('languageStatus');
       const feedbackStatus = document.getElementById('feedbackStatus');
       const historyStatus = document.getElementById('historyStatus');
@@ -293,6 +308,26 @@
       const feedbackInput = document.getElementById('feedbackInput');
       const submitFeedbackBtn = document.getElementById('submitFeedbackBtn');
       const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+      // 更新導航欄文本
+      const navLinks = document.querySelectorAll('nav a');
+      if (navLinks.length >= 5) {
+        navLinks[0].textContent = TRANSLATIONS.settings[currentLang].indexLink;
+        navLinks[1].textContent = TRANSLATIONS.settings[currentLang].liveTranslationLink;
+        navLinks[2].textContent = TRANSLATIONS.settings[currentLang].roomModeLink;
+        navLinks[3].textContent = TRANSLATIONS.settings[currentLang].speechToTextLink;
+        navLinks[4].textContent = TRANSLATIONS.settings[currentLang].historyLink;
+      }
+
+      // Socket.IO 監聽語言變更
+      socket.on('language_changed', (data) => {
+        applyLanguage('settings', data.language);
+        navLinks[0].textContent = TRANSLATIONS.settings[data.language].indexLink;
+        navLinks[1].textContent = TRANSLATIONS.settings[data.language].liveTranslationLink;
+        navLinks[2].textContent = TRANSLATIONS.settings[data.language].roomModeLink;
+        navLinks[3].textContent = TRANSLATIONS.settings[data.language].speechToTextLink;
+        navLinks[4].textContent = TRANSLATIONS.settings[data.language].historyLink;
+      });
 
       function updateStatus(element, message, type = 'loading') {
         const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⏳';
@@ -337,6 +372,11 @@
             body: JSON.stringify({ language: 'en' })
           });
           applyLanguage('settings', 'en');
+          navLinks[0].textContent = TRANSLATIONS.settings['en'].indexLink;
+          navLinks[1].textContent = TRANSLATIONS.settings['en'].liveTranslationLink;
+          navLinks[2].textContent = TRANSLATIONS.settings['en'].roomModeLink;
+          navLinks[3].textContent = TRANSLATIONS.settings['en'].speechToTextLink;
+          navLinks[4].textContent = TRANSLATIONS.settings['en'].historyLink;
         } catch (error) {
           updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
@@ -350,6 +390,11 @@
             body: JSON.stringify({ language: 'ms' })
           });
           applyLanguage('settings', 'ms');
+          navLinks[0].textContent = TRANSLATIONS.settings['ms'].indexLink;
+          navLinks[1].textContent = TRANSLATIONS.settings['ms'].liveTranslationLink;
+          navLinks[2].textContent = TRANSLATIONS.settings['ms'].roomModeLink;
+          navLinks[3].textContent = TRANSLATIONS.settings['ms'].speechToTextLink;
+          navLinks[4].textContent = TRANSLATIONS.settings['ms'].historyLink;
         } catch (error) {
           updateStatus(languageStatus, TRANSLATIONS.settings[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
@@ -361,7 +406,7 @@
           updateStatus(feedbackStatus, TRANSLATIONS.settings[currentLang].feedbackError.replace('{error}', 'Feedback cannot be empty'), 'error');
           return;
         }
-        updateStatus(feedbackStatus, 'Submitting feedback...', 'loading');
+        updateStatus(feedbackStatus, TRANSLATIONS.settings[currentLang].feedbackStatusLoading || 'Submitting feedback...', 'loading');
         try {
           await fetchData(ENDPOINTS.FEEDBACK, {
             method: 'POST',
@@ -375,8 +420,8 @@
       });
 
       clearHistoryBtn.addEventListener('click', async () => {
-        if (!confirm(TRANSLATIONS.settings[currentLang].historyTitle + ': Are you sure you want to clear all translation history?')) return;
-        updateStatus(historyStatus, 'Clearing history...', 'loading');
+        if (!confirm(`${TRANSLATIONS.settings[currentLang].historyTitle}: Are you sure you want to clear all translation history?`)) return;
+        updateStatus(historyStatus, TRANSLATIONS.settings[currentLang].historyStatusLoading || 'Clearing history...', 'loading');
         try {
           await fetchData(ENDPOINTS.CLEAR_HISTORY, { method: 'DELETE' });
           updateStatus(historyStatus, TRANSLATIONS.settings[currentLang].historySuccess, 'success');
@@ -388,4 +433,3 @@
   </script>
 </body>
 </html>
-```
