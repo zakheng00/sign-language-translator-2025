@@ -285,125 +285,126 @@
     function detectServerUrl() {
       const currentHost = window.location.hostname;
       const currentProtocol = window.location.protocol;
-      return `${currentProtocol}//${currentHost}`; // Use Render domain
+      return `${currentProtocol}//${currentHost}`;
     }
 
     const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 修正為根 URL
+    const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app";
     const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`; // 修正保存端點
+    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
-   import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
 
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-    let stream;
-    let mediaRecorder;
-    let recordedBlobs = [];
+    document.addEventListener('DOMContentLoaded', () => {
+      let currentLang = localStorage.getItem('language') || 'en';
+      applyLanguage('speechToText', currentLang);
 
-    function updateResult(message, type = 'default') {
-      const resultEl = document.getElementById('result');
-      resultEl.innerHTML = `<div class="text-${type === 'success' ? 'green' : type === 'error' ? 'red' : type === 'processing' ? 'yellow' : 'gray'}-600">${message}</div>`;
-      
-      resultEl.className = `result-display text-center text-lg font-medium slide-in stagger-4 ${
-        type === 'success' ? 'status-success' : 
-        type === 'error' ? 'status-error' : 
-        type === 'processing' ? 'status-processing' : ''
-      }`;
-    }
+      let stream;
+      let mediaRecorder;
+      let recordedBlobs = [];
 
-    async function initCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('preview').srcObject = stream;
-        console.log('Camera started');
-        updateResult('📹 Camera initialized successfully - Ready to record!', 'success');
-      } catch (err) {
-        updateResult(`❌ Cannot access camera: ${err.message}`, 'error');
-        alert('Please allow camera access to continue!');
+      function updateResult(message, type = 'default') {
+        const resultEl = document.getElementById('result');
+        resultEl.innerHTML = `<div class="text-${type === 'success' ? 'green' : type === 'error' ? 'red' : type === 'processing' ? 'yellow' : 'gray'}-600">${message}</div>`;
+        
+        resultEl.className = `result-display text-center text-lg font-medium slide-in stagger-4 ${
+          type === 'success' ? 'status-success' : 
+          type === 'error' ? 'status-error' : 
+          type === 'processing' ? 'status-processing' : ''
+        }`;
       }
-    }
 
-    document.getElementById('startBtn').onclick = () => {
-      if (stream && !mediaRecorder) {
-        recordedBlobs = [];
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedBlobs.push(event.data);
-        };
-        mediaRecorder.start(1000);
-        document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = false;
-        document.getElementById('uploadBtn').disabled = true;
-        updateResult('<div class="recording-pulse">🔴 Recording in progress...</div>', 'processing');
-        console.log('Recording started');
-      } else if (!stream) {
-        initCamera().then(() => document.getElementById('startBtn').onclick());
-      }
-    };
-
-    document.getElementById('stopBtn').onclick = () => {
-      if (mediaRecorder) {
-        mediaRecorder.stop();
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
-        document.getElementById('uploadBtn').disabled = false;
-        updateResult('✅ Recording completed successfully - Ready to upload!', 'success');
-        console.log('Recording stopped, blobs length:', recordedBlobs.length);
-      }
-    };
-
-    document.getElementById('uploadBtn').onclick = async () => {
-      if (recordedBlobs.length) {
-        const blob = new Blob(recordedBlobs, { type: 'video/webm' });
-        const formData = new FormData();
-        const videoId = crypto.randomUUID();
-        formData.append('video', blob, `recording_${videoId}.mp4`);
-        updateResult('⏳ Uploading and translating...', 'processing');
+      async function initCamera() {
         try {
-          const response = await fetch(PREDICT_ENDPOINT, {
-            method: 'POST',
-            body: formData,
-            mode: 'cors'
-          });
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
-          const result = await response.json();
-          const translation = result.translation || result.error || 'Unknown result';
-          updateResult(`🎉 Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
-          
-          // 保存歷史記錄到 Colab
-          const saveResponse = await fetch(SAVE_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user: 'anonymous',
-              text: translation,
-              gesture: result.gesture || 0,
-              timestamp: new Date().toISOString(),
-              video_id: videoId
-            })
-          });
-          if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-          const saveResult = await saveResponse.json();
-          console.log('History saved:', saveResult);
-        } catch (error) {
-          console.error('Upload failed:', error);
-          updateResult(`❌ Upload failed: ${error.message}`, 'error');
-        } finally {
-          recordedBlobs = [];
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          document.getElementById('preview').srcObject = stream;
+          console.log('Camera started');
+          updateResult('📹 Camera initialized successfully - Ready to record!', 'success');
+        } catch (err) {
+          updateResult(`❌ Cannot access camera: ${err.message}`, 'error');
+          alert('Please allow camera access to continue!');
         }
-      } else {
-        updateResult('❌ Please record a video first!', 'error');
       }
-    };
 
-    window.addEventListener('beforeunload', () => {
-      if (stream) stream.getTracks().forEach(track => track.stop());
+      document.getElementById('startBtn').onclick = () => {
+        if (stream && !mediaRecorder) {
+          recordedBlobs = [];
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) recordedBlobs.push(event.data);
+          };
+          mediaRecorder.start(1000);
+          document.getElementById('startBtn').disabled = true;
+          document.getElementById('stopBtn').disabled = false;
+          document.getElementById('uploadBtn').disabled = true;
+          updateResult('<div class="recording-pulse">🔴 Recording in progress...</div>', 'processing');
+          console.log('Recording started');
+        } else if (!stream) {
+          initCamera().then(() => document.getElementById('startBtn').onclick());
+        }
+      };
+
+      document.getElementById('stopBtn').onclick = () => {
+        if (mediaRecorder) {
+          mediaRecorder.stop();
+          document.getElementById('startBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+          document.getElementById('uploadBtn').disabled = false;
+          updateResult('✅ Recording completed successfully - Ready to upload!', 'success');
+          console.log('Recording stopped, blobs length:', recordedBlobs.length);
+        }
+      };
+
+      document.getElementById('uploadBtn').onclick = async () => {
+        if (recordedBlobs.length) {
+          const blob = new Blob(recordedBlobs, { type: 'video/webm' });
+          const formData = new FormData();
+          const videoId = crypto.randomUUID();
+          formData.append('video', blob, `recording_${videoId}.mp4`);
+          updateResult('⏳ Uploading and translating...', 'processing');
+          try {
+            const response = await fetch(PREDICT_ENDPOINT, {
+              method: 'POST',
+              body: formData,
+              mode: 'cors'
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
+            const result = await response.json();
+            const translation = result.translation || result.error || 'Unknown result';
+            updateResult(`🎉 Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
+            
+            // 保存歷史記錄到 Colab
+            const saveResponse = await fetch(SAVE_ENDPOINT, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user: 'anonymous',
+                text: translation,
+                gesture: result.gesture || 0,
+                timestamp: new Date().toISOString(),
+                video_id: videoId
+              })
+            });
+            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+            const saveResult = await saveResponse.json();
+            console.log('History saved:', saveResult);
+          } catch (error) {
+            console.error('Upload failed:', error);
+            updateResult(`❌ Upload failed: ${error.message}`, 'error');
+          } finally {
+            recordedBlobs = [];
+          }
+        } else {
+          updateResult('❌ Please record a video first!', 'error');
+        }
+      };
+
+      window.addEventListener('beforeunload', () => {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+      });
+
+      initCamera();
     });
-
-    initCamera();
   </script>
 </body>
 </html>
