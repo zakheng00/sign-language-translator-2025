@@ -1,3 +1,4 @@
+
 // Define currentLang globally
 window.currentLang = localStorage.getItem('language') || 'en';
 
@@ -80,6 +81,122 @@ export const TRANSLATIONS = {
       historyLink: "Sejarah",
       settingsLink: "Tetapan"
     }
+  },
+  liveTranslation: {
+    en: {
+      title: "Live Translation",
+      subtitle: "Translate sign language and speech in real-time",
+      startButton: "Start Translation",
+      stopButton: "Stop Translation",
+      status: "Ready to translate",
+      statusStreaming: "Streaming translation...",
+      indexLink: "Home",
+      liveTranslationLink: "Live Translation",
+      roomModeLink: "Room Mode",
+      speechToTextLink: "Speech to Text",
+      historyLink: "History",
+      settingsLink: "Settings"
+    },
+    ms: {
+      title: "Terjemahan Langsung",
+      subtitle: "Terjemah bahasa isyarat dan pertuturan secara masa nyata",
+      startButton: "Mulakan Terjemahan",
+      stopButton: "Hentikan Terjemahan",
+      status: "Sedia untuk menterjemah",
+      statusStreaming: "Menstrim terjemahan...",
+      indexLink: "Laman Utama",
+      liveTranslationLink: "Terjemahan Langsung",
+      roomModeLink: "Mod Bilik",
+      speechToTextLink: "Pertuturan ke Teks",
+      historyLink: "Sejarah",
+      settingsLink: "Tetapan"
+    }
+  },
+  roomMode: {
+    en: {
+      title: "Room Mode",
+      subtitle: "Collaborative translation in a shared room",
+      joinRoom: "Join Room",
+      leaveRoom: "Leave Room",
+      roomStatus: "Enter a room ID to join",
+      roomStatusConnected: "Connected to room: {roomId}",
+      indexLink: "Home",
+      liveTranslationLink: "Live Translation",
+      roomModeLink: "Room Mode",
+      speechToTextLink: "Speech to Text",
+      historyLink: "History",
+      settingsLink: "Settings"
+    },
+    ms: {
+      title: "Mod Bilik",
+      subtitle: "Terjemahan kolaboratif dalam bilik berkongsi",
+      joinRoom: "Sertai Bilik",
+      leaveRoom: "Tinggalkan Bilik",
+      roomStatus: "Masukkan ID bilik untuk menyertai",
+      roomStatusConnected: "Bersambung ke bilik: {roomId}",
+      indexLink: "Laman Utama",
+      liveTranslationLink: "Terjemahan Langsung",
+      roomModeLink: "Mod Bilik",
+      speechToTextLink: "Pertuturan ke Teks",
+      historyLink: "Sejarah",
+      settingsLink: "Tetapan"
+    }
+  },
+  speechToText: {
+    en: {
+      title: "Speech to Text",
+      subtitle: "Convert your speech to text instantly",
+      startRecording: "Start Recording",
+      stopRecording: "Stop Recording",
+      status: "Ready to record",
+      statusRecording: "Recording...",
+      indexLink: "Home",
+      liveTranslationLink: "Live Translation",
+      roomModeLink: "Room Mode",
+      speechToTextLink: "Speech to Text",
+      historyLink: "History",
+      settingsLink: "Settings"
+    },
+    ms: {
+      title: "Pertuturan ke Teks",
+      subtitle: "Tukar pertuturan anda kepada teks dengan segera",
+      startRecording: "Mulakan Rakaman",
+      stopRecording: "Hentikan Rakaman",
+      status: "Sedia untuk merakam",
+      statusRecording: "Sedang merakam...",
+      indexLink: "Laman Utama",
+      liveTranslationLink: "Terjemahan Langsung",
+      roomModeLink: "Mod Bilik",
+      speechToTextLink: "Pertuturan ke Teks",
+      historyLink: "Sejarah",
+      settingsLink: "Tetapan"
+    }
+  },
+  history: {
+    en: {
+      title: "Translation History",
+      subtitle: "View your past translations",
+      noHistory: "No translation history available",
+      clearHistory: "Clear All History",
+      indexLink: "Home",
+      liveTranslationLink: "Live Translation",
+      roomModeLink: "Room Mode",
+      speechToTextLink: "Speech to Text",
+      historyLink: "History",
+      settingsLink: "Settings"
+    },
+    ms: {
+      title: "Sejarah Terjemahan",
+      subtitle: "Lihat terjemahan anda yang lalu",
+      noHistory: "Tiada sejarah terjemahan tersedia",
+      clearHistory: "Kosongkan Semua Sejarah",
+      indexLink: "Laman Utama",
+      liveTranslationLink: "Terjemahan Langsung",
+      roomModeLink: "Mod Bilik",
+      speechToTextLink: "Pertuturan ke Teks",
+      historyLink: "Sejarah",
+      settingsLink: "Tetapan"
+    }
   }
 };
 
@@ -105,7 +222,7 @@ export function applyLanguage(page, lang) {
     navLinks[4].textContent = translations.historyLink;
   }
 
-  // Settings page specific updates
+  // Page-specific updates
   if (page === 'settings') {
     const languageTitle = document.querySelectorAll('h2')[0];
     const feedbackTitle = document.querySelectorAll('h2')[1];
@@ -135,5 +252,33 @@ export function applyLanguage(page, lang) {
       <div class="flex items-center">
         <span>${translations.historyStatus}</span>
       </div>`;
+  } else if (page === 'liveTranslation') {
+    const startButton = document.getElementById('startTranslationBtn');
+    const stopButton = document.getElementById('stopTranslationBtn');
+    const status = document.getElementById('translationStatus');
+    if (startButton) startButton.querySelector('span').textContent = translations.startButton;
+    if (stopButton) stopButton.querySelector('span').textContent = translations.stopButton;
+    if (status) status.innerHTML = `<div class="flex items-center"><span>${translations.status}</span></div>`;
+  } else if (page === 'roomMode') {
+    const joinRoomBtn = document.getElementById('joinRoomBtn');
+    const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+    const roomStatus = document.getElementById('roomStatus');
+    if (joinRoomBtn) joinRoomBtn.querySelector('span').textContent = translations.joinRoom;
+    if (leaveRoomBtn) leaveRoomBtn.querySelector('span').textContent = translations.leaveRoom;
+    if (roomStatus) roomStatus.innerHTML = `<div class="flex items-center"><span>${translations.roomStatus}</span></div>`;
+  } else if (page === 'speechToText') {
+    const startRecordingBtn = document.getElementById('startRecordingBtn');
+    const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+    const status = document.getElementById('recordingStatus');
+    if (startRecordingBtn) startRecordingBtn.querySelector('span').textContent = translations.startRecording;
+    if (stopRecordingBtn) stopRecordingBtn.querySelector('span').textContent = translations.stopRecording;
+    if (status) status.innerHTML = `<div class="flex items-center"><span>${translations.status}</span></div>`;
+  } else if (page === 'history') {
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    const historyList = document.getElementById('historyList');
+    if (clearHistoryBtn) clearHistoryBtn.querySelector('span').textContent = translations.clearHistory;
+    if (historyList && historyList.children.length === 0) {
+      historyList.innerHTML = `<div class="flex items-center"><span>${translations.noHistory}</span></div>`;
+    }
   }
 }
