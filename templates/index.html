@@ -1,11 +1,12 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-Time Sign Language Translation System</title>
+  <title>Sign Language Translation System</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
@@ -172,14 +173,6 @@
     .stagger-6 { animation-delay: 0.6s; }
   </style>
 </head>
-<script type="module" src="/static/translations.js">
-   import { TRANSLATIONS, applyLanguage } from './static/translations.js';
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-  </script>
 <body class="relative">
   <div class="floating-shapes">
     <div class="shape"></div>
@@ -190,10 +183,16 @@ document.addEventListener('DOMContentLoaded', () => {
   
   <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-12">
     <header class="text-center slide-in stagger-1">
+      <nav class="flex justify-center gap-4 mb-4">
+        <a href="/" class="nav-link text-blue-600 hover:underline">Home</a>
+        <a href="/live-translation" class="nav-link text-blue-600 hover:underline">Live Translation</a>
+        <a href="/room-mode" class="nav-link text-blue-600 hover:underline">Room Mode</a>
+        <a href="/speech-to-text" class="nav-link text-blue-600 hover:underline">Speech to Text</a>
+        <a href="/history" class="nav-link text-blue-600 hover:underline">History</a>
+        <a href="/settings" class="nav-link text-blue-600 hover:underline">Settings</a>
+      </nav>
       <div class="glass-card rounded-3xl p-8 mb-8 pulse">
-        <h1 class="text-6xl font-bold text-white mb-4">
-          Sign Language Translator
-        </h1>
+        <h1 class="text-6xl font-bold text-white mb-4">Sign Language Translator</h1>
         <p class="text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
           Breaking barriers through intelligent real-time translation
         </p>
@@ -208,8 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
               🎥
             </div>
           </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3">Live Sign Translation</h2>
-          <p class="text-gray-600 leading-relaxed">
+          <h2 class="text-2xl font-bold gradient-text mb-3 live-translation-title">Live Sign Translation</h2>
+          <p class="text-gray-600 leading-relaxed live-translation-desc">
             Experience real-time sign language translation with advanced AI recognition using your webcam
           </p>
         </div>
@@ -222,8 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
               🎤
             </div>
           </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3">Speech to Text</h2>
-          <p class="text-gray-600 leading-relaxed">
+          <h2 class="text-2xl font-bold gradient-text mb-3 speech-to-text-title">Speech to Text</h2>
+          <p class="text-gray-600 leading-relaxed speech-to-text-desc">
             Convert spoken words into accurate text with natural language processing
           </p>
         </div>
@@ -236,8 +235,9 @@ document.addEventListener('DOMContentLoaded', () => {
               🚪
             </div>
           </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3">Room Mode</h2>
-          <p class="text-gray-600 leading-relaxed">
+          <h2 class="text-2xl font-bold gradient-text mb-3 room-mode-title">Room Mode</h2>
+          <p class="text-gray进行的</p>
+          <p class="text-gray-600 leading-relaxed room-mode-desc">
             Create collaborative spaces for seamless real-time translation with multiple users
           </p>
         </div>
@@ -250,8 +250,8 @@ document.addEventListener('DOMContentLoaded', () => {
               📜
             </div>
           </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3">Translation History</h2>
-          <p class="text-gray-600 leading-relaxed">
+          <h2 class="text-2xl font-bold gradient-text mb-3 history-title">Translation History</h2>
+          <p class="text-gray-600 leading-relaxed history-desc">
             Access and review your complete translation records and conversation history
           </p>
         </div>
@@ -264,14 +264,65 @@ document.addEventListener('DOMContentLoaded', () => {
               ⚙️
             </div>
           </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3">Settings</h2>
-          <p class="text-gray-600 leading-relaxed">
+          <h2 class="text-2xl font-bold gradient-text mb-3 settings-title">Settings</h2>
+          <p class="text-gray-600 leading-relaxed settings-desc">
             Customize language preferences and fine-tune AI model parameters
           </p>
         </div>
       </a>
     </div>
   </div>
-  
+
+  <script type="module">
+    import { TRANSLATIONS, applyLanguage } from '/static/translations.js';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize language
+      let currentLang = localStorage.getItem('language') || 'en';
+      updateUI(currentLang);
+
+      // Server URL detection
+      function detectServerUrl() {
+        const currentHost = window.location.hostname;
+        const currentProtocol = window.location.protocol;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${currentProtocol}//${currentHost}${port}`;
+      }
+
+      const FLASK_URL = detectServerUrl();
+
+      // Initialize Socket.IO
+      const socket = io(FLASK_URL, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling']
+      });
+
+      // Update UI function
+      function updateUI(lang) {
+        applyLanguage('index', lang);
+        const translations = TRANSLATIONS.index[lang];
+        // Update feature card titles and descriptions
+        document.querySelector('.live-translation-title').textContent = translations.liveTranslationTitle;
+        document.querySelector('.live-translation-desc').textContent = translations.liveTranslationDesc;
+        document.querySelector('.speech-to-text-title').textContent = translations.speechToTextTitle;
+        document.querySelector('.speech-to-text-desc').textContent = translations.speechToTextDesc;
+        document.querySelector('.room-mode-title').textContent = translations.roomModeTitle;
+        document.querySelector('.room-mode-desc').textContent = translations.roomModeDesc;
+        document.querySelector('.history-title').textContent = translations.historyTitle;
+        document.querySelector('.history-desc').textContent = translations.historyDesc;
+        document.querySelector('.settings-title').textContent = translations.settingsTitle;
+        document.querySelector('.settings-desc').textContent = translations.settingsDesc;
+      }
+
+      // Socket.IO language change listener
+      socket.on('language_changed', (data) => {
+        updateUI(data.language);
+      });
+
+      // Initial UI update
+      updateUI(currentLang);
+    });
+  </script>
 </body>
 </html>
+```
