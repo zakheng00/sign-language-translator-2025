@@ -1,13 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ms">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign Language Translation System - Room Mode</title>
+  <title>Mod Bilik - Penterjemah Bahasa Isyarat</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
     .floating-shapes .shape {
       background: linear-gradient(45deg, #4b5bd7, #a16fe2);
       opacity: 0.3;
@@ -21,57 +23,43 @@
     }
     .gradient-text {
       background: linear-gradient(90deg, #4b5bd7, #a16fe2);
-      -webkkit-background-clip: text;
+      -webkit-background-clip: text;
+      background-clip: text;
       color: transparent;
+      fallback-color: #333;
     }
-    .status-online {
-      background-color: #4ade80;
-    }
-    .status-offline {
-      background-color: #f87171;
-    }
-    .btn-primary {
-      background: linear-gradient(90deg, #4b5bd7, #a16fe2);
-      color: white;
-    }
-    .btn-purple {
-      background: #6b46c1;
-      color: white;
-    }
-    .btn-success {
-      background: #48bb78;
-      color: white;
-    }
-    .btn-warning {
-      background: #f6e05e;
-      color: #744210;
-    }
-    .btn-gray {
-      background: #a0aec0;
-      color: white;
-    }
+    .status-online { background-color: #4ade80; }
+    .status-offline { background-color: #f87171; }
+    .btn-primary { background: linear-gradient(90deg, #4b5bd7, #a16fe2); color: white; }
+    .btn-purple { background: #6b46c1; color: white; }
+    .btn-success { background: #48bb78; color: white; }
+    .btn-warning { background: #f6e05e; color: #744210; }
+    .btn-gray { background: #a0aec0; color: white; }
     @keyframes float {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-20px); }
     }
-    .chat-container {
-      background: rgba(255, 255, 255, 0.05);
-    }
-    .chat-message span {
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .error-message {
-      background-color: #fee2e2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
-    }
-    .room-card {
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    .room-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
-    }
+    .chat-container { background: rgba(255, 255, 255, 0.05); }
+    .chat-message span { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+    .error-message { background-color: #fee2e2; border: 1px solid #fecaca; color: #dc2626; }
+    .room-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+    .room-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2); }
+    .nav-links { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 20px; padding: 12px 24px; margin-bottom: 20px; }
+    .nav-links a { color: rgba(255, 255, 255, 0.9); text-decoration: none; padding: 8px 16px; border-radius: 12px; transition: all 0.3s ease; }
+    .nav-links a:hover { background: rgba(255, 255, 255, 0.2); color: white; }
+    .icon { font-size: 2.5rem; line-height: 1; }
+    .icon-wrapper { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .icon-wrapper::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: linear-gradient(135deg, #4b5bd7, #a16fe2); border-radius: 50%; opacity: 0; z-index: -1; transition: all 0.3s ease; }
+    .glass-card:hover .icon-wrapper::after { opacity: 0.2; transform: translate(-50%, -50%) scale(1.2); }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    .slide-in { animation: slideIn 0.8s ease-out forwards; opacity: 0; transform: translateY(30px); }
+    @keyframes slideIn { to { opacity: 1; transform: translateY(0); } }
+    .stagger-1 { animation-delay: 0.1s; }
+    .stagger-2 { animation-delay: 0.2s; }
+    .stagger-3 { animation-delay: 0.3s; }
+    .stagger-4 { animation-delay: 0.4s; }
+    .stagger-5 { animation-delay: 0.5s; }
   </style>
 </head>
 <body class="relative bg-gray-900 text-white">
@@ -80,66 +68,64 @@
     <div class="shape w-32 h-32 absolute bottom-10 right-10"></div>
     <div class="shape w-16 h-16 absolute top-20 right-20"></div>
   </div>
-  
   <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-8">
     <header class="text-center slide-in stagger-1">
-      <div class="glass-card rounded-3xl p-8 mb-8">
-        <h1 class="text-4xl font-bold gradient-text mb-2">
-          🚪 Collaborative Room Mode
+      <nav class="nav-links flex justify-center gap-4 mb-4">
+        <a href="/" id="homeLink">Laman Utama</a>
+        <a href="/live-translation" id="liveTranslationLink">Terjemahan Langsung</a>
+        <a href="/room-mode" id="roomModeLink">Mod Bilik</a>
+        <a href="/speech-to-text" id="speechToTextLink">Pertuturan ke Teks</a>
+        <a href="/history" id="historyLink">Sejarah</a>
+        <a href="/settings" id="settingsLink">Tetapan</a>
+      </nav>
+      <div class="glass-card rounded-3xl p-8 mb-8 pulse">
+        <h1 class="text-4xl font-bold gradient-text mb-2" id="mainTitle">
+          <span class="icon-wrapper"><i class="fas fa-door-open"></i></span> Mod Bilik Kolaboratif
         </h1>
-        <p class="text-gray-300 text-lg">
-          Real-time translation for all users
-        </p>
+        <p class="text-gray-300 text-lg" id="mainSubtitle">Terjemahan masa nyata untuk semua pengguna</p>
       </div>
     </header>
-    
-    <!-- 添加房間選擇區域 -->
     <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-bold gradient-text">Join a Room</h2>
-          <p class="text-gray-400 text-sm">Select a room to start (max 2 users per room)</p>
+          <h2 class="text-xl font-bold gradient-text" id="joinRoomTitle">Sertai Bilik</h2>
+          <p class="text-gray-400 text-sm" id="joinRoomDesc">Pilih bilik untuk memulakan (maksimum 2 pengguna setiap bilik)</p>
         </div>
         <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
-          <span class="status-indicator status-offline w-3 h-3 rounded-full mr-2"></span>Not in a room
+          <span class="status-indicator status-offline w-3 h-3 rounded-full mr-2"></span>Tidak dalam bilik
         </div>
       </div>
       <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm hidden"></div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4" id="roomList">
-        <!-- 房間將通過 JavaScript 動態生成 -->
-      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4" id="roomList"></div>
     </div>
-
     <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
       <div class="mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4 flex items-center">
+        <h3 class="text-xl font-bold gradient-text mb-4 flex items-center" id="chatTitle">
           <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>
-          Live Chat & Translation
+          Sembang Langsung & Terjemahan
         </h3>
         <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-700"></div>
         <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Type a message..." />
+          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Taip mesej..." />
           <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl">
-            <span class="relative z-10">Send</span>
+            <span class="relative z-10" id="sendBtnText">Hantar</span>
           </button>
         </div>
       </div>
     </div>
-
     <div class="glass-card rounded-3xl p-8 slide-in stagger-4">
       <div class="text-center mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4">Translation Mode</h3>
+        <h3 class="text-xl font-bold gradient-text mb-4" id="translationModeTitle">Mod Terjemahan</h3>
         <div class="flex gap-4 justify-center">
-          <button id="signLanguageBtn" class="btn btn-primary px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10">🤟 Sign Language</span>
+          <button id="signLanguageBtn" class="btn btn-purple px-6 py-3 rounded-xl mode-btn">
+            <span class="relative z-10" id="signLanguageBtnText"><i class="fas fa-hand-middle-finger"></i> Bahasa Isyarat</span>
           </button>
           <button id="speechToTextBtn" class="btn btn-success px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10">🎤 Speech to Text</span>
+            <span class="relative z-10" id="speechToTextBtnText"><i class="fas fa-microphone"></i> Pertuturan ke Teks</span>
           </button>
         </div>
       </div>
     </div>
-
     <div class="glass-card rounded-3xl p-8 slide-in stagger-5">
       <div class="video-container mb-6">
         <div class="video-inner">
@@ -147,58 +133,175 @@
           <audio id="audioPreview" class="w-full rounded-2xl hidden" controls></audio>
         </div>
       </div>
-      
       <div class="flex flex-wrap gap-4 justify-center mb-6">
         <button id="startRecordBtn" class="btn btn-purple px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10">🎬 Start Recording</span>
+          <span class="relative z-10" id="startRecordBtnText"><i class="fas fa-video"></i> Mulakan Rakaman</span>
         </button>
         <button id="stopRecordBtn" class="btn btn-warning px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10">⏹️ Stop Recording</span>
+          <span class="relative z-10" id="stopRecordBtnText"><i class="fas fa-stop"></i> Hentikan Rakaman</span>
         </button>
         <button id="uploadBtn" class="btn btn-primary px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10">🚀 Upload & Translate</span>
+          <span class="relative z-10" id="uploadBtnText"><i class="fas fa-upload"></i> Muat Naik & Terjemah</span>
         </button>
       </div>
-      
       <div id="result" class="text-center text-lg font-medium p-4 rounded-xl bg-gray-700 border-2 border-gray-600">
-        <div class="text-gray-300">
-          👋 Ready to translate - Select a mode and start recording
-        </div>
+        <div id="resultText"><i class="fas fa-hand-wave"></i> Sedia untuk menterjemah - Pilih mod dan mulakan rakaman</div>
       </div>
     </div>
   </div>
-
   <script type="module">
-    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+    const TRANSLATIONS = {
+      roomMode: {
+        en: {
+          title: "Collaborative Room Mode",
+          subtitle: "Real-time translation for all users",
+          homeLink: "Home",
+          liveTranslationLink: "Live Translation",
+          roomModeLink: "Room Mode",
+          speechToTextLink: "Speech to Text",
+          historyLink: "History",
+          settingsLink: "Settings",
+          joinRoomTitle: "Join a Room",
+          joinRoomDesc: "Select a room to start (max 2 users per room)",
+          currentRoomNotIn: "Not in a room",
+          chatTitle: "Live Chat & Translation",
+          chatInputPlaceholder: "Type a message...",
+          sendBtnText: "Send",
+          translationModeTitle: "Translation Mode",
+          signLanguageBtnText: "🤟 Sign Language",
+          speechToTextBtnText: "🎤 Speech to Text",
+          startRecordBtnText: "🎬 Start Recording",
+          stopRecordBtnText: "⏹️ Stop Recording",
+          uploadBtnText: "🚀 Upload & Translate",
+          resultReady: "👋 Ready to translate - Select a mode and start recording",
+          roomErrorAlreadyIn: "You are already in {room}! Leave first to join another room.",
+          roomErrorFull: "{room} is full (2/2 users)!",
+          connectionError: "⚠️ Failed to connect to server: {error}. Retrying...",
+          disconnectError: "⚠️ Disconnected: {reason}. Attempting to reconnect...",
+          chatConnected: "🟢 Connected to chat room",
+          cameraSuccess: "📹 Camera initialized successfully - Ready to record!",
+          microphoneSuccess: "🎤 Microphone initialized successfully - Ready to record!",
+          cameraError: "❌ Cannot access camera: {error}",
+          microphoneError: "❌ Cannot access microphone: {error}",
+          recordingProcessing: "🔴 Recording {type}...",
+          recordingSuccess: "✅ {type} recording completed - Ready to upload!",
+          uploadProcessing: "⏳ {type} and translating...",
+          uploadError: "❌ {type} failed: {error}",
+          noMediaError: "❌ Please record video or audio first!",
+          noSpeechError: "❌ No speech recognized, please try again",
+          noGestureError: "❌ No gesture recognized, please try again",
+          translationResult: "✅ Translation Result: {result}"
+        },
+        ms: {
+          title: "Mod Bilik Kolaboratif",
+          subtitle: "Terjemahan masa nyata untuk semua pengguna",
+          homeLink: "Laman Utama",
+          liveTranslationLink: "Terjemahan Langsung",
+          roomModeLink: "Mod Bilik",
+          speechToTextLink: "Pertuturan ke Teks",
+          historyLink: "Sejarah",
+          settingsLink: "Tetapan",
+          joinRoomTitle: "Sertai Bilik",
+          joinRoomDesc: "Pilih bilik untuk memulakan (maksimum 2 pengguna setiap bilik)",
+          currentRoomNotIn: "Tidak dalam bilik",
+          chatTitle: "Sembang Langsung & Terjemahan",
+          chatInputPlaceholder: "Taip mesej...",
+          sendBtnText: "Hantar",
+          translationModeTitle: "Mod Terjemahan",
+          signLanguageBtnText: "<i class='fas fa-hand-middle-finger'></i> Bahasa Isyarat",
+          speechToTextBtnText: "<i class='fas fa-microphone'></i> Pertuturan ke Teks",
+          startRecordBtnText: "<i class='fas fa-video'></i> Mulakan Rakaman",
+          stopRecordBtnText: "<i class='fas fa-stop'></i> Hentikan Rakaman",
+          uploadBtnText: "<i class='fas fa-upload'></i> Muat Naik & Terjemah",
+          resultReady: "<i class='fas fa-hand-wave'></i> Sedia untuk menterjemah - Pilih mod dan mulakan rakaman",
+          roomErrorAlreadyIn: "Anda sudah berada di {room}! Keluar dahulu untuk menyertai bilik lain.",
+          roomErrorFull: "{room} penuh (2/2 pengguna)!",
+          connectionError: "⚠️ Gagal menyambung ke pelayan: {error}. Sedang mencuba semula...",
+          disconnectError: "⚠️ Terputus: {reason}. Sedang mencuba menyambung semula...",
+          chatConnected: "🟢 Berjaya menyambung ke bilik sembang",
+          cameraSuccess: "📹 Kamera diinisialisasi dengan jayanya - Sedia untuk rakam!",
+          microphoneSuccess: "🎤 Mikrofon diinisialisasi dengan jayanya - Sedia untuk rakam!",
+          cameraError: "❌ Tidak dapat mengakses kamera: {error}",
+          microphoneError: "❌ Tidak dapat mengakses mikrofon: {error}",
+          recordingProcessing: "🔴 Sedang merakam {type}...",
+          recordingSuccess: "✅ Rakaman {type} selesai - Sedia untuk muat naik!",
+          uploadProcessing: "⏳ {type} dan menterjemah...",
+          uploadError: "❌ {type} gagal: {error}",
+          noMediaError: "❌ Sila rakam video atau audio terlebih dahulu!",
+          noSpeechError: "❌ Tiada pertuturan dikenali, sila cuba lagi",
+          noGestureError: "❌ Tiada isyarat dikenali, sila cuba lagi",
+          translationResult: "✅ Hasil Terjemahan: {result}"
+        }
+      }
+    };
 
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-    // Server URL detection
-    function detectServerUrl() {
-      const currentHost = window.location.hostname;
-      const currentProtocol = window.location.protocol;
-      return `${currentProtocol}//${currentHost}`;
+    function applyLanguage(lang) {
+      localStorage.setItem('language', lang);
+      const translations = TRANSLATIONS.roomMode[lang];
+
+      document.title = `Penterjemah Bahasa Isyarat - ${translations.title}`;
+      document.getElementById('mainTitle').innerHTML = `<span class="icon-wrapper"><i class="fas fa-door-open"></i></span> ${translations.title}`;
+      document.getElementById('mainSubtitle').textContent = translations.subtitle;
+      document.getElementById('homeLink').textContent = translations.homeLink;
+      document.getElementById('liveTranslationLink').textContent = translations.liveTranslationLink;
+      document.getElementById('roomModeLink').textContent = translations.roomModeLink;
+      document.getElementById('speechToTextLink').textContent = translations.speechToTextLink;
+      document.getElementById('historyLink').textContent = translations.historyLink;
+      document.getElementById('settingsLink').textContent = translations.settingsLink;
+      document.getElementById('joinRoomTitle').textContent = translations.joinRoomTitle;
+      document.getElementById('joinRoomDesc').textContent = translations.joinRoomDesc;
+      document.getElementById('currentRoom').innerHTML = `<span class="status-indicator status-offline w-3 h-3 rounded-full mr-2"></span>${translations.currentRoomNotIn}`;
+      document.getElementById('chatTitle').innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>${translations.chatTitle}`;
+      document.getElementById('chatInput').placeholder = translations.chatInputPlaceholder;
+      document.getElementById('sendBtnText').textContent = translations.sendBtnText;
+      document.getElementById('translationModeTitle').textContent = translations.translationModeTitle;
+      document.getElementById('signLanguageBtnText').innerHTML = translations.signLanguageBtnText;
+      document.getElementById('speechToTextBtnText').innerHTML = translations.speechToTextBtnText;
+      document.getElementById('startRecordBtnText').innerHTML = translations.startRecordBtnText;
+      document.getElementById('stopRecordBtnText').innerHTML = translations.stopRecordBtnText;
+      document.getElementById('uploadBtnText').innerHTML = translations.uploadBtnText;
+      document.getElementById('resultText').innerHTML = translations.resultReady;
+
+      console.log(`Bahasa ditukar ke: ${lang}`);
     }
-  const gestureMap = {
-    18: "Hello",
-    11: "Thank You",
-    7: "I Love You",
-    8: "Yes",
-    19: "Good Bye",
-    16: "Sorry",
-    0: "Unknown"
-};
-    const FLASK_URL = detectServerUrl();
-    const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 請更新為最新 ngrok URL
-    
-    // 修正端点URLs - 使用COLAB_URL而不是FLASK_URL
-    const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`;  // 修正：使用正确的端点名称
-    const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;  // 修正：使用COLAB_URL
-    const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('room-mode.html DOM telah dimuat sepenuhnya');
+
+      const gestureMap = {
+        18: "Helo",
+        11: "Terima Kasih",
+        7: "Saya Sayang Awak",
+        8: "Ya",
+        19: "Selamat Tinggal",
+        16: "Maaf",
+        0: "Tidak Dikenali"
+      };
+
+      function detectServerUrl() {
+        const currentHost = window.location.hostname;
+        const currentProtocol = window.location.protocol;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${currentProtocol}//${currentHost}${port}`;
+      }
+
+      const FLASK_URL = detectServerUrl();
+      const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 更新為最新 ngrok URL
+      const PREDICT_ENDPOINT = `${COLAB_URL}/predict_colab`;
+      const SPEECH_ENDPOINT = `${COLAB_URL}/speech_to_text`;
+      const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
+
+      const socket = io(COLAB_URL, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling'],
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 15,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 60000
+      });
+
       const currentRoomDiv = document.getElementById('currentRoom');
       const roomError = document.getElementById('roomError');
       const roomList = document.getElementById('roomList');
@@ -217,31 +320,16 @@ document.addEventListener('DOMContentLoaded', () => {
       let stream = null;
       let mediaRecorder = null;
       let recordedBlobs = [];
-      
-      // 连接到 COLAB 的 Socket.IO 服务器
-      let socket = io(COLAB_URL, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling'],
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 15,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 60000
-      });
-      
       let processedTranslations = new Set();
       let isSignLanguageMode = true;
-      let currentRoom = null; // 跟踪當前房間
+      let currentRoom = null;
 
-      // 模擬三個房間的狀態
       const rooms = {
         'room1': { count: 0, max: 2 },
         'room2': { count: 0, max: 2 },
         'room3': { count: 0, max: 2 }
       };
 
-      // 初始化房間列表
       function initializeRooms() {
         roomList.innerHTML = '';
         for (const [roomId, room] of Object.entries(rooms)) {
@@ -249,28 +337,36 @@ document.addEventListener('DOMContentLoaded', () => {
           roomCard.className = 'room-card glass-card p-4 rounded-xl text-center cursor-pointer hover:bg-gray-800 transition-colors';
           roomCard.innerHTML = `
             <h3 class="text-lg font-bold gradient-text">${roomId}</h3>
-            <p class="text-gray-400">Users: ${room.count}/${room.max}</p>
-            <button class="btn btn-primary mt-2 px-4 py-2 rounded-xl join-btn" data-room="${roomId}">Join</button>
+            <p class="text-gray-400">Pengguna: ${room.count}/${room.max}</p>
+            <button class="btn btn-primary mt-2 px-4 py-2 rounded-xl join-btn" data-room="${roomId}">${currentRoom === roomId ? 'Disertai' : 'Sertai'}</button>
           `;
           roomList.appendChild(roomCard);
         }
         updateRecordButton();
       }
 
-      // 顯示錯誤提示
       function showError(message) {
-        roomError.textContent = message;
+        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+        let errorText = message;
+        if (message.includes('You are already in')) {
+          errorText = translations.roomErrorAlreadyIn.replace('{room}', message.match(/room\d+/)[0]);
+        } else if (message.includes('is full')) {
+          errorText = translations.roomErrorFull.replace('{room}', message.match(/room\d+/)[0]);
+        } else if (message.includes('Failed to connect to server')) {
+          errorText = translations.connectionError.replace('{error}', message.match(/: (.+?)\./)[1]);
+        } else if (message.includes('Disconnected')) {
+          errorText = translations.disconnectError.replace('{reason}', message.match(/: (.+?)\./)[1]);
+        }
+        roomError.textContent = errorText;
         roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
         roomError.classList.remove('hidden');
         setTimeout(() => roomError.classList.add('hidden'), 5000);
       }
 
-      // 更新記錄按鈕狀態
       function updateRecordButton() {
-        startRecordBtn.disabled = !currentRoom; // 只有加入房間後才能錄製
+        startRecordBtn.disabled = !currentRoom;
       }
 
-      // 處理加入房間
       document.addEventListener('click', (e) => {
         if (e.target.classList.contains('join-btn')) {
           const roomId = e.target.dataset.room;
@@ -288,39 +384,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
           room.count++;
           currentRoom = roomId;
-          currentRoomDiv.innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>In: ${roomId} (${room.count}/${room.max})`;
-          e.target.textContent = 'Joined';
+          currentRoomDiv.innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span>Dalam: ${roomId} (${room.count}/${room.max})`;
+          e.target.textContent = 'Disertai';
           e.target.classList.remove('btn-primary');
           e.target.classList.add('btn-gray');
           e.target.disabled = true;
-          initializeRooms(); // 更新房間列表
-          updateRecordButton(); // 啟用記錄按鈕
+          initializeRooms();
+          updateRecordButton();
         }
       });
 
       chatContainer.style.display = 'block';
 
-      // 添加聊天消息
       function addChatMessage(message, isSelf = false, isTranslated = false) {
         const now = new Date().toLocaleTimeString();
         const messageDiv = document.createElement('div');
         messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
         const spanClass = isSelf ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
-                        isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
-                        'bg-gray-700 text-gray-300 border border-gray-600';
+                         isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
+                         'bg-gray-700 text-gray-300 border border-gray-600';
         messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message} <small class="text-xs opacity-70">[${now}]</small></span>`;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
 
-      // WebSocket 事件處理
       socket.on('connect', () => {
-        console.log('Connected to Colab server, socket.connected:', socket.connected);
-        addChatMessage('🟢 Connected to chat room', true);
-        initializeRooms(); // 連接到服務器後初始化房間
+        console.log('Connected to Colab server, socket.connected:', socket.connect);
+        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+        addChatMessage(translations.chatConnected, true);
+        initializeRooms();
       });
 
-      // 处理来自 colab 的 message 事件
       socket.on('message', (data) => {
         console.log('Received message:', data);
         if (data.msg && data.msg !== 'Connected to chat room') {
@@ -328,21 +422,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // 处理来自 colab 的 new_message 事件
       socket.on('new_message', (data) => {
         console.log('Received new_message:', data);
         addChatMessage(`${data.user}: ${data.message}`, data.user === 'You');
       });
 
-      // 处理翻译结果
       socket.on('translation', (data) => {
         console.log('Received translation:', data);
         const key = `${data.user}-${data.text || data.error || 'unknown'}`;
         if (!processedTranslations.has(key)) {
           processedTranslations.add(key);
-          const translatedMessage = `${data.user}: ${data.text || data.error || 'Unknown result'}`;
+          const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+          const translatedMessage = `${data.user}: ${data.text || data.error || 'Tidak dikenali'}`;
           addChatMessage(translatedMessage, data.user === 'You', true);
-          updateResult(`✅ Translation Result: ${data.text || data.error || 'Unknown result'}`, 'success');
+          updateResult(translations.translationResult.replace('{result}', data.text || data.error || 'Tidak dikenali'), 'success');
         }
       });
 
@@ -358,11 +451,14 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.connect();
       });
 
-      // 發送消息
+      socket.on('language_changed', (data) => {
+        console.log('Menerima acara language_changed:', data);
+        applyLanguage(data.language);
+      });
+
       sendBtn.onclick = () => {
         const message = chatInput.value.trim();
         if (message) {
-          // 发送到 colab 的 send_message 事件
           socket.emit('send_message', { user: 'You', message: message });
           addChatMessage(`You: ${message}`, true);
           chatInput.value = '';
@@ -376,32 +472,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // 更新結果顯示
       function updateResult(message, type = 'default') {
-        const resultEl = document.getElementById('result');
+        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+        let displayMessage = message;
+        if (message.includes('Camera initialized successfully')) {
+          displayMessage = translations.cameraSuccess;
+        } else if (message.includes('Microphone initialized successfully')) {
+          displayMessage = translations.microphoneSuccess;
+        } else if (message.includes('Cannot access camera')) {
+          displayMessage = translations.cameraError.replace('{error}', message.match(/: (.+)/)[1]);
+        } else if (message.includes('Cannot access microphone')) {
+          displayMessage = translations.microphoneError.replace('{error}', message.match(/: (.+)/)[1]);
+        } else if (message.includes('Recording video')) {
+          displayMessage = translations.recordingProcessing.replace('{type}', 'video');
+        } else if (message.includes('Recording audio')) {
+          displayMessage = translations.recordingProcessing.replace('{type}', 'audio');
+        } else if (message.includes('Video recording completed')) {
+          displayMessage = translations.recordingSuccess.replace('{type}', 'Video');
+        } else if (message.includes('Audio recording completed')) {
+          displayMessage = translations.recordingSuccess.replace('{type}', 'Audio');
+        } else if (message.includes('Uploading and translating')) {
+          displayMessage = translations.uploadProcessing.replace('{type}', 'Muat naik');
+        } else if (message.includes('Converting speech to text')) {
+          displayMessage = translations.uploadProcessing.replace('{type}', 'Menukar pertuturan');
+        } else if (message.includes('Upload failed') || message.includes('Conversion failed')) {
+          displayMessage = translations.uploadError.replace('{type}', message.includes('Upload') ? 'Muat naik' : 'Penukaran').replace('{error}', message.match(/: (.+)/)[1]);
+        } else if (message.includes('Please record video or audio first')) {
+          displayMessage = translations.noMediaError;
+        } else if (message.includes('No speech recognized')) {
+          displayMessage = translations.noSpeechError;
+        } else if (message.includes('No gesture recognized')) {
+          displayMessage = translations.noGestureError;
+        } else if (message.includes('Translation Result')) {
+          displayMessage = translations.translationResult.replace('{result}', message.match(/: (.+)/)[1]);
+        }
         const colorClass = type === 'success' ? 'bg-green-900 border-green-800 text-green-200' : 
                           type === 'error' ? 'bg-red-900 border-red-800 text-red-200' : 
                           type === 'processing' ? 'bg-yellow-900 border-yellow-800 text-yellow-200' : 
                           'bg-gray-700 border-gray-600 text-gray-300';
-        resultEl.className = `text-center text-lg font-medium p-4 rounded-xl border-2 ${colorClass}`;
-        resultEl.innerHTML = `<div>${message}</div>`;
+        result.className = `text-center text-lg font-medium p-4 rounded-xl border-2 ${colorClass}`;
+        result.innerHTML = `<div>${displayMessage}</div>`;
       }
 
-      // 初始化攝像頭
       async function initCamera() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           preview.srcObject = stream;
           console.log('Camera started');
-          updateResult('📹 Camera initialized successfully - Ready to record!', 'success');
+          updateResult('Camera initialized successfully', 'success');
         } catch (err) {
           console.error('Failed to start webcam:', err);
-          updateResult(`❌ Cannot access camera: ${err.message}`, 'error');
-          alert('Please allow camera access to continue!');
+          updateResult(`Cannot access camera: ${err.message}`, 'error');
+          alert('Sila benarkan akses kamera untuk meneruskan!');
         }
       }
 
-      // 初始化麥克風
       async function initMicrophone() {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -409,15 +534,14 @@ document.addEventListener('DOMContentLoaded', () => {
           audioPreview.classList.remove('hidden');
           preview.classList.add('hidden');
           console.log('Microphone started');
-          updateResult('🎤 Microphone initialized successfully - Ready to record!', 'success');
+          updateResult('Microphone initialized successfully', 'success');
         } catch (err) {
           console.error('Error accessing microphone:', err);
-          updateResult(`❌ Cannot access microphone: ${err.message}`, 'error');
-          alert('Please allow microphone access to continue!');
+          updateResult(`Cannot access microphone: ${err.message}`, 'error');
+          alert('Sila benarkan akses mikrofon untuk meneruskan!');
         }
       }
 
-      // 開始錄製
       startRecordBtn.onclick = () => {
         if (isSignLanguageMode) {
           if (!stream) {
@@ -447,40 +571,37 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         mediaRecorder.onerror = (event) => {
           console.error('MediaRecorder error:', event.error);
-          showError(`❌ Recording failed: ${event.error.message}`);
+          showError(`❌ Rakaman gagal: ${event.error.message}`);
         };
         mediaRecorder.start(200);
         startRecordBtn.disabled = true;
         stopRecordBtn.disabled = false;
         uploadBtn.disabled = true;
-        updateResult(`🔴 Recording ${isSignLanguageMode ? 'video' : 'audio'}...`, 'processing');
+        updateResult(`Recording ${isSignLanguageMode ? 'video' : 'audio'}`, 'processing');
       }
 
-      // 停止錄製
       stopRecordBtn.onclick = () => {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
           startRecordBtn.disabled = false;
           stopRecordBtn.disabled = true;
           uploadBtn.disabled = false;
-          updateResult(isSignLanguageMode ? '✅ Video recording completed - Ready to upload!' : '✅ Audio recording completed - Ready to upload!', 'success');
+          updateResult(`${isSignLanguageMode ? 'Video' : 'Audio'} recording completed`, 'success');
         }
       };
 
-      // 切換到簽語模式
       signLanguageBtn.onclick = () => {
         isSignLanguageMode = true;
         signLanguageBtn.classList.remove('btn-primary');
         signLanguageBtn.classList.add('btn-purple');
-        speechToTextBtn.classList.remove('btn-success');
+        speechToTextBtn.classList.remove('btn-purple');
         speechToTextBtn.classList.add('btn-success');
         preview.classList.remove('hidden');
         audioPreview.classList.add('hidden');
         cleanupStream();
-        updateResult('Current Mode: Sign Language Translation', 'success');
+        updateResult('Mod Semasa: Terjemahan Bahasa Isyarat', 'success');
       };
 
-      // 切換到語音模式
       speechToTextBtn.onclick = () => {
         isSignLanguageMode = false;
         speechToTextBtn.classList.remove('btn-success');
@@ -490,104 +611,99 @@ document.addEventListener('DOMContentLoaded', () => {
         preview.classList.add('hidden');
         audioPreview.classList.remove('hidden');
         cleanupStream();
-        updateResult('Current Mode: Speech to Text Translation', 'success');
+        updateResult('Mod Semasa: Terjemahan Pertuturan ke Teks', 'success');
       };
 
-      // 上傳並翻譯 - 修正版本
-     uploadBtn.onclick = async () => {
-  if (recordedBlobs.length) {
-    const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
-    const formData = new FormData();
-    const mediaId = crypto.randomUUID();
-    formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
-    
-    updateResult(`⏳ ${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}...`, 'processing');
-    
-    try {
-      const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
-      console.log('Sending request to:', endpoint);
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
-      }
-      
-      const resultData = await response.json();
-      console.log('Response data:', resultData);
-      
-      if (resultData.error) {
-        throw new Error(resultData.error);
-      }
-      
-      if (!isSignLanguageMode && !resultData.text) {
-        console.warn('No text recognized from speech');
-        updateResult('❌ No speech recognized, please try again', 'error');
-        return;
-      }
-      
-      if (isSignLanguageMode && resultData.gesture === undefined) {
-        console.warn('No gesture recognized from video');
-        updateResult('❌ No gesture recognized, please try again', 'error');
-        return;
-      }
-      
-      // 使用映射表轉換 gesture
-      const gestureText = gestureMap[resultData.gesture] || `Gesture ${resultData.gesture}`;
-      const displayText = isSignLanguageMode ? gestureText : resultData.text || 'Unknown result';
-      updateResult(`✅ Translation Result: ${displayText}`, 'success');
-      
-      socket.emit('translation', {
-        text: displayText,
-        gesture: resultData.gesture || 0,
-        user: 'You',
-        sid: socket.id
-      });
+      uploadBtn.onclick = async () => {
+        if (recordedBlobs.length) {
+          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
+          const formData = new FormData();
+          const mediaId = crypto.randomUUID();
+          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
+          
+          updateResult(`${isSignLanguageMode ? 'Uploading and translating sign language' : 'Converting speech to text'}`, 'processing');
+          
+          try {
+            const endpoint = isSignLanguageMode ? PREDICT_ENDPOINT : SPEECH_ENDPOINT;
+            console.log('Sending request to:', endpoint);
+            
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              body: formData,
+              headers: { 'ngrok-skip-browser-warning': 'true' }
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText || 'No details'}`);
+            }
+            
+            const resultData = await response.json();
+            console.log('Response data:', resultData);
+            
+            if (resultData.error) {
+              throw new Error(resultData.error);
+            }
+            
+            if (!isSignLanguageMode && !resultData.text) {
+              console.warn('No text recognized from speech');
+              updateResult('No speech recognized', 'error');
+              return;
+            }
+            
+            if (isSignLanguageMode && resultData.gesture === undefined) {
+              console.warn('No gesture recognized from video');
+              updateResult('No gesture recognized', 'error');
+              return;
+            }
+            
+            const gestureText = gestureMap[resultData.gesture] || `Isyarat ${resultData.gesture}`;
+            const displayText = isSignLanguageMode ? gestureText : resultData.text || 'Tidak dikenali';
+            updateResult(`Translation Result: ${displayText}`, 'success');
+            
+            socket.emit('translation', {
+              text: displayText,
+              gesture: resultData.gesture || 0,
+              user: 'You',
+              sid: socket.id
+            });
 
-      try {
-        const saveResponse = await fetch(SAVE_ENDPOINT, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          },
-          body: JSON.stringify({
-            user: 'You',
-            text: displayText,
-            gesture: resultData.gesture || 0,
-            timestamp: new Date().toISOString()
-          })
-        });
-        
-        if (!saveResponse.ok) {
-          console.warn('Failed to save history:', await saveResponse.text());
+            try {
+              const saveResponse = await fetch(SAVE_ENDPOINT, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({
+                  user: 'You',
+                  text: displayText,
+                  gesture: resultData.gesture || 0,
+                  timestamp: new Date().toISOString()
+                })
+              });
+              
+              if (!saveResponse.ok) {
+                console.warn('Failed to save history:', await saveResponse.text());
+              } else {
+                console.log('History saved successfully');
+              }
+            } catch (saveError) {
+              console.warn('Failed to save history:', saveError);
+            }
+            
+          } catch (error) {
+            console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
+            updateResult(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
+            showError(`${isSignLanguageMode ? 'Muat naik' : 'Penukaran'} gagal: ${error.message}`);
+          } finally {
+            recordedBlobs = [];
+          }
         } else {
-          console.log('History saved successfully');
+          updateResult('Please record video or audio first', 'error');
         }
-      } catch (saveError) {
-        console.warn('Failed to save history:', saveError);
-      }
-      
-    } catch (error) {
-      console.error(`${isSignLanguageMode ? 'Upload' : 'Conversion'} failed:`, error);
-      updateResult(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`, 'error');
-      showError(`❌ ${isSignLanguageMode ? 'Upload' : 'Conversion'} failed: ${error.message}`);
-    } finally {
-      recordedBlobs = [];
-    }
-  } else {
-    updateResult('❌ Please record video or audio first!', 'error');
-  }
-};
+      };
 
-      // 清理媒體流
       function cleanupStream() {
         if (stream) {
           stream.getTracks().forEach(track => track.stop());
@@ -595,13 +711,16 @@ document.addEventListener('DOMContentLoaded', () => {
           preview.srcObject = null;
           audioPreview.srcObject = null;
           mediaRecorder = null;
-          startRecordBtn.disabled = !currentRoom; // 清理後根據房間狀態更新
+          startRecordBtn.disabled = !currentRoom;
           stopRecordBtn.disabled = true;
           uploadBtn.disabled = true;
         }
       }
 
       window.onbeforeunload = () => cleanupStream();
+
+      const currentLang = localStorage.getItem('language') || 'ms';
+      applyLanguage(currentLang);
     });
   </script>
 </body>
