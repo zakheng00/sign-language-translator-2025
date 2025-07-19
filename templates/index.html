@@ -196,24 +196,24 @@
         <a href="/history" class="nav-link text-blue-600 hover:underline">History</a>
       </nav>
       <div class="glass-card rounded-3xl p-8 mb-8">
-        <h1 class="text-4xl font-bold gradient-text mb-2">
+        <h1 class="text-4xl font-bold gradient-text mb-2" id="mainTitle">
           Sign Language Translator
         </h1>
-        <p class="text-gray-600 text-lg">
+        <p class="text-gray-600 text-lg" id="mainSubtitle">
           Real-time translation for sign language and speech
         </p>
       </div>
     </header>
     
     <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
-      <h2 class="text-2xl font-bold gradient-text mb-6">Welcome</h2>
-      <p class="text-gray-600 text-lg">
+      <h2 class="text-2xl font-bold gradient-text mb-6" id="welcomeTitle">Welcome</h2>
+      <p class="text-gray-600 text-lg" id="welcomeText">
         Welcome to the Sign Language Translation System
       </p>
     </div>
     
     <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
-      <h2 class="text-2xl font-bold gradient-text mb-6">Language Settings</h2>
+      <h2 class="text-2xl font-bold gradient-text mb-6" id="languageTitle">Language Settings</h2>
       <div class="status-bar mb-6" id="languageStatus">
         <div class="flex items-center">
           <span>Loading language settings...</span>
@@ -230,13 +230,126 @@
     </div>
   </div>
 
-  <script type="module">
-    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+  <script>
+    // Define translations directly in the HTML
+    const TRANSLATIONS = {
+      index: {
+        en: {
+          title: "Sign Language Translator",
+          subtitle: "Real-time translation for sign language and speech",
+          welcome: "Welcome",
+          welcomeText: "Welcome to the Sign Language Translation System",
+          languageTitle: "Language Settings",
+          languageStatusLoading: "Loading language settings...",
+          languageStatusSuccess: "Language updated to {lang}",
+          languageStatusError: "Failed to update language: {error}",
+          langEnButton: "🇬🇧 English",
+          langMsButton: "🇲🇾 Bahasa Malaysia",
+          indexLink: "Home",
+          liveTranslationLink: "Live Translation",
+          roomModeLink: "Room Mode",
+          speechToTextLink: "Speech to Text",
+          historyLink: "History"
+        },
+        ms: {
+          title: "Penterjemah Bahasa Isyarat",
+          subtitle: "Terjemahan masa nyata untuk bahasa isyarat dan pertuturan",
+          welcome: "Selamat Datang",
+          welcomeText: "Selamat Datang ke Sistem Penterjemahan Bahasa Isyarat",
+          languageTitle: "Tetapan Bahasa",
+          languageStatusLoading: "Memuatkan tetapan bahasa...",
+          languageStatusSuccess: "Bahasa ditukar ke {lang}",
+          languageStatusError: "Gagal menukar bahasa: {error}",
+          langEnButton: "🇬🇧 Bahasa Inggeris",
+          langMsButton: "🇲🇾 Bahasa Malaysia",
+          indexLink: "Laman Utama",
+          liveTranslationLink: "Terjemahan Langsung",
+          roomModeLink: "Mod Bilik",
+          speechToTextLink: "Pertuturan ke Teks",
+          historyLink: "Sejarah"
+        }
+      }
+    };
+
+    function applyLanguage(lang) {
+      // Store language preference
+      localStorage.setItem('language', lang);
+      
+      const translations = TRANSLATIONS.index[lang];
+      
+      // Update main title and subtitle
+      document.getElementById('mainTitle').textContent = translations.title;
+      document.getElementById('mainSubtitle').textContent = translations.subtitle;
+      
+      // Update welcome section
+      document.getElementById('welcomeTitle').textContent = translations.welcome;
+      document.getElementById('welcomeText').textContent = translations.welcomeText;
+      
+      // Update language settings title
+      document.getElementById('languageTitle').textContent = translations.languageTitle;
+      
+      // Update language buttons
+      document.getElementById('langEnBtn').querySelector('span').textContent = translations.langEnButton;
+      document.getElementById('langMsBtn').querySelector('span').textContent = translations.langMsButton;
+      
+      // Update navigation links
+      const navLinks = document.querySelectorAll('.nav-link');
+      if (navLinks.length >= 5) {
+        navLinks[0].textContent = translations.indexLink;
+        navLinks[1].textContent = translations.liveTranslationLink;
+        navLinks[2].textContent = translations.roomModeLink;
+        navLinks[3].textContent = translations.speechToTextLink;
+        navLinks[4].textContent = translations.historyLink;
+      }
+      
+      // Update language status
+      const languageName = lang === 'en' ? 'English' : 'Bahasa Malaysia';
+      updateStatus(
+        document.getElementById('languageStatus'), 
+        translations.languageStatusSuccess.replace('{lang}', languageName), 
+        'success'
+      );
+    }
+
+    function updateStatus(element, message, type = 'loading') {
+      const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⏳';
+      element.innerHTML = `
+        <div class="flex items-center">
+          ${type === 'loading' ? '<div class="loading-spinner"></div>' : `<span class="mr-2">${statusIcon}</span>`}
+          <span>${message}</span>
+        </div>
+      `;
+      element.className = `status-bar ${
+        type === 'success' ? 'status-success' : 
+        type === 'error' ? 'status-error' : 
+        'status-loading'
+      }`;
+    }
+
+    async function fetchData(endpoint, options = {}) {
+      try {
+        const response = await fetch(endpoint, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+            ...options.headers
+          },
+          mode: 'cors'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        return await response.json();
+      } catch (error) {
+        console.error(`Fetch failed for ${endpoint}:`, error);
+        throw error;
+      }
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       // Initialize language
       let currentLang = localStorage.getItem('language') || 'en';
-      applyLanguage('index', currentLang);
+      applyLanguage(currentLang);
 
       // Server URL detection
       function detectServerUrl() {
@@ -260,61 +373,11 @@
       const languageStatus = document.getElementById('languageStatus');
       const langEnBtn = document.getElementById('langEnBtn');
       const langMsBtn = document.getElementById('langMsBtn');
-      const navLinks = document.querySelectorAll('.nav-link');
-
-      // Update navigation links
-      if (navLinks.length >= 5) {
-        navLinks[0].textContent = TRANSLATIONS.index[currentLang].indexLink;
-        navLinks[1].textContent = TRANSLATIONS.index[currentLang].liveTranslationLink;
-        navLinks[2].textContent = TRANSLATIONS.index[currentLang].roomModeLink;
-        navLinks[3].textContent = TRANSLATIONS.index[currentLang].speechToTextLink;
-        navLinks[4].textContent = TRANSLATIONS.index[currentLang].historyLink;
-      }
 
       // Socket.IO language change listener
       socket.on('language_changed', (data) => {
-        applyLanguage('index', data.language);
-        navLinks[0].textContent = TRANSLATIONS.index[data.language].indexLink;
-        navLinks[1].textContent = TRANSLATIONS.index[data.language].liveTranslationLink;
-        navLinks[2].textContent = TRANSLATIONS.index[data.language].roomModeLink;
-        navLinks[3].textContent = TRANSLATIONS.index[data.language].speechToTextLink;
-        navLinks[4].textContent = TRANSLATIONS.index[data.language].historyLink;
+        applyLanguage(data.language);
       });
-
-      function updateStatus(element, message, type = 'loading') {
-        const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⏳';
-        element.innerHTML = `
-          <div class="flex items-center">
-            ${type === 'loading' ? '<div class="loading-spinner"></div>' : `<span class="mr-2">${statusIcon}</span>`}
-            <span>${message}</span>
-          </div>
-        `;
-        element.className = `status-bar ${
-          type === 'success' ? 'status-success' : 
-          type === 'error' ? 'status-error' : 
-          'status-loading'
-        }`;
-      }
-
-      async function fetchData(endpoint, options = {}) {
-        try {
-          const response = await fetch(endpoint, {
-            ...options,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
-              ...options.headers
-            },
-            mode: 'cors'
-          });
-          if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-          return await response.json();
-        } catch (error) {
-          console.error(`Fetch failed for ${endpoint}:`, error);
-          throw error;
-        }
-      }
 
       langEnBtn.addEventListener('click', async () => {
         updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusLoading, 'loading');
@@ -323,12 +386,8 @@
             method: 'POST',
             body: JSON.stringify({ language: 'en' })
           });
-          applyLanguage('index', 'en');
-          navLinks[0].textContent = TRANSLATIONS.index['en'].indexLink;
-          navLinks[1].textContent = TRANSLATIONS.index['en'].liveTranslationLink;
-          navLinks[2].textContent = TRANSLATIONS.index['en'].roomModeLink;
-          navLinks[3].textContent = TRANSLATIONS.index['en'].speechToTextLink;
-          navLinks[4].textContent = TRANSLATIONS.index['en'].historyLink;
+          currentLang = 'en';
+          applyLanguage('en');
         } catch (error) {
           updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
@@ -341,12 +400,8 @@
             method: 'POST',
             body: JSON.stringify({ language: 'ms' })
           });
-          applyLanguage('index', 'ms');
-          navLinks[0].textContent = TRANSLATIONS.index['ms'].indexLink;
-          navLinks[1].textContent = TRANSLATIONS.index['ms'].liveTranslationLink;
-          navLinks[2].textContent = TRANSLATIONS.index['ms'].roomModeLink;
-          navLinks[3].textContent = TRANSLATIONS.index['ms'].speechToTextLink;
-          navLinks[4].textContent = TRANSLATIONS.index['ms'].historyLink;
+          currentLang = 'ms';
+          applyLanguage('ms');
         } catch (error) {
           updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusError.replace('{error}', error.message), 'error');
         }
