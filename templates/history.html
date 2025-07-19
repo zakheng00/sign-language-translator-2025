@@ -292,30 +292,12 @@
   </div>
 
   <script type="module">
-    const TRANSLATIONS = {
-  en: {
-    title: "Translation History",
-    subtitle: "View and manage your translation records",
-    noRecords: "No translation records found",
-    deleteRecord: "Delete",
-    statusLoading: "Loading history...",
-    statusSuccess: "History loaded successfully",
-    statusError: "Failed to load history: {error}",
-    deleteSuccess: "Record deleted successfully",
-    deleteError: "Failed to delete record: {error}"
-  },
-  ms: {
-    title: "Sejarah Terjemahan",
-    subtitle: "Lihat dan urus rekod terjemahan anda",
-    noRecords: "Tiada rekod terjemahan ditemui",
-    deleteRecord: "Padam",
-    statusLoading: "Memuatkan sejarah...",
-    statusSuccess: "Sejarah dimuatkan dengan jayanya",
-    statusError: "Gagal memuatkan sejarah: {error}",
-    deleteSuccess: "Rekod dipadamkan dengan jayanya",
-    deleteError: "Gagal memadam rekod: {error}"
-  }
-};
+    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 初始化語言
+    let currentLang = localStorage.getItem('language') || 'en';
+    applyLanguage('speechToText', currentLang);
     // Server URL detection
     function detectServerUrl() {
       const currentHost = window.location.hostname;
