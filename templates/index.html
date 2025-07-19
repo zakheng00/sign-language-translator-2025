@@ -112,13 +112,16 @@
     .gradient-text {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
       background-clip: text;
+      color: transparent; /* 改進：使用 transparent 替代 -webkit-text-fill-color */
+      fallback-color: #333; /* 備用顏色，防止文字不可見 */
     }
     
     .icon-wrapper {
       position: relative;
-      display: inline-block;
+      display: inline-flex; /* 改進：使用 inline-flex 確保圖標容器可見 */
+      align-items: center;
+      justify-content: center;
     }
     
     .icon-wrapper::after {
@@ -139,6 +142,11 @@
     .feature-card:hover .icon-wrapper::after {
       opacity: 0.2;
       transform: translate(-50%, -50%) scale(1.2);
+    }
+    
+    .icon {
+      font-size: 2.5rem; /* 明確設置圖標大小 */
+      line-height: 1; /* 確保圖標垂直居中 */
     }
     
     .pulse {
@@ -202,8 +210,8 @@
       <a href="/live-translation" class="feature-card rounded-3xl p-8 group block slide-in stagger-2">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-purple-600 text-white shadow-lg">
-              🎥
+            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-purple-600 text-white shadow-lg">
+              <span class="icon">🎥</span>
             </div>
           </div>
           <h2 class="text-2xl font-bold gradient-text mb-3 live-translation-title">Live Sign Translation</h2>
@@ -216,8 +224,8 @@
       <a href="/speech-to-text" class="feature-card rounded-3xl p-8 group block slide-in stagger-3">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-blue-600 text-white shadow-lg">
-              🎤
+            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-blue-600 text-white shadow-lg">
+              <span class="icon">🎤</span>
             </div>
           </div>
           <h2 class="text-2xl font-bold gradient-text mb-3 speech-to-text-title">Speech to Text</h2>
@@ -230,8 +238,8 @@
       <a href="/room-mode" class="feature-card rounded-3xl p-8 group block slide-in stagger-4">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-400 to-pink-600 text-white shadow-lg">
-              🚪
+            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-400 to-pink-600 text-white shadow-lg">
+              <span class="icon">🚪</span>
             </div>
           </div>
           <h2 class="text-2xl font-bold gradient-text mb-3 room-mode-title">Room Mode</h2>
@@ -244,8 +252,8 @@
       <a href="/history" class="feature-card rounded-3xl p-8 group block slide-in stagger-5">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-red-600 text-white shadow-lg">
-              📜
+            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-red-600 text-white shadow-lg">
+              <span class="icon">📜</span>
             </div>
           </div>
           <h2 class="text-2xl font-bold gradient-text mb-3 history-title">Translation History</h2>
@@ -258,8 +266,8 @@
       <a href="/settings" class="feature-card rounded-3xl p-8 group block slide-in stagger-6">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white shadow-lg">
-              ⚙️
+            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white shadow-lg">
+              <span class="icon">⚙️</span>
             </div>
           </div>
           <h2 class="text-2xl font-bold gradient-text mb-3 settings-title">Settings</h2>
@@ -275,6 +283,9 @@
     import { TRANSLATIONS, applyLanguage } from '/static/translations.js';
 
     document.addEventListener('DOMContentLoaded', () => {
+      // Log DOM readiness
+      console.log('DOM fully loaded');
+
       // Initialize language
       let currentLang = localStorage.getItem('language') || 'en';
       updateUI(currentLang);
@@ -295,41 +306,67 @@
         transports: ['websocket', 'polling']
       });
 
+      // Log Socket.IO connection status
+      socket.on('connect', () => {
+        console.log('Socket.IO connected to', FLASK_URL);
+      });
+      socket.on('connect_error', (error) => {
+        console.error('Socket.IO connection error:', error);
+      });
+
       // Update UI function
       function updateUI(lang) {
-        applyLanguage('index', lang);
-        const translations = TRANSLATIONS.index[lang];
+        console.log('Updating UI with language:', lang);
+        try {
+          applyLanguage('index', lang);
+          const translations = TRANSLATIONS.index[lang];
 
-        // Update feature card titles and descriptions with null checks
-        const elements = {
-          liveTranslationTitle: document.querySelector('.live-translation-title'),
-          liveTranslationDesc: document.querySelector('.live-translation-desc'),
-          speechToTextTitle: document.querySelector('.speech-to-text-title'),
-          speechToTextDesc: document.querySelector('.speech-to-text-desc'),
-          roomModeTitle: document.querySelector('.room-mode-title'),
-          roomModeDesc: document.querySelector('.room-mode-desc'),
-          historyTitle: document.querySelector('.history-title'),
-          historyDesc: document.querySelector('.history-desc'),
-          settingsTitle: document.querySelector('.settings-title'),
-          settingsDesc: document.querySelector('.settings-desc')
-        };
+          // Update feature card titles and descriptions with null checks and logging
+          const elements = {
+            liveTranslationTitle: document.querySelector('.live-translation-title'),
+            liveTranslationDesc: document.querySelector('.live-translation-desc'),
+            speechToTextTitle: document.querySelector('.speech-to-text-title'),
+            speechToTextDesc: document.querySelector('.speech-to-text-desc'),
+            roomModeTitle: document.querySelector('.room-mode-title'),
+            roomModeDesc: document.querySelector('.room-mode-desc'),
+            historyTitle: document.querySelector('.history-title'),
+            historyDesc: document.querySelector('.history-desc'),
+            settingsTitle: document.querySelector('.settings-title'),
+            settingsDesc: document.querySelector('.settings-desc')
+          };
 
-        // Update only if elements exist
-        if (elements.liveTranslationTitle) elements.liveTranslationTitle.textContent = translations.liveTranslationTitle;
-        if (elements.liveTranslationDesc) elements.liveTranslationDesc.textContent = translations.liveTranslationDesc;
-        if (elements.speechToTextTitle) elements.speechToTextTitle.textContent = translations.speechToTextTitle;
-        if (elements.speechToTextDesc) elements.speechToTextDesc.textContent = translations.speechToTextDesc;
-        if (elements.roomModeTitle) elements.roomModeTitle.textContent = translations.roomModeTitle;
-        if (elements.roomModeDesc) elements.roomModeDesc.textContent = translations.roomModeDesc;
-        if (elements.historyTitle) elements.historyTitle.textContent = translations.historyTitle;
-        if (elements.historyDesc) elements.historyDesc.textContent = translations.historyDesc;
-        if (elements.settingsTitle) elements.settingsTitle.textContent = translations.settingsTitle;
-        if (elements.settingsDesc exploring
-        if (elements.settingsDesc) elements.settingsDesc.textContent = translations.settingsDesc;
+          // Log missing elements
+          Object.keys(elements).forEach(key => {
+            if (!elements[key]) {
+              console.warn(`Element with class '${key}' not found in DOM`);
+            } else {
+              console.log(`Element '${key}' found`);
+            }
+          });
+
+          // Update only if elements exist
+          if (elements.liveTranslationTitle) elements.liveTranslationTitle.textContent = translations.liveTranslationTitle;
+          if (elements.liveTranslationDesc) elements.liveTranslationDesc.textContent = translations.liveTranslationDesc;
+          if (elements.speechToTextTitle) elements.speechToTextTitle.textContent = translations.speechToTextTitle;
+          if (elements.speechToTextDesc) elements.speechToTextDesc.textContent = translations.speechToTextDesc;
+          if (elements.roomModeTitle) elements.roomModeTitle.textContent = translations.roomModeTitle;
+          if (elements.roomModeDesc) elements.roomModeDesc.textContent = translations.roomModeDesc;
+          if (elements.historyTitle) elements.historyTitle.textContent = translations.historyTitle;
+          if (elements.historyDesc) elements.historyDesc.textContent = translations.historyDesc;
+          if (elements.settingsTitle) elements.settingsTitle.textContent = translations.settingsTitle;
+          if (elements.settingsDesc) elements.settingsDesc.textContent = translations.settingsDesc;
+
+          // Log navigation links update
+          const navLinks = document.querySelectorAll('.nav-link');
+          console.log(`Found ${navLinks.length} navigation links`);
+        } catch (error) {
+          console.error('Error in updateUI:', error);
+        }
       }
 
       // Socket.IO language change listener
       socket.on('language_changed', (data) => {
+        console.log('Received language_changed event:', data);
         updateUI(data.language);
       });
 
