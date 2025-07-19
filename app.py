@@ -45,27 +45,23 @@ logging.basicConfig(
 )
 logger.setLevel(logging.INFO)
 
-# 動態獲取 Colab URL
+# 動態獲取 Colab API 端點
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app') + '/health', headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('colab_url', os.environ.get('COLAB_BASE_URL', 'https://28c0a5dfc447.ngrok-free.app'))
-        else:
-            logger.warning("Failed to fetch dynamic Colab URL, using fallback")
-            return os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app')
+        response = requests.get("https://1826526077dd.ngrok-free.app/health", headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('colab_url', "https://1826526077dd.ngrok-free.app")
     except requests.RequestException as e:
-        logger.error(f"Failed to fetch Colab URL: {e}")
-        return os.environ.get('COLAB_BASE_URL', 'https://1826526077dd.ngrok-free.app')
+        logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
+        return "https://1826526077dd.ngrok-free.app"
 
-COLAB_BASE_URL = get_colab_base_url()
+COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
-logger.info(f"Colab URLs: PREDICT={COLAB_PREDICT_URL}, STT={COLAB_STT_URL}, STT_MALAY={COLAB_STT_MALAY_URL}, HEALTH={COLAB_HEALTH_URL}")
 
 # 手語映射表
 GESTURE_MAPPING = {
@@ -87,11 +83,6 @@ def get_db():
     try:
         db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=10)
         db.row_factory = sqlite3.Row
-        # 檢查並添加 language 列
-        cursor = db.execute("PRAGMA table_info(translations)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'language' not in columns:
-            db.execute("ALTER TABLE translations ADD COLUMN language TEXT DEFAULT 'en'")
         yield db
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {str(e)}")
@@ -109,8 +100,7 @@ def init_db():
                        user TEXT,
                        text TEXT,
                        gesture INTEGER,
-                       timestamp TEXT,
-                       language TEXT DEFAULT 'en')''')
+                       timestamp TEXT)''')
         db.execute('''CREATE TABLE IF NOT EXISTS feedback
                       (id INTEGER PRIMARY KEY AUTOINCREMENT,
                        user TEXT,
@@ -206,7 +196,7 @@ def favicon():
     return '', 204
 
 # API 路由
-def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0, language: str = 'en') -> Dict[str, Any]:
+def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
         return '', 204
     
@@ -230,14 +220,13 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
     
     try:
         files = {file_key: (media_file.filename, media_file, media_file.content_type or content_type)}
-        form_data = {'language': language} if language == 'ms' else {}
         media_id = str(uuid4())
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 headers = {'ngrok-skip-browser-warning': 'true'}
                 logger.info(f"Sending request to {endpoint}")
-                response = requests.post(endpoint, files=files, data=form_data, headers=headers, timeout=120)
+                response = requests.post(endpoint, files=files, headers=headers, timeout=120)
                 response.raise_for_status()
                 result = response.json()
                 logger.info(f"Received result from Colab: {result}")
@@ -247,29 +236,23 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 if file_key == 'video' and result.get('predictions'):
                     text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
                 
-                # 僅對非馬來語轉錄保存到數據庫
-                if language != 'ms':
-                    with get_db() as db:
-                        db.execute(
-                            'INSERT INTO translations (user, text, gesture, timestamp, language) VALUES (?, ?, ?, ?, ?)',
-                            ('anonymous', text, result.get('gesture', gesture_default), datetime.datetime.utcnow().isoformat(), language)
-                        )
-                        db.commit()
+                with get_db() as db:
+                    db.execute(
+                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                        ('anonymous', text, result.get('gesture', gesture_default), datetime.datetime.utcnow().isoformat())
+                    )
+                    db.commit()
                 
-                logger.info(f"Emitting {file_key} translation globally: {text}, language: {language}")
+                logger.info(f"Emitting {file_key} translation globally: {text}")
                 socketio.emit('translation', {
                     'text': text,
                     'gesture': result.get('gesture', gesture_default),
                     'user': 'anonymous',
-                    'language': language,
-                    'engine': result.get('engine', 'vosk' if language == 'en' else 'whisper'),
                     'video_id': media_id if file_key == 'video' else None
                 })
-                return jsonify({
-                    'translation': text if file_key == 'video' else {'text': text, 'language': language, 'engine': result.get('engine', 'unknown')},
-                    'video_id': media_id if file_key == 'video' else None,
-                    'gesture': result.get('gesture', gesture_default)
-                })
+                return jsonify({'translation': text if file_key == 'video' else {'text': text}, 
+                               'video_id': media_id if file_key == 'video' else None,
+                               'gesture': result.get('gesture', gesture_default)})
             
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
@@ -295,7 +278,7 @@ def speech_to_text():
 
 @app.route('/speech_to_text_malay', methods=['POST', 'OPTIONS'])
 def speech_to_text_malay():
-    return process_media_request(COLAB_STT_MALAY_URL, 'audio', 'audio/webm;codecs=opus', gesture_default=0, language='ms')
+    return process_media_request(COLAB_STT_MALAY_URL, 'audio', 'audio/webm;codecs=opus', gesture_default=0)
 
 @app.route('/api/history', methods=['GET', 'OPTIONS'])
 def get_history():
@@ -326,7 +309,7 @@ def save_settings():
         if language not in ['en', 'ms']:
             return jsonify({'error': 'Invalid language code'}), 400
         logger.info(f"Language setting saved: {language}")
-        socketio.emit('language_changed', {'language': language})
+        socketio.emit('language_changed', {'language': language})  # Broadcast language change
         return jsonify({'message': 'Language setting saved successfully', 'language': language})
     except Exception as e:
         logger.error(f"Error saving settings: {str(e)}")
@@ -335,7 +318,7 @@ def save_settings():
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory('static', path)
-
+    
 @app.route('/api/feedback', methods=['POST', 'OPTIONS'])
 def save_feedback_endpoint():
     logger.info(f"Received feedback request from origin: {request.headers.get('Origin')}")
@@ -377,8 +360,7 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
         'colab_status': check_colab_status(),
-        'database': check_database_status(),
-        'colab_url': COLAB_BASE_URL
+        'database': check_database_status()
     })
 
 def check_colab_status() -> str:
