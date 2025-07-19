@@ -184,13 +184,6 @@
     16: "Sorry",
     0: "Unknown"
 };
-    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage('speechToText', currentLang);
-};
     const FLASK_URL = detectServerUrl();
     const COLAB_URL = "https://7d1d03ca5ce8.ngrok-free.app"; // 請更新為最新 ngrok URL
     
