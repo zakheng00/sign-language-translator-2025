@@ -171,6 +171,7 @@
     .stagger-4 { animation-delay: 0.4s; }
     .stagger-5 { animation-delay: 0.5s; }
     .stagger-6 { animation-delay: 0.6s; }
+    .stagger-7 { animation-delay: 0.7s; }
 
     .nav-links {
       background: rgba(255, 255, 255, 0.1);
@@ -210,6 +211,7 @@
         <a href="/live-translation" id="liveTranslationLink">Live Translation</a>
         <a href="/room-mode" id="roomModeLink">Room Mode</a>
         <a href="/speech-to-text" id="speechToTextLink">Speech to Text</a>
+        <a href="/speech-to-text-malay" id="speechToTextMalayLink">Speech to Text (Malay)</a>
         <a href="/history" id="historyLink">History</a>
         <a href="/settings" id="settingsLink">Settings</a>
       </nav>
@@ -252,7 +254,21 @@
         </div>
       </a>
       
-      <a href="/room-mode" class="feature-card rounded-3xl p-8 group block slide-in stagger-4">
+      <a href="/speech-to-text-malay" class="feature-card rounded-3xl p-8 group block slide-in stagger-4">
+        <div class="text-center">
+          <div class="icon-wrapper mb-6">
+            <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-teal-400 to-blue-600 text-white shadow-lg">
+              🎤
+            </div>
+          </div>
+          <h2 class="text-2xl font-bold gradient-text mb-3" id="speechToTextMalayTitle">Speech to Text (Malay)</h2>
+          <p class="text-gray-600 leading-relaxed" id="speechToTextMalayDesc">
+            Convert spoken Malay into accurate text with advanced speech recognition
+          </p>
+        </div>
+      </a>
+      
+      <a href="/room-mode" class="feature-card rounded-3xl p-8 group block slide-in stagger-5">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
             <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-400 to-pink-600 text-white shadow-lg">
@@ -266,7 +282,7 @@
         </div>
       </a>
       
-      <a href="/history" class="feature-card rounded-3xl p-8 group block slide-in stagger-5">
+      <a href="/history" class="feature-card rounded-3xl p-8 group block slide-in stagger-6">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
             <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-red-600 text-white shadow-lg">
@@ -280,7 +296,7 @@
         </div>
       </a>
       
-      <a href="/settings" class="feature-card rounded-3xl p-8 group block slide-in stagger-6">
+      <a href="/settings" class="feature-card rounded-3xl p-8 group block slide-in stagger-7">
         <div class="text-center">
           <div class="icon-wrapper mb-6">
             <div class="w-16 h-16 mx-auto text-5xl flex items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white shadow-lg">
@@ -307,12 +323,15 @@
           liveTranslationLink: "Live Translation",
           roomModeLink: "Room Mode",
           speechToTextLink: "Speech to Text",
+          speechToTextMalayLink: "Speech to Text (Malay)",
           historyLink: "History",
           settingsLink: "Settings",
           liveTranslationTitle: "Live Sign Translation",
           liveTranslationDesc: "Experience real-time sign language translation with advanced AI recognition using your webcam",
           speechToTextTitle: "Speech to Text",
           speechToTextDesc: "Convert spoken words into accurate text with natural language processing",
+          speechToTextMalayTitle: "Speech to Text (Malay)",
+          speechToTextMalayDesc: "Convert spoken Malay into accurate text with advanced speech recognition",
           roomModeTitle: "Room Mode",
           roomModeDesc: "Create collaborative spaces for seamless real-time translation with multiple users",
           historyTitle: "Translation History",
@@ -327,12 +346,15 @@
           liveTranslationLink: "Terjemahan Langsung",
           roomModeLink: "Mod Bilik",
           speechToTextLink: "Pertuturan ke Teks",
+          speechToTextMalayLink: "Pertuturan ke Teks (Melayu)",
           historyLink: "Sejarah",
           settingsLink: "Tetapan",
           liveTranslationTitle: "Terjemahan Isyarat Langsung",
           liveTranslationDesc: "Alami penterjemahan bahasa isyarat masa nyata dengan pengecaman AI canggih menggunakan kamera web anda",
           speechToTextTitle: "Pertuturan ke Teks",
           speechToTextDesc: "Tukar perkataan lisan kepada teks yang tepat dengan pemprosesan bahasa semula jadi",
+          speechToTextMalayTitle: "Pertuturan ke Teks (Melayu)",
+          speechToTextMalayDesc: "Tukar pertuturan Melayu kepada teks yang tepat dengan pengecaman pertuturan canggih",
           roomModeTitle: "Mod Bilik",
           roomModeDesc: "Cipta ruang kolaboratif untuk penterjemahan masa nyata yang lancar dengan berbilang pengguna",
           historyTitle: "Sejarah Terjemahan",
@@ -354,12 +376,15 @@
       document.getElementById('liveTranslationLink').textContent = translations.liveTranslationLink;
       document.getElementById('roomModeLink').textContent = translations.roomModeLink;
       document.getElementById('speechToTextLink').textContent = translations.speechToTextLink;
+      document.getElementById('speechToTextMalayLink').textContent = translations.speechToTextMalayLink;
       document.getElementById('historyLink').textContent = translations.historyLink;
       document.getElementById('settingsLink').textContent = translations.settingsLink;
       document.getElementById('liveTranslationTitle').textContent = translations.liveTranslationTitle;
       document.getElementById('liveTranslationDesc').textContent = translations.liveTranslationDesc;
       document.getElementById('speechToTextTitle').textContent = translations.speechToTextTitle;
       document.getElementById('speechToTextDesc').textContent = translations.speechToTextDesc;
+      document.getElementById('speechToTextMalayTitle').textContent = translations.speechToTextMalayTitle;
+      document.getElementById('speechToTextMalayDesc').textContent = translations.speechToTextMalayDesc;
       document.getElementById('roomModeTitle').textContent = translations.roomModeTitle;
       document.getElementById('roomModeDesc').textContent = translations.roomModeDesc;
       document.getElementById('historyTitle').textContent = translations.historyTitle;
