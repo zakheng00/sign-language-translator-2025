@@ -290,12 +290,15 @@ def save_settings():
         if language not in ['en', 'ms']:
             return jsonify({'error': 'Invalid language code'}), 400
         logger.info(f"Language setting saved: {language}")
-        socketio.emit('language_changed', {'language': language})  # 廣播語言變更
+        socketio.emit('language_changed', {'language': language})  # Broadcast language change
         return jsonify({'message': 'Language setting saved successfully', 'language': language})
     except Exception as e:
         logger.error(f"Error saving settings: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
+    
 @app.route('/api/feedback', methods=['POST', 'OPTIONS'])
 def save_feedback_endpoint():
     logger.info(f"Received feedback request from origin: {request.headers.get('Origin')}")
