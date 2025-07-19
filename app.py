@@ -11,45 +11,58 @@ import sqlite3
 import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, disconnect
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
+import signal
+import sys
+import threading
 
 # Flask 設置
 app = Flask(__name__, static_folder='static', template_folder='templates')
-socketio = SocketIO(app, cors_allowed_origins=["https://sign-language-translator-2025.onrender.com"])
-executor = ThreadPoolExecutor(max_workers=4)
+
+# 修復 SocketIO 配置以避免連接問題
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*",  # 更寬鬆的CORS設置
+    async_mode='threading',    # 使用線程模式而非gevent
+    ping_timeout=60,           # 增加ping超時
+    ping_interval=25,          # 減少ping間隔
+    logger=True,               # 啟用日志
+    engineio_logger=True       # 啟用引擎日志
+)
+
+executor = ThreadPoolExecutor(max_workers=2)  # 減少工作線程數量
 
 # 修復 CORS 配置
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "https://sign-language-translator-2025.onrender.com",
-            "https://*.ngrok-free.app",
-            "https://*.ngrok.io",
-            "http://localhost:*",
-            "http://127.0.0.1:*"
-        ],
+        "origins": "*",  # 更寬鬆的origin設置
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         "max_age": 86400
     }
-}, supports_credentials=True)
+}, supports_credentials=False)  # 禁用credentials以避免CORS問題
 
 # 設置日誌
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(), logging.FileHandler('app.log')]
+    handlers=[logging.StreamHandler()]  # 移除文件處理器以避免文件描述符問題
 )
 logger.setLevel(logging.INFO)
+
+# 全局變量以跟踪連接狀態
+active_connections = set()
+shutdown_event = threading.Event()
 
 # 動態獲取 Colab API 端點
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://1826526077dd.ngrok-free.app/health", headers=headers, timeout=5)
+        response = requests.get("https://1826526077dd.ngrok-free.app/health", 
+                              headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data.get('colab_url', "https://1826526077dd.ngrok-free.app")
@@ -81,40 +94,52 @@ DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 def get_db():
     db = None
     try:
-        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=10)
+        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=30)
         db.row_factory = sqlite3.Row
+        # 設置WAL模式以提高並發性能
+        db.execute('PRAGMA journal_mode=WAL')
         yield db
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {str(e)}")
         if db:
-            db.rollback()
+            try:
+                db.rollback()
+            except:
+                pass
         raise
     finally:
         if db:
-            db.close()
+            try:
+                db.close()
+            except:
+                pass
 
 def init_db():
-    with get_db() as db:
-        db.execute('''CREATE TABLE IF NOT EXISTS translations
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       user TEXT,
-                       text TEXT,
-                       gesture INTEGER,
-                       timestamp TEXT)''')
-        db.execute('''CREATE TABLE IF NOT EXISTS feedback
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       user TEXT,
-                       feedback TEXT,
-                       timestamp TEXT)''')
-        db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
-        db.commit()
-    logger.info("SQLite database initialized with translations and feedback tables.")
+    try:
+        with get_db() as db:
+            db.execute('''CREATE TABLE IF NOT EXISTS translations
+                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           user TEXT,
+                           text TEXT,
+                           gesture INTEGER,
+                           timestamp TEXT)''')
+            db.execute('''CREATE TABLE IF NOT EXISTS feedback
+                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           user TEXT,
+                           feedback TEXT,
+                           timestamp TEXT)''')
+            db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
+            db.commit()
+        logger.info("SQLite database initialized with translations and feedback tables.")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
 
 def save_feedback(data):
     try:
         with get_db() as db:
             db.execute('INSERT INTO feedback (user, feedback, timestamp) VALUES (?, ?, ?)',
-                       (data.get('user', 'anonymous'), data.get('feedback', ''), datetime.datetime.utcnow().isoformat()))
+                       (data.get('user', 'anonymous'), data.get('feedback', ''), 
+                        datetime.datetime.utcnow().isoformat()))
             db.commit()
         logger.info(f"Feedback saved for user: {data.get('user', 'anonymous')}")
     except Exception as e:
@@ -123,22 +148,41 @@ def save_feedback(data):
 
 init_db()
 
+# SocketIO 事件處理
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f'Client connected: {request.sid}')
+    active_connections.add(request.sid)
+    
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info(f'Client disconnected: {request.sid}')
+    active_connections.discard(request.sid)
+
+@socketio.on('error')
+def handle_error(e):
+    logger.error(f'SocketIO error: {e}')
+
 # 添加請求日誌中間件
 @app.before_request
 def log_request():
+    if request.path.startswith('/socket.io'):
+        return  # 跳過socket.io請求的日志
     request_start_time = time.time()
     logger.info(f"Request: {request.method} {request.url}")
-    logger.info(f"Origin: {request.headers.get('Origin', 'No Origin')}")
-    logger.info(f"User-Agent: {request.headers.get('User-Agent', 'No User-Agent')}")
-    logger.info(f"Content-Length: {request.content_length}")
     request.environ['request_start_time'] = request_start_time
 
 @app.after_request
 def after_request(response):
+    if request.path.startswith('/socket.io'):
+        return response  # 跳過socket.io響應
+        
     request_start_time = request.environ.get('request_start_time')
     if request_start_time:
         duration = time.time() - request_start_time
         logger.info(f"Request completed in {duration:.2f} seconds")
+    
+    # 設置更寬鬆的CORS頭
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
     response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
@@ -147,10 +191,13 @@ def after_request(response):
 
 # 監控資源使用情況
 def log_resource_usage():
-    process = psutil.Process()
-    memory = process.memory_info().rss / 1024 / 1024
-    cpu = process.cpu_percent(interval=1)
-    logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+    try:
+        process = psutil.Process()
+        memory = process.memory_info().rss / 1024 / 1024
+        cpu = process.cpu_percent(interval=0.1)
+        logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+    except Exception as e:
+        logger.error(f"Failed to get resource usage: {e}")
 
 # 測試端點
 @app.route('/test')
@@ -159,7 +206,9 @@ def test():
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
-        'endpoints': ['/health', '/predict', '/speech_to_text', '/speech_to_text_malay', '/api/history', '/api/settings', '/api/feedback', '/api/clear_history']
+        'active_connections': len(active_connections),
+        'endpoints': ['/health', '/predict', '/speech_to_text', '/speech_to_text_malay', 
+                     '/api/history', '/api/settings', '/api/feedback', '/api/clear_history']
     })
 
 # 頁面路由
@@ -195,7 +244,7 @@ def settings():
 def favicon():
     return '', 204
 
-# API 路由
+# API 路由 - 改進錯誤處理和資源管理
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
         return '', 204
@@ -204,31 +253,35 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         return jsonify({'error': f'Missing {file_key} file'}), 400
     
     media_file = request.files[file_key]
-    logger.info(f"Processing {file_key} file: {media_file.filename}, content_length: {media_file.content_length}, content_type: {media_file.content_type}")
+    logger.info(f"Processing {file_key} file: {media_file.filename}")
     
-    if media_file.content_length is None or media_file.content_length == 0:
-        logger.warning(f"{file_key} file content_length is invalid ({media_file.content_length})")
-        try:
-            media_data = media_file.read(100)
-            logger.info(f"{file_key} file sample: {media_data}")
-            if not media_data:
-                return jsonify({'error': f'Empty {file_key} data'}), 400
-            media_file.seek(0)
-        except Exception as e:
-            logger.error(f"Failed to read {file_key} file: {e}")
-            return jsonify({'error': f'Invalid {file_key} file'}), 400
+    # 檢查文件大小限制（50MB）
+    if media_file.content_length and media_file.content_length > 50 * 1024 * 1024:
+        return jsonify({'error': f'{file_key} file too large (max 50MB)'}), 400
     
     try:
-        files = {file_key: (media_file.filename, media_file, media_file.content_type or content_type)}
+        # 創建臨時文件來處理上傳
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            media_file.save(tmp_file.name)
+            tmp_file.seek(0)
+            
+            files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
+                               media_file.content_type or content_type)}
+            
         media_id = str(uuid4())
-        max_retries = 3
+        max_retries = 2  # 減少重試次數
+        
         for attempt in range(max_retries):
             try:
                 headers = {'ngrok-skip-browser-warning': 'true'}
-                logger.info(f"Sending request to {endpoint}")
-                response = requests.post(endpoint, files=files, headers=headers, timeout=120)
-                response.raise_for_status()
-                result = response.json()
+                logger.info(f"Sending request to {endpoint} (attempt {attempt + 1})")
+                
+                with requests.Session() as session:
+                    response = session.post(endpoint, files=files, headers=headers, 
+                                          timeout=180, stream=False)
+                    response.raise_for_status()
+                    result = response.json()
+                
                 logger.info(f"Received result from Colab: {result}")
                 
                 text = result.get('text', 'No transcription' if file_key == 'audio' else 
@@ -236,37 +289,59 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 if file_key == 'video' and result.get('predictions'):
                     text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
                 
-                with get_db() as db:
-                    db.execute(
-                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
-                        ('anonymous', text, result.get('gesture', gesture_default), datetime.datetime.utcnow().isoformat())
-                    )
-                    db.commit()
+                # 保存到數據庫
+                try:
+                    with get_db() as db:
+                        db.execute(
+                            'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                            ('anonymous', text, result.get('gesture', gesture_default), 
+                             datetime.datetime.utcnow().isoformat())
+                        )
+                        db.commit()
+                except Exception as db_error:
+                    logger.error(f"Database save failed: {db_error}")
                 
-                logger.info(f"Emitting {file_key} translation globally: {text}")
-                socketio.emit('translation', {
-                    'text': text,
-                    'gesture': result.get('gesture', gesture_default),
-                    'user': 'anonymous',
-                    'video_id': media_id if file_key == 'video' else None
+                # 發送Socket.IO事件（僅發送給當前房間）
+                try:
+                    socketio.emit('translation', {
+                        'text': text,
+                        'gesture': result.get('gesture', gesture_default),
+                        'user': 'anonymous',
+                        'video_id': media_id if file_key == 'video' else None
+                    }, room=request.sid if hasattr(request, 'sid') else None)
+                except Exception as socket_error:
+                    logger.error(f"Socket emission failed: {socket_error}")
+                
+                return jsonify({
+                    'translation': text if file_key == 'video' else {'text': text}, 
+                    'video_id': media_id if file_key == 'video' else None,
+                    'gesture': result.get('gesture', gesture_default)
                 })
-                return jsonify({'translation': text if file_key == 'video' else {'text': text}, 
-                               'video_id': media_id if file_key == 'video' else None,
-                               'gesture': result.get('gesture', gesture_default)})
             
             except requests.exceptions.Timeout:
+                logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
-                    logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}, retrying...")
-                    time.sleep(2 ** attempt)
+                    time.sleep(2)
                     continue
-                logger.error(f"Max retries reached for {file_key} request")
-                return jsonify({'error': f'{file_key} request timed out after max retries'}), 500
+                return jsonify({'error': f'{file_key} request timed out'}), 504
             except requests.exceptions.RequestException as e:
                 logger.error(f"{file_key} request failed: {e}")
-                return jsonify({'error': f'{file_key} request failed: {str(e)}'}), 500
+                return jsonify({'error': f'{file_key} request failed: {str(e)}'}), 503
+            
     except Exception as e:
         logger.error(f"Unexpected error in {file_key} processing: {e}")
-        return jsonify({'error': f'Unexpected error processing {file_key}: {str(e)}'}), 500
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
+    finally:
+        # 清理臨時文件和文件句柄
+        try:
+            if 'files' in locals():
+                for f in files.values():
+                    if hasattr(f[1], 'close'):
+                        f[1].close()
+            if 'tmp_file' in locals():
+                os.unlink(tmp_file.name)
+        except Exception as cleanup_error:
+            logger.error(f"Cleanup failed: {cleanup_error}")
 
 @app.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
@@ -285,7 +360,6 @@ def get_history():
     if request.method == 'OPTIONS':
         return '', 204
     
-    logger.info(f"Received history request from origin: {request.headers.get('Origin', 'No Origin')}")
     try:
         with get_db() as db:
             cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
@@ -298,7 +372,6 @@ def get_history():
 
 @app.route('/api/settings', methods=['POST', 'OPTIONS'])
 def save_settings():
-    logger.info(f"Received settings request from origin: {request.headers.get('Origin')}")
     if request.method == 'OPTIONS':
         return '', 204
     try:
@@ -309,7 +382,7 @@ def save_settings():
         if language not in ['en', 'ms']:
             return jsonify({'error': 'Invalid language code'}), 400
         logger.info(f"Language setting saved: {language}")
-        socketio.emit('language_changed', {'language': language})  # Broadcast language change
+        socketio.emit('language_changed', {'language': language})
         return jsonify({'message': 'Language setting saved successfully', 'language': language})
     except Exception as e:
         logger.error(f"Error saving settings: {str(e)}")
@@ -321,7 +394,6 @@ def serve_static(path):
     
 @app.route('/api/feedback', methods=['POST', 'OPTIONS'])
 def save_feedback_endpoint():
-    logger.info(f"Received feedback request from origin: {request.headers.get('Origin')}")
     if request.method == 'OPTIONS':
         return '', 204
     try:
@@ -339,7 +411,6 @@ def save_feedback_endpoint():
 
 @app.route('/api/clear_history', methods=['DELETE', 'OPTIONS'])
 def clear_history():
-    logger.info(f"Received clear history request from origin: {request.headers.get('Origin')}")
     if request.method == 'OPTIONS':
         return '', 204
     try:
@@ -360,13 +431,14 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
         'colab_status': check_colab_status(),
-        'database': check_database_status()
+        'database': check_database_status(),
+        'active_connections': len(active_connections)
     })
 
 def check_colab_status() -> str:
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
+        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=10)
         return 'online' if response.status_code == 200 else 'offline'
     except requests.RequestException as e:
         logger.error(f"Colab health check failed: {e}")
@@ -391,9 +463,27 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {str(error)}")
-    return jsonify({'error': 'Internal server error', 'details': str(error)}), 500
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception: {str(e)}")
+    return jsonify({'error': 'An unexpected error occurred'}), 500
+
+# 優雅關閉處理
+def signal_handler(signum, frame):
+    logger.info(f"Received signal {signum}, shutting down gracefully...")
+    shutdown_event.set()
+    socketio.stop()
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == '__main__':
     logger.info("Starting Flask application...")
     logger.info(f"Database path: {DATABASE_PATH}")
-    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+    logger.info(f"Active worker threads: {executor._max_workers}")
+    
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
