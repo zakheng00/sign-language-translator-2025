@@ -20,49 +20,62 @@
     }
     
     .glass-card {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.95);
       backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
       box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
     }
     
-    .feature-card {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    .btn {
       position: relative;
       overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      padding: 12px 24px;
+      cursor: pointer;
+      transform: translateY(0);
     }
     
-    .feature-card::before {
+    .btn:before {
       content: '';
       position: absolute;
       top: 0;
       left: -100%;
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
       transition: left 0.5s ease;
     }
     
-    .feature-card:hover::before {
+    .btn:hover:before {
       left: 100%;
     }
     
-    .feature-card:hover {
-      transform: translateY(-8px) scale(1.02);
-      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
-      background: rgba(255, 255, 255, 0.98);
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
     }
     
     .floating-shapes {
-      position: absolute;
+      position: fixed;
       width: 100%;
       height: 100%;
       overflow: hidden;
       pointer-events: none;
       z-index: 0;
+      top: 0;
+      left: 0;
     }
     
     .shape {
@@ -96,14 +109,6 @@
       animation-delay: 4s;
     }
     
-    .shape:nth-child(4) {
-      width: 100px;
-      height: 100px;
-      bottom: 10%;
-      right: 20%;
-      animation-delay: 1s;
-    }
-    
     @keyframes float {
       0%, 100% { transform: translateY(0px) rotate(0deg); }
       50% { transform: translateY(-20px) rotate(180deg); }
@@ -112,51 +117,8 @@
     .gradient-text {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
       background-clip: text;
-      color: transparent; /* 改進：使用 transparent 替代 -webkit-text-fill-color */
-      fallback-color: #333; /* 備用顏色，防止文字不可見 */
-    }
-    
-    .icon-wrapper {
-      position: relative;
-      display: inline-flex; /* 改進：使用 inline-flex 確保圖標容器可見 */
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .icon-wrapper::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 60px;
-      height: 60px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      border-radius: 50%;
-      opacity: 0;
-      z-index: -1;
-      transition: all 0.3s ease;
-    }
-    
-    .feature-card:hover .icon-wrapper::after {
-      opacity: 0.2;
-      transform: translate(-50%, -50%) scale(1.2);
-    }
-    
-    .icon {
-      font-size: 2.5rem; /* 明確設置圖標大小 */
-      line-height: 1; /* 確保圖標垂直居中 */
-    }
-    
-    .pulse {
-      animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
     }
     
     .slide-in {
@@ -174,10 +136,47 @@
     
     .stagger-1 { animation-delay: 0.1s; }
     .stagger-2 { animation-delay: 0.2s; }
-    .stagger-3 { animation-delay: 0.3s; }
-    .stagger-4 { animation-delay: 0.4s; }
-    .stagger-5 { animation-delay: 0.5s; }
-    .stagger-6 { animation-delay: 0.6s; }
+    
+    .status-bar {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    
+    .status-success {
+      color: #059669;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    
+    .status-error {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+    
+    .status-loading {
+      color: #d97706;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    
+    .loading-spinner {
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body class="relative">
@@ -185,10 +184,9 @@
     <div class="shape"></div>
     <div class="shape"></div>
     <div class="shape"></div>
-    <div class="shape"></div>
   </div>
   
-  <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-12">
+  <div class="relative z-10 max-w-4xl mx-auto p-8 space-y-8">
     <header class="text-center slide-in stagger-1">
       <nav class="flex justify-center gap-4 mb-4">
         <a href="/" class="nav-link text-blue-600 hover:underline">Home</a>
@@ -196,99 +194,49 @@
         <a href="/room-mode" class="nav-link text-blue-600 hover:underline">Room Mode</a>
         <a href="/speech-to-text" class="nav-link text-blue-600 hover:underline">Speech to Text</a>
         <a href="/history" class="nav-link text-blue-600 hover:underline">History</a>
-        <a href="/settings" class="nav-link text-blue-600 hover:underline">Settings</a>
       </nav>
-      <div class="glass-card rounded-3xl p-8 mb-8 pulse">
-        <h1 class="text-6xl font-bold text-white mb-4">Sign Language Translator</h1>
-        <p class="text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
-          Breaking barriers through intelligent real-time translation
+      <div class="glass-card rounded-3xl p-8 mb-8">
+        <h1 class="text-4xl font-bold gradient-text mb-2">
+          Sign Language Translator
+        </h1>
+        <p class="text-gray-600 text-lg">
+          Real-time translation for sign language and speech
         </p>
       </div>
     </header>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-      <a href="/live-translation" class="feature-card rounded-3xl p-8 group block slide-in stagger-2">
-        <div class="text-center">
-          <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-purple-600 text-white shadow-lg">
-              <span class="icon">🎥</span>
-            </div>
-          </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3 live-translation-title">Live Sign Translation</h2>
-          <p class="text-gray-600 leading-relaxed live-translation-desc">
-            Experience real-time sign language translation with advanced AI recognition using your webcam
-          </p>
+    <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
+      <h2 class="text-2xl font-bold gradient-text mb-6">Welcome</h2>
+      <p class="text-gray-600 text-lg">
+        Welcome to the Sign Language Translation System
+      </p>
+    </div>
+    
+    <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
+      <h2 class="text-2xl font-bold gradient-text mb-6">Language Settings</h2>
+      <div class="status-bar mb-6" id="languageStatus">
+        <div class="flex items-center">
+          <span>Loading language settings...</span>
         </div>
-      </a>
-      
-      <a href="/speech-to-text" class="feature-card rounded-3xl p-8 group block slide-in stagger-3">
-        <div class="text-center">
-          <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-blue-600 text-white shadow-lg">
-              <span class="icon">🎤</span>
-            </div>
-          </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3 speech-to-text-title">Speech to Text</h2>
-          <p class="text-gray-600 leading-relaxed speech-to-text-desc">
-            Convert spoken words into accurate text with natural language processing
-          </p>
-        </div>
-      </a>
-      
-      <a href="/room-mode" class="feature-card rounded-3xl p-8 group block slide-in stagger-4">
-        <div class="text-center">
-          <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-400 to-pink-600 text-white shadow-lg">
-              <span class="icon">🚪</span>
-            </div>
-          </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3 room-mode-title">Room Mode</h2>
-          <p class="text-gray-600 leading-relaxed room-mode-desc">
-            Create collaborative spaces for seamless real-time translation with multiple users
-          </p>
-        </div>
-      </a>
-      
-      <a href="/history" class="feature-card rounded-3xl p-8 group block slide-in stagger-5">
-        <div class="text-center">
-          <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-red-600 text-white shadow-lg">
-              <span class="icon">📜</span>
-            </div>
-          </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3 history-title">Translation History</h2>
-          <p class="text-gray-600 leading-relaxed history-desc">
-            Access and review your complete translation records and conversation history
-          </p>
-        </div>
-      </a>
-      
-      <a href="/settings" class="feature-card rounded-3xl p-8 group block slide-in stagger-6">
-        <div class="text-center">
-          <div class="icon-wrapper mb-6">
-            <div class="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white shadow-lg">
-              <span class="icon">⚙️</span>
-            </div>
-          </div>
-          <h2 class="text-2xl font-bold gradient-text mb-3 settings-title">Settings</h2>
-          <p class="text-gray-600 leading-relaxed settings-desc">
-            Customize language preferences and fine-tune AI model parameters
-          </p>
-        </div>
-      </a>
+      </div>
+      <div class="flex gap-4 justify-center">
+        <button id="langEnBtn" class="btn btn-primary">
+          <span class="relative z-10">🇬🇧 English</span>
+        </button>
+        <button id="langMsBtn" class="btn btn-primary">
+          <span class="relative z-10">🇲🇾 Bahasa Malaysia</span>
+        </button>
+      </div>
     </div>
   </div>
 
   <script type="module">
-    import { TRANSLATIONS, applyLanguage } from '/static/translations.js';
+    import { TRANSLATIONS, applyLanguage } from './static/translations.js';
 
     document.addEventListener('DOMContentLoaded', () => {
-      // Log DOM readiness
-      console.log('DOM fully loaded');
-
       // Initialize language
       let currentLang = localStorage.getItem('language') || 'en';
-      updateUI(currentLang);
+      applyLanguage('index', currentLang);
 
       // Server URL detection
       function detectServerUrl() {
@@ -299,6 +247,9 @@
       }
 
       const FLASK_URL = detectServerUrl();
+      const ENDPOINTS = {
+        SETTINGS: `${FLASK_URL}/api/settings`
+      };
 
       // Initialize Socket.IO
       const socket = io(FLASK_URL, {
@@ -306,72 +257,100 @@
         transports: ['websocket', 'polling']
       });
 
-      // Log Socket.IO connection status
-      socket.on('connect', () => {
-        console.log('Socket.IO connected to', FLASK_URL);
-      });
-      socket.on('connect_error', (error) => {
-        console.error('Socket.IO connection error:', error);
-      });
+      const languageStatus = document.getElementById('languageStatus');
+      const langEnBtn = document.getElementById('langEnBtn');
+      const langMsBtn = document.getElementById('langMsBtn');
+      const navLinks = document.querySelectorAll('.nav-link');
 
-      // Update UI function
-      function updateUI(lang) {
-        console.log('Updating UI with language:', lang);
-        try {
-          applyLanguage('index', lang);
-          const translations = TRANSLATIONS.index[lang];
-
-          // Update feature card titles and descriptions with null checks and logging
-          const elements = {
-            liveTranslationTitle: document.querySelector('.live-translation-title'),
-            liveTranslationDesc: document.querySelector('.live-translation-desc'),
-            speechToTextTitle: document.querySelector('.speech-to-text-title'),
-            speechToTextDesc: document.querySelector('.speech-to-text-desc'),
-            roomModeTitle: document.querySelector('.room-mode-title'),
-            roomModeDesc: document.querySelector('.room-mode-desc'),
-            historyTitle: document.querySelector('.history-title'),
-            historyDesc: document.querySelector('.history-desc'),
-            settingsTitle: document.querySelector('.settings-title'),
-            settingsDesc: document.querySelector('.settings-desc')
-          };
-
-          // Log missing elements
-          Object.keys(elements).forEach(key => {
-            if (!elements[key]) {
-              console.warn(`Element with class '${key}' not found in DOM`);
-            } else {
-              console.log(`Element '${key}' found`);
-            }
-          });
-
-          // Update only if elements exist
-          if (elements.liveTranslationTitle) elements.liveTranslationTitle.textContent = translations.liveTranslationTitle;
-          if (elements.liveTranslationDesc) elements.liveTranslationDesc.textContent = translations.liveTranslationDesc;
-          if (elements.speechToTextTitle) elements.speechToTextTitle.textContent = translations.speechToTextTitle;
-          if (elements.speechToTextDesc) elements.speechToTextDesc.textContent = translations.speechToTextDesc;
-          if (elements.roomModeTitle) elements.roomModeTitle.textContent = translations.roomModeTitle;
-          if (elements.roomModeDesc) elements.roomModeDesc.textContent = translations.roomModeDesc;
-          if (elements.historyTitle) elements.historyTitle.textContent = translations.historyTitle;
-          if (elements.historyDesc) elements.historyDesc.textContent = translations.historyDesc;
-          if (elements.settingsTitle) elements.settingsTitle.textContent = translations.settingsTitle;
-          if (elements.settingsDesc) elements.settingsDesc.textContent = translations.settingsDesc;
-
-          // Log navigation links update
-          const navLinks = document.querySelectorAll('.nav-link');
-          console.log(`Found ${navLinks.length} navigation links`);
-        } catch (error) {
-          console.error('Error in updateUI:', error);
-        }
+      // Update navigation links
+      if (navLinks.length >= 5) {
+        navLinks[0].textContent = TRANSLATIONS.index[currentLang].indexLink;
+        navLinks[1].textContent = TRANSLATIONS.index[currentLang].liveTranslationLink;
+        navLinks[2].textContent = TRANSLATIONS.index[currentLang].roomModeLink;
+        navLinks[3].textContent = TRANSLATIONS.index[currentLang].speechToTextLink;
+        navLinks[4].textContent = TRANSLATIONS.index[currentLang].historyLink;
       }
 
       // Socket.IO language change listener
       socket.on('language_changed', (data) => {
-        console.log('Received language_changed event:', data);
-        updateUI(data.language);
+        applyLanguage('index', data.language);
+        navLinks[0].textContent = TRANSLATIONS.index[data.language].indexLink;
+        navLinks[1].textContent = TRANSLATIONS.index[data.language].liveTranslationLink;
+        navLinks[2].textContent = TRANSLATIONS.index[data.language].roomModeLink;
+        navLinks[3].textContent = TRANSLATIONS.index[data.language].speechToTextLink;
+        navLinks[4].textContent = TRANSLATIONS.index[data.language].historyLink;
       });
 
-      // Initial UI update
-      updateUI(currentLang);
+      function updateStatus(element, message, type = 'loading') {
+        const statusIcon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⏳';
+        element.innerHTML = `
+          <div class="flex items-center">
+            ${type === 'loading' ? '<div class="loading-spinner"></div>' : `<span class="mr-2">${statusIcon}</span>`}
+            <span>${message}</span>
+          </div>
+        `;
+        element.className = `status-bar ${
+          type === 'success' ? 'status-success' : 
+          type === 'error' ? 'status-error' : 
+          'status-loading'
+        }`;
+      }
+
+      async function fetchData(endpoint, options = {}) {
+        try {
+          const response = await fetch(endpoint, {
+            ...options,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+              ...options.headers
+            },
+            mode: 'cors'
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+          return await response.json();
+        } catch (error) {
+          console.error(`Fetch failed for ${endpoint}:`, error);
+          throw error;
+        }
+      }
+
+      langEnBtn.addEventListener('click', async () => {
+        updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusLoading, 'loading');
+        try {
+          await fetchData(ENDPOINTS.SETTINGS, {
+            method: 'POST',
+            body: JSON.stringify({ language: 'en' })
+          });
+          applyLanguage('index', 'en');
+          navLinks[0].textContent = TRANSLATIONS.index['en'].indexLink;
+          navLinks[1].textContent = TRANSLATIONS.index['en'].liveTranslationLink;
+          navLinks[2].textContent = TRANSLATIONS.index['en'].roomModeLink;
+          navLinks[3].textContent = TRANSLATIONS.index['en'].speechToTextLink;
+          navLinks[4].textContent = TRANSLATIONS.index['en'].historyLink;
+        } catch (error) {
+          updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusError.replace('{error}', error.message), 'error');
+        }
+      });
+
+      langMsBtn.addEventListener('click', async () => {
+        updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusLoading, 'loading');
+        try {
+          await fetchData(ENDPOINTS.SETTINGS, {
+            method: 'POST',
+            body: JSON.stringify({ language: 'ms' })
+          });
+          applyLanguage('index', 'ms');
+          navLinks[0].textContent = TRANSLATIONS.index['ms'].indexLink;
+          navLinks[1].textContent = TRANSLATIONS.index['ms'].liveTranslationLink;
+          navLinks[2].textContent = TRANSLATIONS.index['ms'].roomModeLink;
+          navLinks[3].textContent = TRANSLATIONS.index['ms'].speechToTextLink;
+          navLinks[4].textContent = TRANSLATIONS.index['ms'].historyLink;
+        } catch (error) {
+          updateStatus(languageStatus, TRANSLATIONS.index[currentLang].languageStatusError.replace('{error}', error.message), 'error');
+        }
+      });
     });
   </script>
 </body>
