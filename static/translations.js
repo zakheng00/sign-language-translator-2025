@@ -9,23 +9,35 @@ export const TRANSLATIONS = {
       title: "Sign Language Translator",
       subtitle: "Real-time translation for sign language and speech",
       welcome: "Welcome to the Sign Language Translation System",
+      languageTitle: "Language Settings",
+      languageStatusLoading: "Loading language settings...",
+      languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
+      indexLink: "Home",
       liveTranslationLink: "Live Translation",
       roomModeLink: "Room Mode",
       speechToTextLink: "Speech to Text",
       historyLink: "History",
-      settingsLink: "Settings",
-      indexLink: "Home"
+      settingsLink: "Settings"
     },
     ms: {
       title: "Penterjemah Bahasa Isyarat",
       subtitle: "Terjemahan masa nyata untuk bahasa isyarat dan pertuturan",
       welcome: "Selamat Datang ke Sistem Penterjemahan Bahasa Isyarat",
+      languageTitle: "Tetapan Bahasa",
+      languageStatusLoading: "Memuatkan tetapan bahasa...",
+      languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
+      indexLink: "Laman Utama",
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
       speechToTextLink: "Pertuturan ke Teks",
       historyLink: "Sejarah",
-      settingsLink: "Tetapan",
-      indexLink: "Laman Utama"
+      settingsLink: "Tetapan"
     }
   },
   settings: {
@@ -35,6 +47,9 @@ export const TRANSLATIONS = {
       languageTitle: "Language Settings",
       languageStatusLoading: "Loading language settings...",
       languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
       feedbackTitle: "Feedback",
       feedbackPlaceholder: "Type your feedback here...",
       feedbackStatus: "Submit your feedback to help us improve",
@@ -61,6 +76,9 @@ export const TRANSLATIONS = {
       languageTitle: "Tetapan Bahasa",
       languageStatusLoading: "Memuatkan tetapan bahasa...",
       languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
       feedbackTitle: "Maklum Balas",
       feedbackPlaceholder: "Taip maklum balas anda di sini...",
       feedbackStatus: "Hantar maklum balas anda untuk membantu kami memperbaiki",
@@ -86,10 +104,17 @@ export const TRANSLATIONS = {
     en: {
       title: "Live Translation",
       subtitle: "Translate sign language and speech in real-time",
+      translationTitle: "Translation Controls",
       startButton: "Start Translation",
       stopButton: "Stop Translation",
       status: "Ready to translate",
       statusStreaming: "Streaming translation...",
+      languageTitle: "Language Settings",
+      languageStatusLoading: "Loading language settings...",
+      languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Home",
       liveTranslationLink: "Live Translation",
       roomModeLink: "Room Mode",
@@ -100,10 +125,17 @@ export const TRANSLATIONS = {
     ms: {
       title: "Terjemahan Langsung",
       subtitle: "Terjemah bahasa isyarat dan pertuturan secara masa nyata",
+      translationTitle: "Kawalan Terjemahan",
       startButton: "Mulakan Terjemahan",
       stopButton: "Hentikan Terjemahan",
       status: "Sedia untuk menterjemah",
       statusStreaming: "Menstrim terjemahan...",
+      languageTitle: "Tetapan Bahasa",
+      languageStatusLoading: "Memuatkan tetapan bahasa...",
+      languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Laman Utama",
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
@@ -116,10 +148,19 @@ export const TRANSLATIONS = {
     en: {
       title: "Room Mode",
       subtitle: "Collaborative translation in a shared room",
+      roomTitle: "Room Controls",
       joinRoom: "Join Room",
       leaveRoom: "Leave Room",
+      roomIdPlaceholder: "Room ID",
       roomStatus: "Enter a room ID to join",
       roomStatusConnected: "Connected to room: {roomId}",
+      roomStatusError: "Failed to join room: {error}",
+      languageTitle: "Language Settings",
+      languageStatusLoading: "Loading language settings...",
+      languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Home",
       liveTranslationLink: "Live Translation",
       roomModeLink: "Room Mode",
@@ -130,10 +171,19 @@ export const TRANSLATIONS = {
     ms: {
       title: "Mod Bilik",
       subtitle: "Terjemahan kolaboratif dalam bilik berkongsi",
+      roomTitle: "Kawalan Bilik",
       joinRoom: "Sertai Bilik",
       leaveRoom: "Tinggalkan Bilik",
+      roomIdPlaceholder: "ID Bilik",
       roomStatus: "Masukkan ID bilik untuk menyertai",
       roomStatusConnected: "Bersambung ke bilik: {roomId}",
+      roomStatusError: "Gagal menyertai bilik: {error}",
+      languageTitle: "Tetapan Bahasa",
+      languageStatusLoading: "Memuatkan tetapan bahasa...",
+      languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Laman Utama",
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
@@ -146,10 +196,17 @@ export const TRANSLATIONS = {
     en: {
       title: "Speech to Text",
       subtitle: "Convert your speech to text instantly",
+      recordingTitle: "Recording Controls",
       startRecording: "Start Recording",
       stopRecording: "Stop Recording",
       status: "Ready to record",
       statusRecording: "Recording...",
+      languageTitle: "Language Settings",
+      languageStatusLoading: "Loading language settings...",
+      languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Home",
       liveTranslationLink: "Live Translation",
       roomModeLink: "Room Mode",
@@ -160,10 +217,17 @@ export const TRANSLATIONS = {
     ms: {
       title: "Pertuturan ke Teks",
       subtitle: "Tukar pertuturan anda kepada teks dengan segera",
+      recordingTitle: "Kawalan Rakaman",
       startRecording: "Mulakan Rakaman",
       stopRecording: "Hentikan Rakaman",
       status: "Sedia untuk merakam",
       statusRecording: "Sedang merakam...",
+      languageTitle: "Tetapan Bahasa",
+      languageStatusLoading: "Memuatkan tetapan bahasa...",
+      languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Laman Utama",
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
@@ -176,8 +240,15 @@ export const TRANSLATIONS = {
     en: {
       title: "Translation History",
       subtitle: "View your past translations",
+      historyTitle: "Translation Records",
       noHistory: "No translation history available",
       clearHistory: "Clear All History",
+      languageTitle: "Language Settings",
+      languageStatusLoading: "Loading language settings...",
+      languageStatusSuccess: "Language updated to {lang}",
+      languageStatusError: "Failed to update language: {error}",
+      langEnButton: "English",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Home",
       liveTranslationLink: "Live Translation",
       roomModeLink: "Room Mode",
@@ -188,13 +259,20 @@ export const TRANSLATIONS = {
     ms: {
       title: "Sejarah Terjemahan",
       subtitle: "Lihat terjemahan anda yang lalu",
+      historyTitle: "Rekod Terjemahan",
       noHistory: "Tiada sejarah terjemahan tersedia",
       clearHistory: "Kosongkan Semua Sejarah",
+      languageTitle: "Tetapan Bahasa",
+      languageStatusLoading: "Memuatkan tetapan bahasa...",
+      languageStatusSuccess: "Bahasa ditukar ke {lang}",
+      languageStatusError: "Gagal menukar bahasa: {error}",
+      langEnButton: "Bahasa Inggeris",
+      langMsButton: "Bahasa Malaysia",
       indexLink: "Laman Utama",
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
       speechToTextLink: "Pertuturan ke Teks",
-      historyLink: "Sejarah",
+      historyLink: " FacetType="module"
       settingsLink: "Tetapan"
     }
   }
@@ -221,6 +299,12 @@ export function applyLanguage(page, lang) {
     navLinks[3].textContent = translations.speechToTextLink;
     navLinks[4].textContent = translations.historyLink;
   }
+
+  // Update language buttons
+  const langEnBtn = document.getElementById('langEnBtn');
+  const langMsBtn = document.getElementById('langMsBtn');
+  if (langEnBtn) langEnBtn.querySelector('span').textContent = translations.langEnButton;
+  if (langMsBtn) langMsBtn.querySelector('span').textContent = translations.langMsButton;
 
   // Page-specific updates
   if (page === 'settings') {
@@ -252,33 +336,86 @@ export function applyLanguage(page, lang) {
       <div class="flex items-center">
         <span>${translations.historyStatus}</span>
       </div>`;
+  } else if (page === 'index') {
+    const welcome = document.querySelector('.welcome-text');
+    const languageTitle = document.querySelectorAll('h2')[0];
+    const languageStatus = document.getElementById('languageStatus');
+    if (welcome) welcome.textContent = translations.welcome;
+    if (languageTitle) languageTitle.textContent = translations.languageTitle;
+    if (languageStatus) languageStatus.innerHTML = `
+      <div class="flex items-center">
+        <span class="mr-2">✅</span>
+        <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+      </div>`;
   } else if (page === 'liveTranslation') {
+    const translationTitle = document.querySelectorAll('h2')[0];
+    const languageTitle = document.querySelectorAll('h2')[1];
     const startButton = document.getElementById('startTranslationBtn');
     const stopButton = document.getElementById('stopTranslationBtn');
     const status = document.getElementById('translationStatus');
+    const languageStatus = document.getElementById('languageStatus');
+    if (translationTitle) translationTitle.textContent = translations.translationTitle;
+    if (languageTitle) languageTitle.textContent = translations.languageTitle;
     if (startButton) startButton.querySelector('span').textContent = translations.startButton;
     if (stopButton) stopButton.querySelector('span').textContent = translations.stopButton;
     if (status) status.innerHTML = `<div class="flex items-center"><span>${translations.status}</span></div>`;
+    if (languageStatus) languageStatus.innerHTML = `
+      <div class="flex items-center">
+        <span class="mr-2">✅</span>
+        <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+      </div>`;
   } else if (page === 'roomMode') {
+    const roomTitle = document.querySelectorAll('h2')[0];
+    const languageTitle = document.querySelectorAll('h2')[1];
     const joinRoomBtn = document.getElementById('joinRoomBtn');
     const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+    const roomIdInput = document.getElementById('roomIdInput');
     const roomStatus = document.getElementById('roomStatus');
+    const languageStatus = document.getElementById('languageStatus');
+    if (roomTitle) roomTitle.textContent = translations.roomTitle;
+    if (languageTitle) languageTitle.textContent = translations.languageTitle;
     if (joinRoomBtn) joinRoomBtn.querySelector('span').textContent = translations.joinRoom;
     if (leaveRoomBtn) leaveRoomBtn.querySelector('span').textContent = translations.leaveRoom;
+    if (roomIdInput) roomIdInput.placeholder = translations.roomIdPlaceholder;
     if (roomStatus) roomStatus.innerHTML = `<div class="flex items-center"><span>${translations.roomStatus}</span></div>`;
+    if (languageStatus) languageStatus.innerHTML = `
+      <div class="flex items-center">
+        <span class="mr-2">✅</span>
+        <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+      </div>`;
   } else if (page === 'speechToText') {
+    const recordingTitle = document.querySelectorAll('h2')[0];
+    const languageTitle = document.querySelectorAll('h2')[1];
     const startRecordingBtn = document.getElementById('startRecordingBtn');
     const stopRecordingBtn = document.getElementById('stopRecordingBtn');
     const status = document.getElementById('recordingStatus');
+    const languageStatus = document.getElementById('languageStatus');
+    if (recordingTitle) recordingTitle.textContent = translations.recordingTitle;
+    if (languageTitle) languageTitle.textContent = translations.languageTitle;
     if (startRecordingBtn) startRecordingBtn.querySelector('span').textContent = translations.startRecording;
     if (stopRecordingBtn) stopRecordingBtn.querySelector('span').textContent = translations.stopRecording;
     if (status) status.innerHTML = `<div class="flex items-center"><span>${translations.status}</span></div>`;
+    if (languageStatus) languageStatus.innerHTML = `
+      <div class="flex items-center">
+        <span class="mr-2">✅</span>
+        <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+      </div>`;
   } else if (page === 'history') {
+    const historyTitle = document.querySelectorAll('h2')[0];
+    const languageTitle = document.querySelectorAll('h2')[1];
     const clearHistoryBtn = document.getElementById('clearHistoryBtn');
     const historyList = document.getElementById('historyList');
+    const languageStatus = document.getElementById('languageStatus');
+    if (historyTitle) historyTitle.textContent = translations.historyTitle;
+    if (languageTitle) languageTitle.textContent = translations.languageTitle;
     if (clearHistoryBtn) clearHistoryBtn.querySelector('span').textContent = translations.clearHistory;
     if (historyList && historyList.children.length === 0) {
       historyList.innerHTML = `<div class="flex items-center"><span>${translations.noHistory}</span></div>`;
     }
+    if (languageStatus) languageStatus.innerHTML = `
+      <div class="flex items-center">
+        <span class="mr-2">✅</span>
+        <span>${translations.languageStatusSuccess.replace('{lang}', lang === 'en' ? 'English' : 'Bahasa Malaysia')}</span>
+      </div>`;
   }
 }
