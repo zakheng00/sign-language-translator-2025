@@ -272,7 +272,7 @@ export const TRANSLATIONS = {
       liveTranslationLink: "Terjemahan Langsung",
       roomModeLink: "Mod Bilik",
       speechToTextLink: "Pertuturan ke Teks",
-      historyLink: " FacetType="module"
+      historyLink: "Sejarah",
       settingsLink: "Tetapan"
     }
   }
@@ -292,12 +292,13 @@ export function applyLanguage(page, lang) {
 
   // Update navigation links
   const navLinks = document.querySelectorAll('.nav-link');
-  if (navLinks.length >= 5) {
+  if (navLinks.length >= 6) {
     navLinks[0].textContent = translations.indexLink;
     navLinks[1].textContent = translations.liveTranslationLink;
     navLinks[2].textContent = translations.roomModeLink;
     navLinks[3].textContent = translations.speechToTextLink;
     navLinks[4].textContent = translations.historyLink;
+    navLinks[5].textContent = translations.settingsLink;
   }
 
   // Update language buttons
