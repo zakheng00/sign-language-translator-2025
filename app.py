@@ -77,15 +77,38 @@ COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
 # 手語映射表
-GESTURE_MAPPING = {
-    18: "Hello",
-    11: "Thank You",
-    7: "I Love You",
-    8: "Yes",
-    19: "Good Bye",
-    16: "Sorry",
-    0: "Unknown"
-}
+const gestureMap = {
+    1: "Hi, How are you?",
+    2: "I am fine, hank you.",
+    3: "What is your name",
+    4: "Excuse me, what is the time now?",
+    5: "I am hungry and want to eat.",
+    6: "Can you help me.",
+    7: "I need help.",
+    8: "Have a nice day.",
+    9: "Thank You for you help.",
+    10: "How much is this?",
+    11: "See you tomorrow",
+    12: "I am going to buy something.",
+    13: "Do you want to play together.",
+    14: "Where are you going?",
+    15: "Where is toilet",
+    16: "Toilot is turn right in front",
+    17: "What day is it today?",
+    18: "Today is Monday.",
+    19: "Yes of course.",
+    20: "what are you doing now?",
+    21: "I am working",
+    22: "Are you free tomorrow afternoon.",
+    23: "Sorry i am busy tomorrow",
+    24: "I have a little headache",
+    25: "What is your name?",
+    26: "I want a glass of water",
+    27: "This is too expansive.",
+    28: "Can i sit here?",
+    29: "I need to rest."
+};
+
 
 # SQLite 設置
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
