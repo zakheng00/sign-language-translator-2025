@@ -243,12 +243,10 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
     media_file = request.files[file_key]
     logger.info(f"Processing {file_key} file: {media_file.filename}")
     
-    # 檢查檔案大小限制（50MB）
     if media_file.content_length and media_file.content_length > 50 * 1024 * 1024:
         return jsonify({'error': f'{file_key} file too large (max 50MB)'}), 400
     
     try:
-        # 創建臨時檔案來處理上傳
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             media_file.save(tmp_file.name)
             tmp_file.seek(0)
@@ -257,7 +255,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                                media_file.content_type or content_type)}
             
         media_id = str(uuid4())
-        max_retries = 2  # 減少重試次數
+        max_retries = 3  # Increased retries for ngrok stability
         
         for attempt in range(max_retries):
             try:
@@ -272,12 +270,9 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 
                 logger.info(f"Received result from Colab: {result}")
                 
-                text = result.get('text', 'No transcription' if file_key == 'audio' else 
-                                 GESTURE_MAPPING.get(result.get('gesture', gesture_default), 'Unknown gesture'))
-                if file_key == 'video' and result.get('predictions'):
-                    text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
+                # Use 'text' directly from Colab response
+                text = result.get('text', 'No transcription' if file_key == 'audio' else 'No gesture recognized')
                 
-                # 保存到資料庫
                 try:
                     with get_db() as db:
                         db.execute(
@@ -289,7 +284,6 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 except Exception as db_error:
                     logger.error(f"Database save failed: {db_error}")
                 
-                # 發送Socket.IO事件（僅發送給當前房間）
                 try:
                     socketio.emit('translation', {
                         'text': text,
@@ -309,7 +303,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
             except requests.exceptions.Timeout:
                 logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}")
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    time.sleep(2 ** attempt)  # Exponential backoff
                     continue
                 return jsonify({'error': f'{file_key} request timed out'}), 504
             except requests.exceptions.RequestException as e:
@@ -320,7 +314,6 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         logger.error(f"Unexpected error in {file_key} processing: {e}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
     finally:
-        # 清理臨時檔案和檔案句柄
         try:
             if 'files' in locals():
                 for f in files.values():
