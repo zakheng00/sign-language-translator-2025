@@ -484,96 +484,57 @@
         }
       };
 
-      document.getElementById('uploadBtn').onclick = async () => {
-        if (recordedBlobs.length) {
-          // Fix: Create proper blob with correct MIME type
-          const mimeType = mediaRecorder ? mediaRecorder.mimeType : 'video/webm';
-          const blob = new Blob(recordedBlobs, { type: mimeType });
-          console.log('Created blob:', blob.type, blob.size, 'bytes');
-          
-          const formData = new FormData();
-          const videoId = crypto.randomUUID();
-          // Fix: Use proper filename with correct extension
-          const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-          formData.append('video', blob, `recording_${videoId}.${extension}`);
-          
-          updateResult('Uploading and translating...', 'processing');
-          
-          try {
-            console.log('Uploading to:', PREDICT_ENDPOINT);
-            const response = await fetch(PREDICT_ENDPOINT, {
-              method: 'POST',
-              body: formData,
-              mode: 'cors',
-              // Fix: Add proper headers
-              headers: {
-                'Accept': 'application/json'
-              }
-            });
-            
-            console.log('Response status:', response.status);
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP error! status: ${response.status}, ${errorText}`);
-            }
-            
-            const result = await response.json();
-            console.log('Server response:', result);
-            
-            // Fix: Properly handle the gesture mapping
-            let translation = result.translation;
-            let gestureId = result.gesture;
-            
-            // If translation is not a string, extract it properly
-            if (typeof translation !== 'string') {
-              if (result.predictions && result.predictions.length > 0) {
-                gestureId = result.predictions[0];
-              }
-              translation = GESTURE_MAPPING[gestureId] || 'Unknown gesture';
-            }
-            
-            console.log(`Gesture ID: ${gestureId}, Translation: ${translation}`);
-            updateResult(`Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
-
-            // Save to history
-            try {
-              const saveResponse = await fetch(SAVE_ENDPOINT, {
-                method: 'POST',
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                  user: 'anonymous',
-                  text: translation,
-                  gesture: gestureId,
-                  timestamp: new Date().toISOString(),
-                  video_id: videoId
-                })
-              });
-              if (saveResponse.ok) {
-                const saveResult = await saveResponse.json();
-                console.log('History saved:', saveResult);
-              } else {
-                console.warn('Failed to save history:', await saveResponse.text());
-              }
-            } catch (saveError) {
-              console.warn('History save error:', saveError);
-              // Don't fail the main operation if history save fails
-            }
-            
-          } catch (error) {
-            console.error('Upload failed:', error);
-            updateResult(`Upload failed: ${error.message}`, 'error');
-          } finally {
-            recordedBlobs = [];
-            mediaRecorder = null;
-          }
-        } else {
-          updateResult('Please record a video first!', 'error');
+     document.getElementById('uploadBtn').onclick = async () => {
+  if (recordedBlobs.length) {
+    const blob = new Blob(recordedBlobs, { type: 'video/webm' });
+    const formData = new FormData();
+    const videoId = crypto.randomUUID();
+    formData.append('video', blob, `recording_${videoId}.mp4`);
+    updateResult('Uploading and translating...', 'processing');
+    try {
+      const response = await fetch(PREDICT_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+        mode: 'cors',
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
         }
-      };
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
+      const result = await response.json();
+      const translation = result.translation || result.error || 'Unknown result';
+      updateResult(`Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
+
+      const saveResponse = await Promise.race([
+        fetch(SAVE_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+          body: JSON.stringify({
+            user: 'anonymous',
+            text: translation,
+            gesture: result.gesture || 0,
+            timestamp: new Date().toISOString(),
+            video_id: videoId
+          })
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 30000))
+      ]);
+      if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+      const saveResult = await saveResponse.json();
+      console.log('History saved:', saveResult);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      updateResult(`Upload failed: ${error.message}`, 'error');
+    } finally {
+      recordedBlobs = [];
+    }
+  } else {
+    updateResult('Please record a video first!', 'error');
+  }
+};
 
       window.addEventListener('beforeunload', () => {
         if (stream) stream.getTracks().forEach(track => track.stop());
