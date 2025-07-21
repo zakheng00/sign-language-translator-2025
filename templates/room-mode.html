@@ -605,7 +605,7 @@
           updateResult(translations.resultUploading.replace('{type}', isSignLanguageMode ? 'Memuat naik dan menterjemah bahasa isyarat' : 'Menukar pertuturan ke teks'), 'processing');
           
           try {
-            const endpoint = isSignLanguageMode ? `${FLASK_URL}/predict_colab` : `${FLASK_URL}/speech_to_text`;
+            const endpoint = isSignLanguageMode ? `${FLASK_URL}/predict` : `${FLASK_URL}/speech_to_text`;
             console.log('Menghantar permintaan ke:', endpoint);
             
             const response = await fetch(endpoint, {
