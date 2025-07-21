@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Terjemahan Langsung - Penterjemah Bahasa Isyarat</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     * {
@@ -337,7 +336,7 @@
       } else if (message.includes('Please record a video')) {
         translatedMessage = translations.noVideo;
       } else if (message.includes('Translation Result')) {
-        const parts = message.match(/Translation Result: (.*)/);
+        const parts = message.match(/Translation Result: (.*), Video ID: (.*)/);
         if (parts) {
           translatedMessage = translations.translationResult
             .replace('{translation}', parts[1])
@@ -356,7 +355,7 @@
       }`;
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       console.log('live-translation.html DOM telah dimuat sepenuhnya');
       let currentLang = localStorage.getItem('language') || 'ms';
       applyLanguage(currentLang);
@@ -369,27 +368,23 @@
       }
 
       const FLASK_URL = detectServerUrl();
-      const socket = io(FLASK_URL, {
-        path: '/socket.io',
-        transports: ['websocket', 'polling']
-      });
-
-      socket.on('connect', () => {
-        console.log('Socket.IO telah disambungkan ke pelayan');
-      });
-      socket.on('disconnect', () => {
-        console.log('Socket.IO terputus dari pelayan');
-      });
-      socket.on('connect_error', (error) => {
-        console.error('Ralat sambungan Socket.IO:', error);
-      });
-      socket.on('language_changed', (data) => {
-        console.log('Menerima acara perubahan bahasa:', data);
-        applyLanguage(data.language);
-      });
-
-      const COLAB_URL = "https://8603c16d2d79.ngrok-free.app";
       const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
+
+      async function getColabUrl() {
+        try {
+          const response = await fetch(`${FLASK_URL}/config`, {
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+          });
+          if (!response.ok) throw new Error(`Config fetch failed: ${response.status}`);
+          const config = await response.json();
+          return config.COLAB_BASE_URL;
+        } catch (error) {
+          console.error('Failed to fetch COLAB_URL:', error);
+          return 'https://<default-ngrok>.ngrok-free.app'; // Fallback URL
+        }
+      }
+
+      const COLAB_URL = await getColabUrl();
       const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
       let stream;
@@ -448,27 +443,37 @@
             const response = await fetch(PREDICT_ENDPOINT, {
               method: 'POST',
               body: formData,
-              mode: 'cors'
+              headers: { 'ngrok-skip-browser-warning': 'true' },
+              signal: AbortSignal.timeout(180000) // 180 秒超時
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
             const result = await response.json();
             const translation = result.translation || result.error || 'Unknown result';
             updateResult(`Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
 
-            const saveResponse = await fetch(SAVE_ENDPOINT, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user: 'anonymous',
-                text: translation,
-                gesture: result.gesture || 0,
-                timestamp: new Date().toISOString(),
-                video_id: videoId
-              })
-            });
-            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-            const saveResult = await saveResponse.json();
-            console.log('History saved:', saveResult);
+            try {
+              const saveResponse = await fetch(SAVE_ENDPOINT, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({
+                  user: 'anonymous',
+                  text: translation,
+                  gesture: result.gesture || 0,
+                  timestamp: new Date().toISOString(),
+                  video_id: videoId
+                }),
+                signal: AbortSignal.timeout(30000) // 30 秒超時
+              });
+              if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+              const saveResult = await saveResponse.json();
+              console.log('History saved:', saveResult);
+            } catch (saveError) {
+              console.error('Save history failed:', saveError);
+              updateResult(`Save history failed: ${saveError.message}`, 'error');
+            }
           } catch (error) {
             console.error('Upload failed:', error);
             updateResult(`Upload failed: ${error.message}`, 'error');
