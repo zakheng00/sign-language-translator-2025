@@ -337,7 +337,7 @@
       } else if (message.includes('Please record a video')) {
         translatedMessage = translations.noVideo;
       } else if (message.includes('Translation Result')) {
-        const parts = message.match(/Translation Result: (.*), Video ID: (.*)/);
+        const parts = message.match(/Translation Result: (.*)/);
         if (parts) {
           translatedMessage = translations.translationResult
             .replace('{translation}', parts[1])
