@@ -3,50 +3,225 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Penterjemah Bahasa Isyarat - Mod Bilik</title>
+  <title>Mod Bilik - Penterjemah Bahasa Isyarat</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-    body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; overflow-x: hidden; }
-    .floating-shapes .shape { background: linear-gradient(45deg, #4b5bd7, #a16fe2); opacity: 0.3; border-radius: 50%; animation: float 15s infinite; }
-    .glass-card { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1); }
-    .gradient-text { background: linear-gradient(90deg, #4b5bd7, #a16fe2); -webkit-background-clip: text; background-clip: text; color: transparent; fallback-color: #333; }
-    .status-online { background-color: #4ade80; }
-    .status-offline { background-color: #f87171; }
-    .btn-primary { background: linear-gradient(90deg, #4b5bd7, #a16fe2); color: white; }
-    .btn-purple { background: #6b46c1; color: white; }
-    .btn-success { background: #48bb78; color: white; }
-    .btn-warning { background: #f6e05e; color: #744210; }
-    .btn-gray { background: #a0aec0; color: white; }
-    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-    .chat-container { background: rgba(255, 255, 255, 0.05); }
-    .chat-message span { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-    .error-message { background-color: #fee2e2; border: 1px solid #fecaca; color: #dc2626; }
-    .room-card { transition: transform 0.3s ease, box-shadow 0.3s ease; }
-    .room-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2); }
-    .icon { font-size: 2.5rem; line-height: 1; }
-    .nav-links { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 20px; padding: 12px 24px; margin-bottom: 20px; }
-    .nav-links a { color: rgba(255, 255, 255, 0.9); text-decoration: none; padding: 8px 16px; border-radius: 12px; transition: all 0.3s ease; }
-    .nav-links a:hover { background: rgba(255, 255, 255, 0.2); color: white; }
-    .slide-in { animation: slideIn 0.8s ease-out forwards; opacity: 0; transform: translateY(30px); }
-    @keyframes slideIn { to { opacity: 1; transform: translateY(0); } }
+    * {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+    }
+    .video-container {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      padding: 4px;
+    }
+    .video-inner {
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    #preview {
+      transform: scaleX(-1); /* 水平镜像 */
+    }
+    .btn {
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      padding: 12px 24px;
+      cursor: pointer;
+      transform: translateY(0);
+    }
+    .btn:before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s ease;
+    }
+    .btn:hover:before {
+      left: 100%;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn-start {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+    }
+    .btn-stop {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+    }
+    .btn-upload {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn:disabled:hover {
+      transform: none;
+      box-shadow: none;
+    }
+    .result-display {
+      background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+      border: 2px solid transparent;
+      background-clip: padding-box;
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .result-display::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 16px;
+      z-index: -1;
+      padding: 2px;
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: subtract;
+    }
+    .floating-shapes {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+      top: 0;
+      left: 0;
+    }
+    .shape {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      animation: float 6s ease-in-out infinite;
+    }
+    .shape:nth-child(1) { width: 80px; height: 80px; top: 10%; left: 10%; animation-delay: 0s; }
+    .shape:nth-child(2) { width: 120px; height: 120px; top: 20%; right: 10%; animation-delay: 2s; }
+    .shape:nth-child(3) { width: 60px; height: 60px; bottom: 20%; left: 20%; animation-delay: 4s; }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(180deg); }
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      fallback-color: #333;
+    }
+    .icon {
+      font-size: 2.5rem;
+      line-height: 1;
+    }
+    .slide-in {
+      animation: slideIn 0.8s ease-out forwards;
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    @keyframes slideIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
     .stagger-1 { animation-delay: 0.1s; }
     .stagger-2 { animation-delay: 0.2s; }
     .stagger-3 { animation-delay: 0.3s; }
     .stagger-4 { animation-delay: 0.4s; }
-    .stagger-5 { animation-delay: 0.5s; }
+    .recording-pulse {
+      animation: recordingPulse 1s ease-in-out infinite;
+    }
+    @keyframes recordingPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .status-success {
+      color: #059669;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .status-error {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+    .status-processing {
+      color: #d97706;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+    .nav-links {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 12px 24px;
+      margin-bottom: 20px;
+    }
+    .nav-links a {
+      color: rgba(255, 255, 255, 0.9);
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    .nav-links a:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+    .chat-container {
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+    .chat-message {
+      padding: 8px 12px;
+      margin: 5px 0;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.05);
+    }
   </style>
 </head>
 <body class="relative">
   <div class="floating-shapes">
-    <div class="shape w-20 h-20 absolute top-10 left-10"></div>
-    <div class="shape w-32 h-32 absolute bottom-10 right-10"></div>
-    <div class="shape w-16 h-16 absolute top-20 right-20"></div>
+    <div class="shape"></div>
+    <div class="shape"></div>
+    <div class="shape"></div>
   </div>
-  <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-8">
+  <div class="relative z-10 max-w-4xl mx-auto p-8 space-y-8">
     <header class="text-center slide-in stagger-1">
       <nav class="nav-links flex justify-center gap-4 mb-4">
         <a href="/" id="homeLink">Laman Utama</a>
@@ -57,72 +232,49 @@
         <a href="/settings" id="settingsLink">Tetapan</a>
       </nav>
       <div class="glass-card rounded-3xl p-8 mb-8">
-        <h1 class="text-4xl font-bold gradient-text mb-2" id="mainTitle">
-          <span class="icon"><i class="fas fa-door-open"></i></span> Mod Bilik Kolaboratif
-        </h1>
-        <p class="text-gray-300 text-lg" id="mainSubtitle">Terjemahan masa nyata untuk semua pengguna</p>
+        <h1 class="text-4xl font-bold gradient-text mb-2" id="mainTitle"><span class="icon">🎥</span> Mod Bilik - Penterjemah Bahasa Isyarat</h1>
+        <p class="text-gray-600 text-lg" id="mainSubtitle">Penterjemahan bahasa isyarat dan pertuturan dalam bilik masa nyata</p>
       </div>
     </header>
-    <div class="glass-card rounded-3xl p-6 slide-in stagger-2">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-bold gradient-text" id="joinRoomTitle">Sertai Bilik</h2>
-          <p class="text-gray-400 text-sm" id="joinRoomDesc">Pilih bilik untuk memulakan (maksimum 2 pengguna setiap bilik)</p>
+    <div class="glass-card rounded-3xl p-8 slide-in stagger-2">
+      <div class="flex flex-col sm:flex-row gap-6">
+        <div class="flex-1">
+          <div class="video-container mb-6">
+            <div class="video-inner">
+              <video id="preview" class="w-full aspect-video object-cover" autoplay muted></video>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-4 justify-center mb-6 slide-in stagger-3">
+            <button id="startBtn" class="btn btn-start">
+              <span class="relative z-10"><span class="icon">🎬</span> Mulakan Rakaman</span>
+            </button>
+            <button id="stopBtn" class="btn btn-stop" disabled>
+              <span class="relative z-10"><span class="icon">⏹️</span> Hentikan Rakaman</span>
+            </button>
+            <button id="uploadBtn" class="btn btn-upload" disabled>
+              <span class="relative z-10"><span class="icon">🚀</span> Muat Naik & Terjemah</span>
+            </button>
+          </div>
         </div>
-        <div id="currentRoom" class="text-sm font-medium text-gray-300 flex items-center">
-          <span class="status-indicator status-offline w-3 h-3 rounded-full mr-2"></span><span id="currentRoomStatus">Tidak dalam bilik</span>
-        </div>
-      </div>
-      <div id="roomError" class="text-center mt-2 p-3 rounded-xl text-sm error-message hidden"></div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4" id="roomList"></div>
-    </div>
-    <div id="chatContainer" class="glass-card rounded-3xl p-8 slide-in stagger-3">
-      <div class="mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4 flex items-center" id="chatTitle">
-          <span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span> Sembang Langsung & Terjemahan
-        </h3>
-        <div id="chatBox" class="chat-container h-64 p-4 mb-4 overflow-y-auto rounded-2xl border-2 border-gray-700"></div>
-        <div class="flex gap-3">
-          <input id="chatInput" class="flex-1 border-2 border-gray-600 p-3 rounded-xl focus:border-purple-500 focus:outline-none transition-colors bg-gray-800 text-white" placeholder="Taip mesej..." />
-          <button id="sendBtn" class="btn btn-primary px-6 py-3 rounded-xl">
-            <span class="relative z-10" id="sendBtnText">Hantar</span>
-          </button>
-        </div>
-      </div>
-    </div>
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-4">
-      <div class="text-center mb-6">
-        <h3 class="text-xl font-bold gradient-text mb-4" id="modeTitle">Mod Terjemahan</h3>
-        <div class="flex gap-4 justify-center">
-          <button id="signLanguageBtn" class="btn btn-purple px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10" id="signLanguageBtnText"><i class="fas fa-sign-language"></i> Bahasa Isyarat</span>
-          </button>
-          <button id="speechToTextBtn" class="btn btn-success px-6 py-3 rounded-xl mode-btn">
-            <span class="relative z-10" id="speechToTextBtnText"><i class="fas fa-microphone"></i> Pertuturan ke Teks</span>
-          </button>
+        <div class="flex-1">
+          <div class="result-display text-center text-lg font-medium slide-in stagger-4" id="result">
+            <div class="text-gray-500" id="resultText"><span class="icon">👋</span> Sedia untuk menterjemah - Klik "Mulakan Rakaman" untuk bermula</div>
+          </div>
+          <div class="chat-container slide-in stagger-4" id="chatBox">
+            <div class="text-gray-500 text-center">Tiada mesej lagi...</div>
+          </div>
+          <div class="mt-4">
+            <input id="messageInput" type="text" placeholder="Taip mesej anda..." class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button id="sendMessageBtn" class="btn btn-upload mt-2 w-full">
+              <span class="relative z-10"><span class="icon">📤</span> Hantar Mesej</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
-    <div class="glass-card rounded-3xl p-8 slide-in stagger-5">
-      <div class="video-container mb-6">
-        <div class="video-inner">
-          <video id="preview" class="w-full aspect-video object-cover" autoplay muted></video>
-          <audio id="audioPreview" class="w-full rounded-2xl hidden" controls></audio>
-        </div>
-      </div>
-      <div class="flex flex-wrap gap-4 justify-center mb-6">
-        <button id="startRecordBtn" class="btn btn-purple px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10" id="startRecordBtnText"><i class="fas fa-video"></i> Mulakan Rakaman</span>
-        </button>
-        <button id="stopRecordBtn" class="btn btn-warning px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10" id="stopRecordBtnText"><i class="fas fa-stop"></i> Hentikan Rakaman</span>
-        </button>
-        <button id="uploadBtn" class="btn btn-primary px-6 py-3 rounded-xl" disabled>
-          <span class="relative z-10" id="uploadBtnText"><i class="fas fa-upload"></i> Muat Naik & Terjemah</span>
-        </button>
-      </div>
-      <div id="result" class="text-center text-lg font-medium p-4 rounded-xl bg-gray-700 border-2 border-gray-600">
-        <div id="resultText">👋 Sedia untuk menterjemah - Pilih mod dan mulakan rakaman</div>
+    <div class="glass-card rounded-2xl p-6 slide-in stagger-4">
+      <div class="text-center text-white/80">
+        <p class="text-sm" id="tipText"><span class="icon">💡</span> <strong>Petua:</strong> Pastikan pencahayaan baik dan gerak isyarat tangan jelas untuk hasil terbaik</p>
       </div>
     </div>
   </div>
@@ -130,94 +282,56 @@
     const TRANSLATIONS = {
       roomMode: {
         en: {
-          title: "Collaborative Room Mode",
-          subtitle: "Real-time translation for all users",
+          title: "Room Mode - Sign Language Translator",
+          subtitle: "Real-time sign language and speech translation in a room",
           homeLink: "Home",
           liveTranslationLink: "Live Translation",
           roomModeLink: "Room Mode",
           speechToTextLink: "Speech to Text",
           historyLink: "History",
           settingsLink: "Settings",
-          joinRoomTitle: "Join a Room",
-          joinRoomDesc: "Select a room to start (max 2 users per room)",
-          currentRoomStatus: "Not in a room",
-          roomFullError: "{roomId} is full (2/2 users)!",
-          alreadyInRoomError: "You are already in {roomId}! Leave first to join another room.",
-          joinButton: "Join",
-          joinedButton: "Joined",
-          chatTitle: "Live Chat & Translation",
-          chatPlaceholder: "Type a message...",
-          sendBtnText: "Send",
-          modeTitle: "Translation Mode",
-          signLanguageBtnText: "🤟 Sign Language",
-          speechToTextBtnText: "🎤 Speech to Text",
-          startRecordBtnText: "🎬 Start Recording",
-          stopRecordBtnText: "⏹️ Stop Recording",
-          uploadBtnText: "🚀 Upload & Translate",
-          resultReady: "👋 Ready to translate - Select a mode and start recording",
-          resultCameraSuccess: "📹 Camera initialized successfully - Ready to record!",
-          resultMicSuccess: "🎤 Microphone initialized successfully - Ready to record!",
-          resultCameraError: "❌ Cannot access camera: {error}",
-          resultMicError: "❌ Cannot access microphone: {error}",
-          resultRecording: "🔴 Recording {type}...",
-          resultVideoComplete: "✅ Video recording completed - Ready to upload!",
-          resultAudioComplete: "✅ Audio recording completed - Ready to upload!",
-          resultUploading: "⏳ {type}...",
-          resultUploadError: "❌ {type} failed: {error}",
-          resultNoMedia: "❌ Please record video or audio first!",
-          resultSignMode: "Current Mode: Sign Language Translation",
-          resultSpeechMode: "Current Mode: Speech to Text Translation",
-          resultTranslation: "✅ Translation Result: {text}",
-          resultNoGesture: "❌ No gesture recognized, please try again",
-          resultNoSpeech: "❌ No speech recognized, please try again",
-          connectMessage: "🟢 Connected to chat room",
-          connectError: "⚠️ Failed to connect to server: {error}. Retrying...",
-          disconnectError: "⚠️ Disconnected: {reason}. Attempting to reconnect..."
+          startButton: "Start Recording",
+          stopButton: "Stop Recording",
+          uploadButton: "Upload & Translate",
+          resultText: "Ready to translate - Click 'Start Recording' to begin",
+          tipText: "Tip: Ensure good lighting and clear hand gestures for best results",
+          cameraSuccess: "Camera initialized successfully - Ready to record!",
+          cameraError: "Cannot access camera: {error}",
+          recording: "Recording in progress...",
+          recordingComplete: "Recording completed successfully - Ready to upload!",
+          uploading: "Uploading and translating...",
+          uploadError: "Upload failed: {error}",
+          noVideo: "Please record a video first!",
+          translationResult: "{user}: {translation}",
+          messagePlaceholder: "Type your message...",
+          sendMessage: "Send Message",
+          noMessages: "No messages yet..."
         },
         ms: {
-          title: "Mod Bilik Kolaboratif",
-          subtitle: "Terjemahan masa nyata untuk semua pengguna",
+          title: "Mod Bilik - Penterjemah Bahasa Isyarat",
+          subtitle: "Penterjemahan bahasa isyarat dan pertuturan dalam bilik masa nyata",
           homeLink: "Laman Utama",
           liveTranslationLink: "Terjemahan Langsung",
           roomModeLink: "Mod Bilik",
           speechToTextLink: "Pertuturan ke Teks",
           historyLink: "Sejarah",
           settingsLink: "Tetapan",
-          joinRoomTitle: "Sertai Bilik",
-          joinRoomDesc: "Pilih bilik untuk memulakan (maksimum 2 pengguna setiap bilik)",
-          currentRoomStatus: "Tidak dalam bilik",
-          roomFullError: "{roomId} penuh (2/2 pengguna)!",
-          alreadyInRoomError: "Anda sudah berada dalam {roomId}! Keluar dahulu untuk menyertai bilik lain.",
-          joinButton: "Sertai",
-          joinedButton: "Telah Menyertai",
-          chatTitle: "Sembang Langsung & Terjemahan",
-          chatPlaceholder: "Taip mesej...",
-          sendBtnText: "Hantar",
-          modeTitle: "Mod Terjemahan",
-          signLanguageBtnText: "<i class='fas fa-sign-language'></i> Bahasa Isyarat",
-          speechToTextBtnText: "<i class='fas fa-microphone'></i> Pertuturan ke Teks",
-          startRecordBtnText: "<i class='fas fa-video'></i> Mulakan Rakaman",
-          stopRecordBtnText: "<i class='fas fa-stop'></i> Hentikan Rakaman",
-          uploadBtnText: "<i class='fas fa-upload'></i> Muat Naik & Terjemah",
-          resultReady: "👋 Sedia untuk menterjemah - Pilih mod dan mulakan rakaman",
-          resultCameraSuccess: "📹 Kamera diinisialisasi dengan jayanya - Sedia untuk merakam!",
-          resultMicSuccess: "🎤 Mikrofon diinisialisasi dengan jayanya - Sedia untuk merakam!",
-          resultCameraError: "❌ Tidak dapat mengakses kamera: {error}",
-          resultMicError: "❌ Tidak dapat mengakses mikrofon: {error}",
-          resultRecording: "🔴 Merakam {type}...",
-          resultVideoComplete: "✅ Rakaman video selesai - Sedia untuk memuat naik!",
-          resultAudioComplete: "✅ Rakaman audio selesai - Sedia untuk memuat naik!",
-          resultUploading: "⏳ {type}...",
-          resultUploadError: "❌ {type} gagal: {error}",
-          resultNoMedia: "❌ Sila rakam video atau audio terlebih dahulu!",
-          resultSignMode: "Mod Semasa: Terjemahan Bahasa Isyarat",
-          resultSpeechMode: "Mod Semasa: Pertuturan ke Teks",
-          resultTranslation: "✅ Hasil Terjemahan: {text}",
-          resultNoGesture: "❌ Tiada gerak isyarat dikenali, sila cuba lagi",
-          resultNoSpeech: "❌ Tiada pertuturan dikenali, sila cuba lagi",
-          connectMessage: "🟢 Berjaya disambungkan ke bilik sembang",
-          connectError: "⚠️ Gagal menyambung ke pelayan: {error}. Sedang mencuba semula...",
-          disconnectError: "⚠️ Terputus sambungan: {reason}. Sedang cuba menyambung semula..."
+          startButton: "Mulakan Rakaman",
+          stopButton: "Hentikan Rakaman",
+          uploadButton: "Muat Naik & Terjemah",
+          resultText: "Sedia untuk menterjemah - Klik 'Mulakan Rakaman' untuk bermula",
+          tipText: "Petua: Pastikan pencahayaan baik dan gerak isyarat tangan jelas untuk hasil terbaik",
+          cameraSuccess: "Kamera diinisialisasi dengan jayanya - Sedia untuk merakam!",
+          cameraError: "Tidak dapat mengakses kamera: {error}",
+          recording: "Rakaman sedang berlangsung...",
+          recordingComplete: "Rakaman selesai dengan jayanya - Sedia untuk memuat naik!",
+          uploading: "Memuat naik dan menterjemah...",
+          uploadError: "Muat naik gagal: {error}",
+          noVideo: "Sila rakam video terlebih dahulu!",
+          translationResult: "{user}: {translation}",
+          messagePlaceholder: "Taip mesej anda...",
+          sendMessage: "Hantar Mesej",
+          noMessages: "Tiada mesej lagi..."
         }
       }
     };
@@ -225,9 +339,8 @@
     function applyLanguage(lang) {
       localStorage.setItem('language', lang);
       const translations = TRANSLATIONS.roomMode[lang];
-
-      document.title = `Penterjemah Bahasa Isyarat - ${translations.title}`;
-      document.getElementById('mainTitle').innerHTML = `<span class="icon"><i class="fas fa-door-open"></i></span> ${translations.title}`;
+      document.title = `Mod Bilik - Penterjemah Bahasa Isyarat`;
+      document.getElementById('mainTitle').innerHTML = `<span class="icon">🎥</span> ${translations.title}`;
       document.getElementById('mainSubtitle').textContent = translations.subtitle;
       document.getElementById('homeLink').textContent = translations.homeLink;
       document.getElementById('liveTranslationLink').textContent = translations.liveTranslationLink;
@@ -235,30 +348,64 @@
       document.getElementById('speechToTextLink').textContent = translations.speechToTextLink;
       document.getElementById('historyLink').textContent = translations.historyLink;
       document.getElementById('settingsLink').textContent = translations.settingsLink;
-      document.getElementById('joinRoomTitle').textContent = translations.joinRoomTitle;
-      document.getElementById('joinRoomDesc').textContent = translations.joinRoomDesc;
-      document.getElementById('currentRoomStatus').textContent = translations.currentRoomStatus;
-      document.getElementById('chatTitle').textContent = translations.chatTitle;
-      document.getElementById('chatInput').placeholder = translations.chatPlaceholder;
-      document.getElementById('sendBtnText').textContent = translations.sendBtnText;
-      document.getElementById('modeTitle').textContent = translations.modeTitle;
-      document.getElementById('signLanguageBtnText').innerHTML = translations.signLanguageBtnText;
-      document.getElementById('speechToTextBtnText').innerHTML = translations.speechToTextBtnText;
-      document.getElementById('startRecordBtnText').innerHTML = translations.startRecordBtnText;
-      document.getElementById('stopRecordBtnText').innerHTML = translations.stopRecordBtnText;
-      document.getElementById('uploadBtnText').innerHTML = translations.uploadBtnText;
-      document.getElementById('resultText').textContent = translations.resultReady;
-
-      // 更新動態房間按鈕的文字
-      document.querySelectorAll('.join-btn').forEach(btn => {
-        btn.textContent = btn.classList.contains('btn-gray') ? translations.joinedButton : translations.joinButton;
-      });
-
+      document.getElementById('startBtn').querySelector('span').innerHTML = `<span class="icon">🎬</span> ${translations.startButton}`;
+      document.getElementById('stopBtn').querySelector('span').innerHTML = `<span class="icon">⏹️</span> ${translations.stopButton}`;
+      document.getElementById('uploadBtn').querySelector('span').innerHTML = `<span class="icon">🚀</span> ${translations.uploadButton}`;
+      document.getElementById('resultText').innerHTML = `<span class="icon">👋</span> ${translations.resultText}`;
+      document.getElementById('tipText').innerHTML = `<span class="icon">💡</span> <strong>Petua:</strong> ${translations.tipText}`;
+      document.getElementById('messageInput').placeholder = translations.messagePlaceholder;
+      document.getElementById('sendMessageBtn').querySelector('span').innerHTML = `<span class="icon">📤</span> ${translations.sendMessage}`;
+      document.getElementById('chatBox').innerHTML = `<div class="text-gray-500 text-center">${translations.noMessages}</div>`;
       console.log(`Bahasa ditukar ke: ${lang}`);
+    }
+
+    function updateResult(message, type = 'default') {
+      const resultEl = document.getElementById('result');
+      const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+      let translatedMessage = message;
+      if (message.includes('Camera initialized successfully')) {
+        translatedMessage = translations.cameraSuccess;
+      } else if (message.includes('Cannot access camera')) {
+        translatedMessage = translations.cameraError.replace('{error}', message.split(': ')[1] || 'Unknown error');
+      } else if (message.includes('Recording in progress')) {
+        translatedMessage = translations.recording;
+      } else if (message.includes('Recording completed successfully')) {
+        translatedMessage = translations.recordingComplete;
+      } else if (message.includes('Uploading and translating')) {
+        translatedMessage = translations.uploading;
+      } else if (message.includes('Upload failed')) {
+        translatedMessage = translations.uploadError.replace('{error}', message.split(': ')[1] || 'Unknown error');
+      } else if (message.includes('Please record a video')) {
+        translatedMessage = translations.noVideo;
+      }
+      resultEl.innerHTML = `<div class="text-${
+        type === 'success' ? 'green' : type === 'error' ? 'red' : type === 'processing' ? 'yellow' : 'gray'
+      }-600 ${type === 'processing' ? 'recording-pulse' : ''}"><span class="icon">${
+        type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'processing' ? '🔴' : '👋'
+      }</span> ${translatedMessage}</div>`;
+      resultEl.className = `result-display text-center text-lg font-medium slide-in stagger-4 ${
+        type === 'success' ? 'status-success' : 
+        type === 'error' ? 'status-error' : 
+        type === 'processing' ? 'status-processing' : ''
+      }`;
+    }
+
+    function addChatMessage(data) {
+      const chatBox = document.getElementById('chatBox');
+      const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'chat-message';
+      messageDiv.innerHTML = translations.translationResult
+        .replace('{user}', data.user || 'anonymous')
+        .replace('{translation}', data.text || data.message || 'Unknown');
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       console.log('room-mode.html DOM telah dimuat sepenuhnya');
+      let currentLang = localStorage.getItem('language') || 'ms';
+      applyLanguage(currentLang);
 
       function detectServerUrl() {
         const currentHost = window.location.hostname;
@@ -271,440 +418,147 @@
       const socket = io(FLASK_URL, {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 15,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 60000
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
       });
-
-   const gestureMap = {
-    1: "Hi, How are you?",
-    2: "I am fine, hank you.",
-    3: "What is your name",
-    4: "Excuse me, what is the time now?",
-    5: "I am hungry and want to eat.",
-    6: "Can you help me.",
-    7: "I need help.",
-    8: "Have a nice day.",
-    9: "Thank You for you help.",
-    10: "How much is this?",
-    11: "See you tomorrow",
-    12: "I am going to buy something.",
-    13: "Do you want to play together.",
-    14: "Where are you going?",
-    15: "Where is toilet",
-    16: "Toilot is turn right in front",
-    17: "What day is it today?",
-    18: "Today is Monday.",
-    19: "Yes of course.",
-    20: "what are you doing now?",
-    21: "I am working",
-    22: "Are you free tomorrow afternoon.",
-    23: "Sorry i am busy tomorrow",
-    24: "I have a little headache",
-    25: "What is your name?",
-    26: "I want a glass of water",
-    27: "This is too expansive.",
-    28: "Can i sit here?",
-    29: "I need to rest."
-};
-
-
-      const currentRoomDiv = document.getElementById('currentRoom');
-      const roomError = document.getElementById('roomError');
-      const roomList = document.getElementById('roomList');
-      const chatContainer = document.getElementById('chatContainer');
-      const chatBox = document.getElementById('chatBox');
-      const chatInput = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendBtn');
-      const preview = document.getElementById('preview');
-      const audioPreview = document.getElementById('audioPreview');
-      const startRecordBtn = document.getElementById('startRecordBtn');
-      const stopRecordBtn = document.getElementById('stopRecordBtn');
-      const uploadBtn = document.getElementById('uploadBtn');
-      const result = document.getElementById('result');
-      const resultText = document.getElementById('resultText');
-      const signLanguageBtn = document.getElementById('signLanguageBtn');
-      const speechToTextBtn = document.getElementById('speechToTextBtn');
-      let stream = null;
-      let mediaRecorder = null;
-      let recordedBlobs = [];
-      let processedTranslations = new Set();
-      let isSignLanguageMode = true;
-      let currentRoom = null;
-
-      const rooms = {
-        'room1': { count: 0, max: 2 },
-        'room2': { count: 0, max: 2 },
-        'room3': { count: 0, max: 2 }
-      };
-
-      function initializeRooms() {
-        roomList.innerHTML = '';
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        for (const [roomId, room] of Object.entries(rooms)) {
-          const roomCard = document.createElement('div');
-          roomCard.className = 'room-card glass-card p-4 rounded-xl text-center cursor-pointer hover:bg-gray-800 transition-colors';
-          roomCard.innerHTML = `
-            <h3 class="text-lg font-bold gradient-text">${roomId}</h3>
-            <p class="text-gray-400">Pengguna: ${room.count}/${room.max}</p>
-            <button class="btn btn-primary mt-2 px-4 py-2 rounded-xl join-btn" data-room="${roomId}">${currentRoom === roomId ? translations.joinedButton : translations.joinButton}</button>
-          `;
-          roomList.appendChild(roomCard);
-        }
-        updateRecordButton();
-      }
-
-      function showError(message) {
-        roomError.textContent = message;
-        roomError.className = 'text-center mt-2 p-3 rounded-xl text-sm error-message';
-        roomError.classList.remove('hidden');
-        setTimeout(() => roomError.classList.add('hidden'), 5000);
-      }
-
-      function updateRecordButton() {
-        startRecordBtn.disabled = !currentRoom;
-      }
-
-      document.addEventListener('click', (e) => {
-        if (e.target.classList.contains('join-btn')) {
-          const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-          const roomId = e.target.dataset.room;
-          const room = rooms[roomId];
-
-          if (currentRoom) {
-            showError(translations.alreadyInRoomError.replace('{roomId}', currentRoom));
-            return;
-          }
-
-          if (room.count >= room.max) {
-            showError(translations.roomFullError.replace('{roomId}', roomId));
-            return;
-          }
-
-          room.count++;
-          currentRoom = roomId;
-          currentRoomDiv.innerHTML = `<span class="status-indicator status-online w-3 h-3 rounded-full mr-2"></span><span id="currentRoomStatus">Dalam: ${roomId} (${room.count}/${room.max})</span>`;
-          e.target.textContent = translations.joinedButton;
-          e.target.classList.remove('btn-primary');
-          e.target.classList.add('btn-gray');
-          e.target.disabled = true;
-          initializeRooms();
-          updateRecordButton();
-        }
-      });
-
-      chatContainer.style.display = 'block';
-
-      function addChatMessage(message, isSelf = false, isTranslated = false) {
-        const now = new Date().toLocaleTimeString();
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `mb-3 chat-message ${isSelf ? 'text-right' : 'text-left'}`;
-        const spanClass = isSelf ? 'bg-purple-900 text-purple-200 border border-purple-800' : 
-                        isTranslated ? 'bg-green-900 text-green-200 border border-green-800' : 
-                        'bg-gray-700 text-gray-300 border border-gray-600';
-        messageDiv.innerHTML = `<span class="inline-block p-3 rounded-xl ${spanClass} max-w-xs break-words">${message} <small class="text-xs opacity-70">[${now}]</small></span>`;
-        chatBox.appendChild(messageDiv);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      }
 
       socket.on('connect', () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        console.log('Socket.IO telah disambungkan ke', FLASK_URL);
-        addChatMessage(translations.connectMessage, true);
-        initializeRooms();
+        console.log('Socket.IO telah disambungkan ke pelayan');
       });
-
-      socket.on('message', (data) => {
-        console.log('Menerima mesej:', data);
-        if (data.msg && data.msg !== TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'].connectMessage) {
-          addChatMessage(data.msg, data.sid === socket.id);
-        }
+      socket.on('disconnect', () => {
+        console.log('Socket.IO terputus dari pelayan');
       });
-
-      socket.on('new_message', (data) => {
-        console.log('Menerima new_message:', data);
-        addChatMessage(`${data.user}: ${data.message}`, data.user === 'You');
-      });
-
-      socket.on('translation', (data) => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        console.log('Menerima terjemahan:', data);
-        const key = `${data.user}-${data.text || data.error || 'unknown'}`;
-        if (!processedTranslations.has(key)) {
-          processedTranslations.add(key);
-          const translatedMessage = `${data.user}: ${data.text || data.error || translations.resultNoGesture}`;
-          addChatMessage(translatedMessage, data.user === 'You', true);
-          updateResult(`${translations.resultTranslation.replace('{text}', data.text || data.error || translations.resultNoGesture)}`, 'success');
-        }
-      });
-
       socket.on('connect_error', (error) => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        console.error('Ralat sambungan:', error);
-        showError(translations.connectError.replace('{error}', error.message));
-        setTimeout(() => location.reload(), 10000);
+        console.error('Ralat sambungan Socket.IO:', error);
       });
-
-      socket.on('disconnect', (reason) => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        console.error('Terputus sambungan:', reason);
-        showError(translations.disconnectError.replace('{reason}', reason));
-        socket.connect();
-      });
-
       socket.on('language_changed', (data) => {
-        console.log('Menerima acara language_changed:', data);
+        console.log('Menerima acara perubahan bahasa:', data);
         applyLanguage(data.language);
-        initializeRooms(); // 更新房間按鈕文字
+      });
+      socket.on('translation', (data) => {
+        console.log('Received translation:', data);
+        addChatMessage(data);
+      });
+      socket.on('new_message', (data) => {
+        console.log('Received new message:', data);
+        addChatMessage(data);
       });
 
-      sendBtn.onclick = () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        const message = chatInput.value.trim();
-        if (message) {
-          socket.emit('send_message', { user: 'You', message: message });
-          addChatMessage(`You: ${message}`, true);
-          chatInput.value = '';
-        }
-      };
+      const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
+      const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`; // 使用 app.py 的保存端點
 
-      chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendBtn.click();
-        }
-      });
-
-      function updateResult(message, type = 'default') {
-        const colorClass = type === 'success' ? 'bg-green-900 border-green-800 text-green-200' : 
-                          type === 'error' ? 'bg-red-900 border-red-800 text-red-200' : 
-                          type === 'processing' ? 'bg-yellow-900 border-yellow-800 text-yellow-200' : 
-                          'bg-gray-700 border-gray-600 text-gray-300';
-        result.className = `text-center text-lg font-medium p-4 rounded-xl border-2 ${colorClass}`;
-        resultText.textContent = message;
-      }
+      let stream;
+      let mediaRecorder;
+      let recordedBlobs = [];
 
       async function initCamera() {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          preview.srcObject = stream;
-          console.log('Kamera dimulakan');
-          updateResult(translations.resultCameraSuccess, 'success');
+          document.getElementById('preview').srcObject = stream;
+          console.log('Camera started');
+          updateResult('Camera initialized successfully', 'success');
         } catch (err) {
-          console.error('Gagal memulakan kamera:', err);
-          updateResult(translations.resultCameraError.replace('{error}', err.message), 'error');
+          updateResult(`Cannot access camera: ${err.message}`, 'error');
           alert('Sila benarkan akses kamera untuk meneruskan!');
         }
       }
 
-      async function initMicrophone() {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          audioPreview.srcObject = stream;
-          audioPreview.classList.remove('hidden');
-          preview.classList.add('hidden');
-          console.log('Mikrofon dimulakan');
-          updateResult(translations.resultMicSuccess, 'success');
-        } catch (err) {
-          console.error('Ralat mengakses mikrofon:', err);
-          updateResult(translations.resultMicError.replace('{error}', err.message), 'error');
-          alert('Sila benarkan akses mikrofon untuk meneruskan!');
-        }
-      }
-
-      startRecordBtn.onclick = () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        if (isSignLanguageMode) {
-          if (!stream) {
-            initCamera().then(() => startRecording());
-          } else if (!mediaRecorder) {
-            startRecording();
-          }
-        } else {
-          if (!stream) {
-            initMicrophone().then(() => startRecording());
-          } else if (!mediaRecorder) {
-            startRecording();
-          }
+      document.getElementById('startBtn').onclick = () => {
+        if (stream && !mediaRecorder) {
+          recordedBlobs = [];
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) recordedBlobs.push(event.data);
+          };
+          mediaRecorder.start(1000);
+          document.getElementById('startBtn').disabled = true;
+          document.getElementById('stopBtn').disabled = false;
+          document.getElementById('uploadBtn').disabled = true;
+          updateResult('Recording in progress...', 'processing');
+          console.log('Recording started');
+        } else if (!stream) {
+          initCamera().then(() => document.getElementById('startBtn').onclick());
         }
       };
 
-      function startRecording() {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        recordedBlobs = [];
-        const mimeType = isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus';
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedBlobs.push(event.data);
-          console.log(`${isSignLanguageMode ? 'Video' : 'Audio'} blob dirakam:`, event.data);
-        };
-        mediaRecorder.onstop = () => {
-          console.log('Rakaman dihentikan');
-        };
-        mediaRecorder.onerror = (event) => {
-          console.error('Ralat MediaRecorder:', event.error);
-          showError(`❌ Rakaman gagal: ${event.error.message}`);
-        };
-        mediaRecorder.start(200);
-        startRecordBtn.disabled = true;
-        stopRecordBtn.disabled = false;
-        uploadBtn.disabled = true;
-        updateResult(translations.resultRecording.replace('{type}', isSignLanguageMode ? 'video' : 'audio'), 'processing');
-      }
-
-      stopRecordBtn.onclick = () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      document.getElementById('stopBtn').onclick = () => {
+        if (mediaRecorder) {
           mediaRecorder.stop();
-          startRecordBtn.disabled = false;
-          stopRecordBtn.disabled = true;
-          uploadBtn.disabled = false;
-          updateResult(isSignLanguageMode ? translations.resultVideoComplete : translations.resultAudioComplete, 'success');
+          document.getElementById('startBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+          document.getElementById('uploadBtn').disabled = false;
+          updateResult('Recording completed successfully', 'success');
+          console.log('Recording stopped, blobs length:', recordedBlobs.length);
         }
       };
 
-      signLanguageBtn.onclick = () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        isSignLanguageMode = true;
-        signLanguageBtn.classList.remove('btn-primary');
-        signLanguageBtn.classList.add('btn-purple');
-        speechToTextBtn.classList.remove('btn-success');
-        speechToTextBtn.classList.add('btn-success');
-        preview.classList.remove('hidden');
-        audioPreview.classList.add('hidden');
-        cleanupStream();
-        updateResult(translations.resultSignMode, 'success');
-      };
-
-      speechToTextBtn.onclick = () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
-        isSignLanguageMode = false;
-        speechToTextBtn.classList.remove('btn-success');
-        speechToTextBtn.classList.add('btn-purple');
-        signLanguageBtn.classList.remove('btn-purple');
-        signLanguageBtn.classList.add('btn-primary');
-        preview.classList.add('hidden');
-        audioPreview.classList.remove('hidden');
-        cleanupStream();
-        updateResult(translations.resultSpeechMode, 'success');
-      };
-
-      uploadBtn.onclick = async () => {
-        const translations = TRANSLATIONS.roomMode[localStorage.getItem('language') || 'ms'];
+      document.getElementById('uploadBtn').onclick = async () => {
         if (recordedBlobs.length) {
-          const blob = new Blob(recordedBlobs, { type: isSignLanguageMode ? 'video/webm;codecs=vp9' : 'audio/webm;codecs=opus' });
+          const blob = new Blob(recordedBlobs, { type: 'video/webm' });
           const formData = new FormData();
-          const mediaId = crypto.randomUUID();
-          formData.append(isSignLanguageMode ? 'video' : 'audio', blob, isSignLanguageMode ? `recording_${mediaId}.webm` : `recording_${mediaId}.webm`);
-          
-          updateResult(translations.resultUploading.replace('{type}', isSignLanguageMode ? 'Memuat naik dan menterjemah bahasa isyarat' : 'Menukar pertuturan ke teks'), 'processing');
-          
+          const videoId = crypto.randomUUID();
+          formData.append('video', blob, `recording_${videoId}.webm`); // 修正檔案副檔名
+          updateResult('Uploading and translating...', 'processing');
           try {
-            const endpoint = isSignLanguageMode ? `${FLASK_URL}/predict` : `${FLASK_URL}/speech_to_text`;
-            console.log('Menghantar permintaan ke:', endpoint);
-            
-            const response = await fetch(endpoint, {
+            const response = await fetch(PREDICT_ENDPOINT, {
               method: 'POST',
               body: formData,
-              headers: {
-                'ngrok-skip-browser-warning': 'true'
-              }
+              mode: 'cors'
             });
-            
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Ralat HTTP! status: ${response.status}, mesej: ${errorText || 'Tiada butiran'}`);
-            }
-            
-            const resultData = await response.json();
-            console.log('Data respons:', resultData);
-            
-            if (resultData.error) {
-              throw new Error(resultData.error);
-            }
-            
-            if (!isSignLanguageMode && !resultData.text) {
-              console.warn('Tiada teks dikenali daripada pertuturan');
-              updateResult(translations.resultNoSpeech, 'error');
-              return;
-            }
-            
-            if (isSignLanguageMode && resultData.gesture === undefined) {
-              console.warn('Tiada gerak isyarat dikenali daripada video');
-              updateResult(translations.resultNoGesture, 'error');
-              return;
-            }
-            
-            const gestureText = gestureMap[resultData.gesture] || `Gerak isyarat ${resultData.gesture}`;
-            const displayText = isSignLanguageMode ? gestureText : resultData.text || translations.resultNoGesture;
-            updateResult(translations.resultTranslation.replace('{text}', displayText), 'success');
-            
-            socket.emit('translation', {
-              text: displayText,
-              gesture: resultData.gesture || 0,
-              user: 'You',
-              sid: socket.id
-            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
+            const result = await response.json();
+            const translation = result.translation || result.error || 'Unknown result';
+            updateResult(`Translation Result: ${translation}`, 'success'); // 移除 Video ID 顯示
 
-            try {
-              const saveResponse = await fetch(`${FLASK_URL}/api/save_history`, {
-                method: 'POST',
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'ngrok-skip-browser-warning': 'true'
-                },
-                body: JSON.stringify({
-                  user: 'You',
-                  text: displayText,
-                  gesture: resultData.gesture || 0,
-                  timestamp: new Date().toISOString()
-                })
-              });
-              
-              if (!saveResponse.ok) {
-                console.warn('Gagal menyimpan sejarah:', await saveResponse.text());
-              } else {
-                console.log('Sejarah disimpan dengan jayanya');
-              }
-            } catch (saveError) {
-              console.warn('Gagal menyimpan sejarah:', saveError);
-            }
-            
+            // 保存到 app.py 的資料庫
+            const saveResponse = await fetch(SAVE_ENDPOINT, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user: 'anonymous',
+                text: translation,
+                gesture: result.gesture || 0,
+                timestamp: new Date().toISOString()
+              })
+            });
+            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+            const saveResult = await saveResponse.json();
+            console.log('History saved:', saveResult);
           } catch (error) {
-            console.error(`${isSignLanguageMode ? 'Muat naik' : 'Penukaran'} gagal:`, error);
-            updateResult(translations.resultUploadError.replace('{type}', isSignLanguageMode ? 'Muat naik' : 'Penukaran').replace('{error}', error.message), 'error');
-            showError(translations.resultUploadError.replace('{type}', isSignLanguageMode ? 'Muat naik' : 'Penukaran').replace('{error}', error.message));
+            console.error('Upload failed:', error);
+            updateResult(`Upload failed: ${error.message}`, 'error');
           } finally {
             recordedBlobs = [];
           }
         } else {
-          updateResult(translations.resultNoMedia, 'error');
+          updateResult('Please record a video first!', 'error');
         }
       };
 
-      function cleanupStream() {
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-          stream = null;
-          preview.srcObject = null;
-          audioPreview.srcObject = null;
-          mediaRecorder = null;
-          startRecordBtn.disabled = !currentRoom;
-          stopRecordBtn.disabled = true;
-          uploadBtn.disabled = true;
+      document.getElementById('sendMessageBtn').onclick = () => {
+        const messageInput = document.getElementById('messageInput');
+        const message = messageInput.value.trim();
+        if (message) {
+          socket.emit('send_message', {
+            user: 'anonymous',
+            message: message,
+            timestamp: new Date().toISOString()
+          });
+          messageInput.value = '';
         }
-      }
+      };
 
-      window.onbeforeunload = () => cleanupStream();
+      document.getElementById('messageInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          document.getElementById('sendMessageBtn').click();
+        }
+      });
 
-      const currentLang = localStorage.getItem('language') || 'ms';
-      applyLanguage(currentLang);
-      initializeRooms();
+      window.addEventListener('beforeunload', () => {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+      });
+
+      initCamera();
     });
   </script>
 </body>
