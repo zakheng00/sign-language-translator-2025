@@ -19,7 +19,7 @@ import sys
 import threading
 
 # Flask 設置
-app = Flask(__name__, static_folder='static', template_folder='templates')
+app = Flask(_name_, static_folder='static', template_folder='templates')
 
 # 修復 SocketIO 配置以避免連接問題
 socketio = SocketIO(
@@ -45,7 +45,7 @@ CORS(app, resources={
 }, supports_credentials=False)  # 禁用credentials以避免CORS問題
 
 # 設置日誌
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -111,7 +111,7 @@ GESTURE_MAPPING = {
 
 
 # SQLite 設置
-DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
+DATABASE_PATH = os.path.join(os.path.dirname(_file_), 'translations.db')
 
 @contextmanager
 def get_db():
@@ -503,7 +503,7 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-if __name__ == '__main__':
+if _name_ == '_main_':
     logger.info("Starting Flask application...")
     logger.info(f"Database path: {DATABASE_PATH}")
     logger.info(f"Active worker threads: {executor._max_workers}")
