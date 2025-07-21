@@ -12,5 +12,6 @@ psutil
 flask_socketio
 eventlet==0.33.3
 aiohttp==3.9.5
-pymongo
+python-socketio==5.10.0
+python-engineio==4.7.1
 babel
