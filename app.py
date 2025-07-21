@@ -76,8 +76,8 @@ COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
-# 手語映射表
-const gestureMap = {
+
+GESTURE_MAPPING = {
     1: "Hi, How are you?",
     2: "I am fine, hank you.",
     3: "What is your name",
@@ -107,7 +107,7 @@ const gestureMap = {
     27: "This is too expansive.",
     28: "Can i sit here?",
     29: "I need to rest."
-};
+}
 
 
 # SQLite 設置
