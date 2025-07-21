@@ -28,8 +28,8 @@ socketio = SocketIO(
     async_mode='threading',    # 使用線程模式而非gevent
     ping_timeout=60,           # 增加ping超時
     ping_interval=25,          # 減少ping間隔
-    logger=True,               # 啟用日志
-    engineio_logger=True       # 啟用引擎日志
+    logger=True,               # 啟用日誌
+    engineio_logger=True       # 啟用引擎日誌
 )
 
 executor = ThreadPoolExecutor(max_workers=2)  # 減少工作線程數量
@@ -49,11 +49,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]  # 移除文件處理器以避免文件描述符問題
+    handlers=[logging.StreamHandler()]  # 移除檔案處理器以避免檔案描述符問題
 )
 logger.setLevel(logging.INFO)
 
-# 全局變量以跟踪連接狀態
+# 全局變量以追蹤連線狀態
 active_connections = set()
 shutdown_event = threading.Event()
 
@@ -76,39 +76,37 @@ COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
-
 GESTURE_MAPPING = {
     1: "Hi, How are you?",
-    2: "I am fine, hank you.",
+    2: "I am fine, thank you.",
     3: "What is your name",
     4: "Excuse me, what is the time now?",
     5: "I am hungry and want to eat.",
     6: "Can you help me.",
     7: "I need help.",
     8: "Have a nice day.",
-    9: "Thank You for you help.",
+    9: "Thank You for your help.",
     10: "How much is this?",
     11: "See you tomorrow",
     12: "I am going to buy something.",
     13: "Do you want to play together.",
     14: "Where are you going?",
     15: "Where is toilet",
-    16: "Toilot is turn right in front",
+    16: "Toilet is turn right in front",
     17: "What day is it today?",
     18: "Today is Monday.",
     19: "Yes of course.",
-    20: "what are you doing now?",
+    20: "What are you doing now?",
     21: "I am working",
     22: "Are you free tomorrow afternoon.",
-    23: "Sorry i am busy tomorrow",
+    23: "Sorry I am busy tomorrow",
     24: "I have a little headache",
     25: "What is your name?",
     26: "I want a glass of water",
-    27: "This is too expansive.",
-    28: "Can i sit here?",
+    27: "This is too expensive.",
+    28: "Can I sit here?",
     29: "I need to rest."
 }
-
 
 # SQLite 設置
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
@@ -190,7 +188,7 @@ def handle_error(e):
 @app.before_request
 def log_request():
     if request.path.startswith('/socket.io'):
-        return  # 跳過socket.io請求的日志
+        return  # 跳過socket.io請求的日誌
     request_start_time = time.time()
     logger.info(f"Request: {request.method} {request.url}")
     request.environ['request_start_time'] = request_start_time
@@ -278,12 +276,12 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
     media_file = request.files[file_key]
     logger.info(f"Processing {file_key} file: {media_file.filename}")
     
-    # 檢查文件大小限制（50MB）
+    # 檢查檔案大小限制（50MB）
     if media_file.content_length and media_file.content_length > 50 * 1024 * 1024:
         return jsonify({'error': f'{file_key} file too large (max 50MB)'}), 400
     
     try:
-        # 創建臨時文件來處理上傳
+        # 創建臨時檔案來處理上傳
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             media_file.save(tmp_file.name)
             tmp_file.seek(0)
@@ -312,7 +310,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 if file_key == 'video' and result.get('predictions'):
                     text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
                 
-                # 保存到數據庫
+                # 保存到資料庫
                 try:
                     with get_db() as db:
                         db.execute(
@@ -355,7 +353,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         logger.error(f"Unexpected error in {file_key} processing: {e}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
     finally:
-        # 清理臨時文件和文件句柄
+        # 清理臨時檔案和檔案句柄
         try:
             if 'files' in locals():
                 for f in files.values():
@@ -503,7 +501,7 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     logger.info("Starting Flask application...")
     logger.info(f"Database path: {DATABASE_PATH}")
     logger.info(f"Active worker threads: {executor._max_workers}")
