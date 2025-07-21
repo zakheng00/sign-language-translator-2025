@@ -111,7 +111,7 @@ GESTURE_MAPPING = {
 
 
 # SQLite 設置
-DATABASE_PATH = os.path.join(os.path.dirname(_file_), 'translations.db')
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
 @contextmanager
 def get_db():
