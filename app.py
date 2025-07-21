@@ -254,8 +254,8 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
             media_file.save(tmp_file.name)
             tmp_file.seek(0)
             
-            files = {file_key flu: (media_file.filename, open(tmp_file.name, 'rb'), 
-                               media_file.content_type or content_type)}
+           files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
+                          media_file.content_type or content_type)}
             
         media_id = str(uuid4())
         max_retries = 2  # 減少重試次數
