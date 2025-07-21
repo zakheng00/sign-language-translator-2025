@@ -388,7 +388,7 @@
         applyLanguage(data.language);
       });
 
-      const COLAB_URL = "https://2a478f269a9b.ngrok-free.app";
+      const COLAB_URL = "https://a31f7f32c3b5.ngrok-free.app";
       const PREDICT_ENDPOINT = ${FLASK_URL}/predict;
       const SAVE_ENDPOINT = ${COLAB_URL}/api/save_history;
 
@@ -396,18 +396,17 @@
       let mediaRecorder;
       let recordedBlobs = [];
 
-     async function initCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    document.getElementById('preview').srcObject = stream;
-    console.log('Camera started successfully');
-    updateResult('Camera initialized successfully', 'success');
-  } catch (err) {
-    console.error('Camera initialization failed:', err.name, err.message);
-    updateResult(`Cannot access camera: ${err.message}`, 'error');
-    alert(`Sila benarkan akses kamera untuk meneruskan! Error: ${err.message}`);
-  }
-}
+      async function initCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          document.getElementById('preview').srcObject = stream;
+          console.log('Camera started');
+          updateResult('Camera initialized successfully', 'success');
+        } catch (err) {
+          updateResult(Cannot access camera: ${err.message}, 'error');
+          alert('Sila benarkan akses kamera untuk meneruskan!');
+        }
+      }
 
       document.getElementById('startBtn').onclick = () => {
         if (stream && !mediaRecorder) {
