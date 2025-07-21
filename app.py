@@ -1,3 +1,4 @@
+```python
 import os
 import tempfile
 import logging
@@ -21,39 +22,39 @@ import threading
 # Flask 設置
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-# 修復 SocketIO 配置以避免連接問題
+# SocketIO 配置
 socketio = SocketIO(
     app, 
-    cors_allowed_origins="*",  # 更寬鬆的CORS設置
-    async_mode='threading',    # 使用線程模式而非gevent
-    ping_timeout=60,           # 增加ping超時
-    ping_interval=25,          # 減少ping間隔
-    logger=True,               # 啟用日誌
-    engineio_logger=True       # 啟用引擎日誌
+    cors_allowed_origins="*",
+    async_mode='threading',
+    ping_timeout=60,
+    ping_interval=25,
+    logger=True,
+    engineio_logger=True
 )
 
-executor = ThreadPoolExecutor(max_workers=2)  # 減少工作線程數量
+executor = ThreadPoolExecutor(max_workers=2)
 
-# 修復 CORS 配置
+# CORS 配置
 CORS(app, resources={
     r"/*": {
-        "origins": "*",  # 更寬鬆的origin設置
+        "origins": "*",
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         "max_age": 86400
     }
-}, supports_credentials=False)  # 禁用credentials以避免CORS問題
+}, supports_credentials=False)
 
-# 設置日誌
+# 日誌設置
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]  # 移除檔案處理器以避免檔案描述符問題
+    handlers=[logging.StreamHandler()]
 )
 logger.setLevel(logging.INFO)
 
-# 全局變量以追蹤連線狀態
+# 全局變量
 active_connections = set()
 shutdown_event = threading.Event()
 
@@ -61,14 +62,14 @@ shutdown_event = threading.Event()
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://a31f7f32c3b5.ngrok-free.app/health", 
+        response = requests.get("https://2a478f269a9b.ngrok-free.app/health", 
                               headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get('colab_url', "https://a31f7f32c3b5.ngrok-free.app")
+        return data.get('colab_url', "https://2a478f269a9b.ngrok-free.app")
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        return "https://a31f7f32c3b5.ngrok-free.app"
+        return "https://2a478f269a9b.ngrok-free.app"
 
 COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
@@ -85,7 +86,6 @@ def get_db():
     try:
         db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=30)
         db.row_factory = sqlite3.Row
-        # 設置WAL模式以提高並發性能
         db.execute('PRAGMA journal_mode=WAL')
         yield db
     except sqlite3.Error as e:
@@ -137,7 +137,7 @@ def save_feedback(data):
 
 init_db()
 
-# SocketIO 事件處理
+# SocketIO 事件
 @socketio.on('connect')
 def handle_connect():
     logger.info(f'Client connected: {request.sid}')
@@ -152,11 +152,11 @@ def handle_disconnect():
 def handle_error(e):
     logger.error(f'SocketIO error: {e}')
 
-# 添加請求日誌中間件
+# 請求日誌
 @app.before_request
 def log_request():
     if request.path.startswith('/socket.io'):
-        return  # 跳過socket.io請求的日誌
+        return
     request_start_time = time.time()
     logger.info(f"Request: {request.method} {request.url}")
     request.environ['request_start_time'] = request_start_time
@@ -164,21 +164,18 @@ def log_request():
 @app.after_request
 def after_request(response):
     if request.path.startswith('/socket.io'):
-        return response  # 跳過socket.io響應
-        
+        return response
     request_start_time = request.environ.get('request_start_time')
     if request_start_time:
         duration = time.time() - request_start_time
         logger.info(f"Request completed in {duration:.2f} seconds")
-    
-    # 設置更寬鬆的CORS頭
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
     response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
-# 監控資源使用情況
+# 資源監控
 def log_resource_usage():
     try:
         process = psutil.Process()
@@ -233,7 +230,7 @@ def settings():
 def favicon():
     return '', 204
 
-# API 路由 - 改進錯誤處理和資源管理
+# 媒體處理
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
         return '', 204
@@ -244,21 +241,19 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
     media_file = request.files[file_key]
     logger.info(f"Processing {file_key} file: {media_file.filename}")
     
-    # 檢查檔案大小限制（50MB）
     if media_file.content_length and media_file.content_length > 50 * 1024 * 1024:
         return jsonify({'error': f'{file_key} file too large (max 50MB)'}), 400
     
     try:
-        # 創建臨時檔案來處理上傳
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             media_file.save(tmp_file.name)
             tmp_file.seek(0)
             
-           files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
-                          media_file.content_type or content_type)}
+            files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
+                                media_file.content_type or content_type)}
             
         media_id = str(uuid4())
-        max_retries = 2  # 減少重試次數
+        max_retries = 2
         
         for attempt in range(max_retries):
             try:
@@ -273,10 +268,8 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 
                 logger.info(f"Received result from Colab: {result}")
                 
-                # 使用 Colab 返回的 text 字段，移除 GESTURE_MAPPING 依賴
                 text = result.get('text', 'No transcription' if file_key == 'audio' else 'Unknown gesture')
                 
-                # 保存到資料庫
                 try:
                     with get_db() as db:
                         db.execute(
@@ -288,7 +281,6 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 except Exception as db_error:
                     logger.error(f"Database save failed: {db_error}")
                 
-                # 發送Socket.IO事件（僅發送給當前房間）
                 try:
                     socketio.emit('translation', {
                         'text': text,
@@ -319,7 +311,6 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         logger.error(f"Unexpected error in {file_key} processing: {e}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
     finally:
-        # 清理臨時檔案和檔案句柄
         try:
             if 'files' in locals():
                 for f in files.values():
@@ -349,7 +340,7 @@ def get_history():
     
     try:
         with get_db() as db:
-            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
+            cursor = db.execute('SELECT * FROM translations ORDER BY TIMESTAMP DESC LIMIT 100')
             history = [dict(row) for row in cursor.fetchall()]
         logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
@@ -457,7 +448,7 @@ def handle_exception(e):
     logger.error(f"Unhandled exception: {str(e)}")
     return jsonify({'error': 'An unexpected error occurred'}), 500
 
-# 優雅關閉處理
+# 優雅關閉
 def signal_handler(signum, frame):
     logger.info(f"Received signal {signum}, shutting down gracefully...")
     shutdown_event.set()
@@ -474,3 +465,4 @@ if __name__ == '__main__':
     
     port = int(os.environ.get('PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
+```
