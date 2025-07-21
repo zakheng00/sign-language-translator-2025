@@ -19,7 +19,7 @@ import sys
 import threading
 
 # Flask 設置
-app = Flask(_name_, static_folder='static', template_folder='templates')
+app = Flask(__name__, static_folder='static', template_folder='templates')
 
 # 修復 SocketIO 配置以避免連接問題
 socketio = SocketIO(
@@ -45,7 +45,7 @@ CORS(app, resources={
 }, supports_credentials=False)  # 禁用credentials以避免CORS問題
 
 # 設置日誌
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
