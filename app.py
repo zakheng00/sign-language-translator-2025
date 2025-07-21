@@ -73,16 +73,16 @@ def get_colab_base_url():
     
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://8603c16d2d79.ngrok-free.app/health", 
+        response = requests.get("https://2a478f269a9b.ngrok-free.app/health", 
                               headers=headers, timeout=5)  # 減少超時時間
         response.raise_for_status()
         data = response.json()
-        _colab_base_url_cache = data.get('colab_url', "https://8603c16d2d79.ngrok-free.app")
+        _colab_base_url_cache = data.get('colab_url', "https://2a478f269a9b.ngrok-free.app")
         _colab_cache_timestamp = current_time
         return _colab_base_url_cache
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        default_url = "https://8603c16d2d79.ngrok-free.app"
+        default_url = "https://2a478f269a9b.ngrok-free.app"
         _colab_base_url_cache = default_url
         _colab_cache_timestamp = current_time
         return default_url
