@@ -76,6 +76,38 @@ COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
+GESTURE_MAPPING = {
+    1: "Hi, How are you?",
+    2: "I am fine, thank you.",
+    3: "What is your name",
+    4: "Excuse me, what is the time now?",
+    5: "I am hungry and want to eat.",
+    6: "Can you help me.",
+    7: "I need help.",
+    8: "Have a nice day.",
+    9: "Thank You for your help.",
+    10: "How much is this?",
+    11: "See you tomorrow",
+    12: "I am going to buy something.",
+    13: "Do you want to play together.",
+    14: "Where are you going?",
+    15: "Where is toilet",
+    16: "Toilet is turn right in front",
+    17: "What day is it today?",
+    18: "Today is Monday.",
+    19: "Yes of course.",
+    20: "What are you doing now?",
+    21: "I am working",
+    22: "Are you free tomorrow afternoon.",
+    23: "Sorry I am busy tomorrow",
+    24: "I have a little headache",
+    25: "What is your name?",
+    26: "I want a glass of water",
+    27: "This is too expensive.",
+    28: "Can I sit here?",
+    29: "I need to rest."
+}
+
 # SQLite 設置
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
@@ -254,7 +286,7 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
             media_file.save(tmp_file.name)
             tmp_file.seek(0)
             
-            files = {file_key flu: (media_file.filename, open(tmp_file.name, 'rb'), 
+            files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
                                media_file.content_type or content_type)}
             
         media_id = str(uuid4())
@@ -273,8 +305,10 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 
                 logger.info(f"Received result from Colab: {result}")
                 
-                # 使用 Colab 返回的 text 字段，移除 GESTURE_MAPPING 依賴
-                text = result.get('text', 'No transcription' if file_key == 'audio' else 'Unknown gesture')
+                text = result.get('text', 'No transcription' if file_key == 'audio' else 
+                                 GESTURE_MAPPING.get(result.get('gesture', gesture_default), 'Unknown gesture'))
+                if file_key == 'video' and result.get('predictions'):
+                    text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
                 
                 # 保存到資料庫
                 try:
