@@ -19,73 +19,56 @@ import sys
 import threading
 
 # Flask 設置
-app = Flask(__name__, static_folder='static', template_folder='templates')
+app = Flask(_name_, static_folder='static', template_folder='templates')
 
-# 修復 SocketIO 配置 - 使用 eventlet 作為異步模式
+# 修復 SocketIO 配置以避免連接問題
 socketio = SocketIO(
     app, 
-    cors_allowed_origins="*",
-    async_mode='eventlet',      # 改為 eventlet 模式
-    ping_timeout=120,           # 增加 ping 超時
-    ping_interval=25,
-    logger=False,               # 禁用詳細日志以減少輸出
-    engineio_logger=False,      # 禁用引擎日志
-    transports=['websocket', 'polling']  # 允許回退到 polling
+    cors_allowed_origins="*",  # 更寬鬆的CORS設置
+    async_mode='threading',    # 使用線程模式而非gevent
+    ping_timeout=60,           # 增加ping超時
+    ping_interval=25,          # 減少ping間隔
+    logger=True,               # 啟用日志
+    engineio_logger=True       # 啟用引擎日志
 )
 
-# 減少線程池大小
-executor = ThreadPoolExecutor(max_workers=2)
+executor = ThreadPoolExecutor(max_workers=2)  # 減少工作線程數量
 
 # 修復 CORS 配置
 CORS(app, resources={
     r"/*": {
-        "origins": "*",
+        "origins": "*",  # 更寬鬆的origin設置
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         "max_age": 86400
     }
-}, supports_credentials=False)
+}, supports_credentials=False)  # 禁用credentials以避免CORS問題
 
-# 設置日誌 - 減少日志級別
-logger = logging.getLogger(__name__)
+# 設置日誌
+logger = logging.getLogger(_name_)
 logging.basicConfig(
-    level=logging.WARNING,  # 改為 WARNING 級別
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler()]  # 移除文件處理器以避免文件描述符問題
 )
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
 
-# 全局變量
+# 全局變量以跟踪連接狀態
 active_connections = set()
 shutdown_event = threading.Event()
 
-# 動態獲取 Colab API 端點 - 添加緩存
-_colab_base_url_cache = None
-_colab_cache_timestamp = 0
-CACHE_DURATION = 300  # 5分鐘緩存
-
+# 動態獲取 Colab API 端點
 def get_colab_base_url():
-    global _colab_base_url_cache, _colab_cache_timestamp
-    
-    current_time = time.time()
-    if _colab_base_url_cache and (current_time - _colab_cache_timestamp) < CACHE_DURATION:
-        return _colab_base_url_cache
-    
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://2a478f269a9b.ngrok-free.app/health", 
-                              headers=headers, timeout=5)  # 減少超時時間
+        response = requests.get("https://8603c16d2d79.ngrok-free.app/health", 
+                              headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        _colab_base_url_cache = data.get('colab_url', "https://2a478f269a9b.ngrok-free.app")
-        _colab_cache_timestamp = current_time
-        return _colab_base_url_cache
+        return data.get('colab_url', "https://8603c16d2d79.ngrok-free.app")
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        default_url = "https://2a478f269a9b.ngrok-free.app"
-        _colab_base_url_cache = default_url
-        _colab_cache_timestamp = current_time
-        return default_url
+        return "https://8603c16d2d79.ngrok-free.app"
 
 COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
@@ -93,23 +76,24 @@ COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
 
+
 GESTURE_MAPPING = {
     1: "Hi, How are you?",
-    2: "I am fine, thank you.",
+    2: "I am fine, hank you.",
     3: "What is your name",
     4: "Excuse me, what is the time now?",
     5: "I am hungry and want to eat.",
     6: "Can you help me.",
     7: "I need help.",
     8: "Have a nice day.",
-    9: "Thank You for your help.",
+    9: "Thank You for you help.",
     10: "How much is this?",
     11: "See you tomorrow",
     12: "I am going to buy something.",
     13: "Do you want to play together.",
     14: "Where are you going?",
     15: "Where is toilet",
-    16: "Toilet is turn right in front",
+    16: "Toilot is turn right in front",
     17: "What day is it today?",
     18: "Today is Monday.",
     19: "Yes of course.",
@@ -120,25 +104,23 @@ GESTURE_MAPPING = {
     24: "I have a little headache",
     25: "What is your name?",
     26: "I want a glass of water",
-    27: "This is too expensive.",
+    27: "This is too expansive.",
     28: "Can i sit here?",
     29: "I need to rest."
 }
 
-# SQLite 設置 - 優化數據庫配置
-DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
+
+# SQLite 設置
+DATABASE_PATH = os.path.join(os.path.dirname(_file_), 'translations.db')
 
 @contextmanager
 def get_db():
     db = None
     try:
-        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=10)  # 減少超時
+        db = sqlite3.connect(DATABASE_PATH, check_same_thread=False, timeout=30)
         db.row_factory = sqlite3.Row
-        # 設置性能優化
+        # 設置WAL模式以提高並發性能
         db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA synchronous=NORMAL')
-        db.execute('PRAGMA cache_size=1000')
-        db.execute('PRAGMA temp_store=MEMORY')
         yield db
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {str(e)}")
@@ -170,9 +152,8 @@ def init_db():
                            feedback TEXT,
                            timestamp TEXT)''')
             db.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON translations (timestamp)')
-            db.execute('CREATE INDEX IF NOT EXISTS idx_user ON translations (user)')
             db.commit()
-        logger.warning("SQLite database initialized with translations and feedback tables.")
+        logger.info("SQLite database initialized with translations and feedback tables.")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
 
@@ -183,65 +164,74 @@ def save_feedback(data):
                        (data.get('user', 'anonymous'), data.get('feedback', ''), 
                         datetime.datetime.utcnow().isoformat()))
             db.commit()
+        logger.info(f"Feedback saved for user: {data.get('user', 'anonymous')}")
     except Exception as e:
         logger.error(f"Failed to save feedback: {str(e)}")
         raise
 
 init_db()
 
-# SocketIO 事件處理 - 添加錯誤處理
+# SocketIO 事件處理
 @socketio.on('connect')
 def handle_connect():
-    try:
-        active_connections.add(request.sid)
-        logger.warning(f'Client connected: {request.sid}')
-    except Exception as e:
-        logger.error(f'Connect error: {e}')
+    logger.info(f'Client connected: {request.sid}')
+    active_connections.add(request.sid)
     
 @socketio.on('disconnect')
 def handle_disconnect():
-    try:
-        active_connections.discard(request.sid)
-        logger.warning(f'Client disconnected: {request.sid}')
-    except Exception as e:
-        logger.error(f'Disconnect error: {e}')
+    logger.info(f'Client disconnected: {request.sid}')
+    active_connections.discard(request.sid)
 
 @socketio.on('error')
 def handle_error(e):
     logger.error(f'SocketIO error: {e}')
 
-@socketio.on_error_default
-def default_error_handler(e):
-    logger.error(f'SocketIO default error: {e}')
+# 添加請求日誌中間件
+@app.before_request
+def log_request():
+    if request.path.startswith('/socket.io'):
+        return  # 跳過socket.io請求的日志
+    request_start_time = time.time()
+    logger.info(f"Request: {request.method} {request.url}")
+    request.environ['request_start_time'] = request_start_time
 
-# 移除請求日誌中間件以減少開銷
 @app.after_request
 def after_request(response):
-    if not request.path.startswith('/socket.io'):
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
-        response.headers['ngrok-skip-browser-warning'] = 'true'
+    if request.path.startswith('/socket.io'):
+        return response  # 跳過socket.io響應
+        
+    request_start_time = request.environ.get('request_start_time')
+    if request_start_time:
+        duration = time.time() - request_start_time
+        logger.info(f"Request completed in {duration:.2f} seconds")
+    
+    # 設置更寬鬆的CORS頭
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,ngrok-skip-browser-warning'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['ngrok-skip-browser-warning'] = 'true'
     return response
 
-# 監控資源使用情況 - 簡化版本
+# 監控資源使用情況
 def log_resource_usage():
     try:
         process = psutil.Process()
         memory = process.memory_info().rss / 1024 / 1024
-        if memory > 200:  # 只在內存超過200MB時記錄
-            logger.warning(f"High memory usage: {memory:.2f} MB")
-    except Exception:
-        pass
+        cpu = process.cpu_percent(interval=0.1)
+        logger.info(f"Resource usage - Memory: {memory:.2f} MB, CPU: {cpu:.2f}%")
+    except Exception as e:
+        logger.error(f"Failed to get resource usage: {e}")
 
 # 測試端點
 @app.route('/test')
 def test():
+    log_resource_usage()
     return jsonify({
         'message': 'Server is running',
         'timestamp': datetime.datetime.utcnow().isoformat(),
         'active_connections': len(active_connections),
-        'status': 'healthy'
+        'endpoints': ['/health', '/predict', '/speech_to_text', '/speech_to_text_malay', 
+                     '/api/history', '/api/settings', '/api/feedback', '/api/clear_history']
     })
 
 # 頁面路由
@@ -277,7 +267,7 @@ def settings():
 def favicon():
     return '', 204
 
-# API 路由 - 優化版本
+# API 路由 - 改進錯誤處理和資源管理
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
     if request.method == 'OPTIONS':
         return '', 204
@@ -286,62 +276,62 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
         return jsonify({'error': f'Missing {file_key} file'}), 400
     
     media_file = request.files[file_key]
+    logger.info(f"Processing {file_key} file: {media_file.filename}")
     
-    # 檢查文件大小限制（30MB - 減少限制）
-    if media_file.content_length and media_file.content_length > 30 * 1024 * 1024:
-        return jsonify({'error': f'{file_key} file too large (max 30MB)'}), 400
+    # 檢查文件大小限制（50MB）
+    if media_file.content_length and media_file.content_length > 50 * 1024 * 1024:
+        return jsonify({'error': f'{file_key} file too large (max 50MB)'}), 400
     
-    temp_path = None
     try:
-        # 創建臨時文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_key}') as tmp_file:
-            temp_path = tmp_file.name
+        # 創建臨時文件來處理上傳
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             media_file.save(tmp_file.name)
-        
-        # 準備文件上傳
-        with open(temp_path, 'rb') as f:
-            files = {file_key: (media_file.filename, f, 
+            tmp_file.seek(0)
+            
+            files = {file_key: (media_file.filename, open(tmp_file.name, 'rb'), 
                                media_file.content_type or content_type)}
             
-            media_id = str(uuid4())
-            headers = {'ngrok-skip-browser-warning': 'true'}
-            
-            # 單次請求，減少重試
+        media_id = str(uuid4())
+        max_retries = 2  # 減少重試次數
+        
+        for attempt in range(max_retries):
             try:
-                response = requests.post(endpoint, files=files, headers=headers, 
-                                      timeout=90, stream=False)  # 減少超時時間
-                response.raise_for_status()
-                result = response.json()
+                headers = {'ngrok-skip-browser-warning': 'true'}
+                logger.info(f"Sending request to {endpoint} (attempt {attempt + 1})")
+                
+                with requests.Session() as session:
+                    response = session.post(endpoint, files=files, headers=headers, 
+                                          timeout=180, stream=False)
+                    response.raise_for_status()
+                    result = response.json()
+                
+                logger.info(f"Received result from Colab: {result}")
                 
                 text = result.get('text', 'No transcription' if file_key == 'audio' else 
                                  GESTURE_MAPPING.get(result.get('gesture', gesture_default), 'Unknown gesture'))
                 if file_key == 'video' and result.get('predictions'):
                     text = GESTURE_MAPPING.get(result.get('predictions', [0])[0], text)
                 
-                # 異步保存到數據庫
-                def save_to_db():
-                    try:
-                        with get_db() as db:
-                            db.execute(
-                                'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
-                                ('anonymous', text, result.get('gesture', gesture_default), 
-                                 datetime.datetime.utcnow().isoformat())
-                            )
-                            db.commit()
-                    except Exception as db_error:
-                        logger.error(f"Database save failed: {db_error}")
+                # 保存到數據庫
+                try:
+                    with get_db() as db:
+                        db.execute(
+                            'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                            ('anonymous', text, result.get('gesture', gesture_default), 
+                             datetime.datetime.utcnow().isoformat())
+                        )
+                        db.commit()
+                except Exception as db_error:
+                    logger.error(f"Database save failed: {db_error}")
                 
-                # 在線程池中執行數據庫保存
-                executor.submit(save_to_db)
-                
-                # 發送Socket.IO事件
+                # 發送Socket.IO事件（僅發送給當前房間）
                 try:
                     socketio.emit('translation', {
                         'text': text,
                         'gesture': result.get('gesture', gesture_default),
                         'user': 'anonymous',
                         'video_id': media_id if file_key == 'video' else None
-                    })
+                    }, room=request.sid if hasattr(request, 'sid') else None)
                 except Exception as socket_error:
                     logger.error(f"Socket emission failed: {socket_error}")
                 
@@ -350,23 +340,31 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                     'video_id': media_id if file_key == 'video' else None,
                     'gesture': result.get('gesture', gesture_default)
                 })
-                
+            
             except requests.exceptions.Timeout:
+                logger.warning(f"Timeout attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
                 return jsonify({'error': f'{file_key} request timed out'}), 504
             except requests.exceptions.RequestException as e:
                 logger.error(f"{file_key} request failed: {e}")
-                return jsonify({'error': f'{file_key} service unavailable'}), 503
+                return jsonify({'error': f'{file_key} request failed: {str(e)}'}), 503
             
     except Exception as e:
         logger.error(f"Unexpected error in {file_key} processing: {e}")
-        return jsonify({'error': f'Processing failed'}), 500
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
     finally:
-        # 清理臨時文件
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
+        # 清理臨時文件和文件句柄
+        try:
+            if 'files' in locals():
+                for f in files.values():
+                    if hasattr(f[1], 'close'):
+                        f[1].close()
+            if 'tmp_file' in locals():
+                os.unlink(tmp_file.name)
+        except Exception as cleanup_error:
+            logger.error(f"Cleanup failed: {cleanup_error}")
 
 @app.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
@@ -387,12 +385,13 @@ def get_history():
     
     try:
         with get_db() as db:
-            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 50')  # 減少限制
+            cursor = db.execute('SELECT * FROM translations ORDER BY timestamp DESC LIMIT 100')
             history = [dict(row) for row in cursor.fetchall()]
+        logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching history: {e}")
-        return jsonify({'error': 'Failed to fetch history'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/settings', methods=['POST', 'OPTIONS'])
 def save_settings():
@@ -405,12 +404,12 @@ def save_settings():
         language = data['language']
         if language not in ['en', 'ms']:
             return jsonify({'error': 'Invalid language code'}), 400
-        
+        logger.info(f"Language setting saved: {language}")
         socketio.emit('language_changed', {'language': language})
         return jsonify({'message': 'Language setting saved successfully', 'language': language})
     except Exception as e:
         logger.error(f"Error saving settings: {str(e)}")
-        return jsonify({'error': 'Settings save failed'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/static/<path:path>')
 def serve_static(path):
@@ -431,7 +430,7 @@ def save_feedback_endpoint():
         return jsonify({'message': 'Feedback saved successfully'})
     except Exception as e:
         logger.error(f"Error saving feedback: {str(e)}")
-        return jsonify({'error': 'Feedback save failed'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/clear_history', methods=['DELETE', 'OPTIONS'])
 def clear_history():
@@ -441,32 +440,48 @@ def clear_history():
         with get_db() as db:
             db.execute('DELETE FROM translations')
             db.commit()
+        logger.info("All translation history cleared")
         return jsonify({'message': 'All translation history cleared successfully'})
     except Exception as e:
         logger.error(f"Error clearing history: {str(e)}")
-        return jsonify({'error': 'Clear history failed'}), 500
+        return jsonify({'error': str(e)}), 500
 
-# 健康檢查 - 簡化版本
+# 健康檢查
 @app.route('/health')
 def health_check():
+    log_resource_usage()
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.utcnow().isoformat(),
+        'colab_status': check_colab_status(),
+        'database': check_database_status(),
         'active_connections': len(active_connections)
     })
 
 def check_colab_status() -> str:
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=5)
+        response = requests.get(COLAB_HEALTH_URL, headers=headers, timeout=10)
         return 'online' if response.status_code == 200 else 'offline'
-    except:
+    except requests.RequestException as e:
+        logger.error(f"Colab health check failed: {e}")
         return 'offline'
 
-# 錯誤處理 - 簡化版本
+def check_database_status() -> str:
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM translations')
+            count = cursor.fetchone()[0]
+            return f'online ({count} records)'
+    except sqlite3.Error as e:
+        logger.error(f"Database status check failed: {e}")
+        return 'offline'
+
+# 錯誤處理
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    logger.warning(f"404 error: {request.url}")
+    return jsonify({'error': 'Not found', 'url': request.url}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -480,20 +495,18 @@ def handle_exception(e):
 
 # 優雅關閉處理
 def signal_handler(signum, frame):
-    logger.warning(f"Received signal {signum}, shutting down gracefully...")
+    logger.info(f"Received signal {signum}, shutting down gracefully...")
     shutdown_event.set()
-    try:
-        socketio.stop()
-    except:
-        pass
+    socketio.stop()
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-if __name__ == '__main__':
-    logger.warning("Starting Flask application...")
-    logger.warning(f"Database path: {DATABASE_PATH}")
+if _name_ == '_main_':
+    logger.info("Starting Flask application...")
+    logger.info(f"Database path: {DATABASE_PATH}")
+    logger.info(f"Active worker threads: {executor._max_workers}")
     
     port = int(os.environ.get('PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
