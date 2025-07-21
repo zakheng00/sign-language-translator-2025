@@ -417,7 +417,7 @@
       const FLASK_URL = detectServerUrl();
       const socket = io(FLASK_URL, {
         path: '/socket.io',
-        transports: ['websocket', 'polling'],
+        transports: ['websocket'], // 優先使用 WebSocket
         reconnectionAttempts: 5,
         reconnectionDelay: 1000
       });
@@ -432,7 +432,7 @@
         console.error('Ralat sambungan Socket.IO:', error);
       });
       socket.on('language_changed', (data) => {
-        console.log('Menerima acara perubahan bahasa:', data);
+        console.log('Menerima acara perubahan語言:', data);
         applyLanguage(data.language);
       });
       socket.on('translation', (data) => {
@@ -445,7 +445,6 @@
       });
 
       const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
-      const SAVE_ENDPOINT = `${FLASK_URL}/api/save_history`; // 使用 app.py 的保存端點
 
       let stream;
       let mediaRecorder;
@@ -497,7 +496,7 @@
           const blob = new Blob(recordedBlobs, { type: 'video/webm' });
           const formData = new FormData();
           const videoId = crypto.randomUUID();
-          formData.append('video', blob, `recording_${videoId}.webm`); // 修正檔案副檔名
+          formData.append('video', blob, `recording_${videoId}.webm`);
           updateResult('Uploading and translating...', 'processing');
           try {
             const response = await fetch(PREDICT_ENDPOINT, {
@@ -508,22 +507,7 @@
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
             const result = await response.json();
             const translation = result.translation || result.error || 'Unknown result';
-            updateResult(`Translation Result: ${translation}`, 'success'); // 移除 Video ID 顯示
-
-            // 保存到 app.py 的資料庫
-            const saveResponse = await fetch(SAVE_ENDPOINT, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user: 'anonymous',
-                text: translation,
-                gesture: result.gesture || 0,
-                timestamp: new Date().toISOString()
-              })
-            });
-            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-            const saveResult = await saveResponse.json();
-            console.log('History saved:', saveResult);
+            updateResult(`Translation Result: ${translation}`, 'success');
           } catch (error) {
             console.error('Upload failed:', error);
             updateResult(`Upload failed: ${error.message}`, 'error');
