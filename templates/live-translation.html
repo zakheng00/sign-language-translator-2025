@@ -298,42 +298,8 @@
       }
     };
 
-    // Define the gesture mapping to match server-side
-    const GESTURE_MAPPING = {
-      1: "Hi, How are you?",
-      2: "I am fine, hank you.",
-      3: "What is your name",
-      4: "Excuse me, what is the time now?",
-      5: "I am hungry and want to eat.",
-      6: "Can you help me.",
-      7: "I need help.",
-      8: "Have a nice day.",
-      9: "Thank You for you help.",
-      10: "How much is this?",
-      11: "See you tomorrow",
-      12: "I am going to buy something.",
-      13: "Do you want to play together.",
-      14: "Where are you going?",
-      15: "Where is toilet",
-      16: "Toilot is turn right in front",
-      17: "What day is it today?",
-      18: "Today is Monday.",
-      19: "Yes of course.",
-      20: "what are you doing now?",
-      21: "I am working",
-      22: "Are you free tomorrow afternoon.",
-      23: "Sorry i am busy tomorrow",
-      24: "I have a little headache",
-      25: "What is your name?",
-      26: "I want a glass of water",
-      27: "This is too expansive.",
-      28: "Can i sit here?",
-      29: "I need to rest."
-    };
-
     function applyLanguage(lang) {
-      // Store language without localStorage
-      window.currentLanguage = lang;
+      localStorage.setItem('language', lang);
       const translations = TRANSLATIONS.liveTranslation[lang];
       document.title = `Terjemahan Langsung - Penterjemah Bahasa Isyarat`;
       document.getElementById('mainTitle').innerHTML = `<span class="icon">🎥</span> ${translations.title}`;
@@ -354,7 +320,7 @@
 
     function updateResult(message, type = 'default') {
       const resultEl = document.getElementById('result');
-      const translations = TRANSLATIONS.liveTranslation[window.currentLanguage || 'ms'];
+      const translations = TRANSLATIONS.liveTranslation[localStorage.getItem('language') || 'ms'];
       let translatedMessage = message;
       if (message.includes('Camera initialized successfully')) {
         translatedMessage = translations.cameraSuccess;
@@ -392,7 +358,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       console.log('live-translation.html DOM telah dimuat sepenuhnya');
-      let currentLang = window.currentLanguage || 'ms';
+      let currentLang = localStorage.getItem('language') || 'ms';
       applyLanguage(currentLang);
 
       function detectServerUrl() {
@@ -445,20 +411,7 @@
       document.getElementById('startBtn').onclick = () => {
         if (stream && !mediaRecorder) {
           recordedBlobs = [];
-          // Fix: Use proper MIME type for recording
-          const options = { mimeType: 'video/webm;codecs=vp9' };
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options.mimeType = 'video/webm;codecs=vp8';
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-              options.mimeType = 'video/webm';
-              if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                options.mimeType = 'video/mp4';
-              }
-            }
-          }
-          console.log('Using MIME type:', options.mimeType);
-          
-          mediaRecorder = new MediaRecorder(stream, options);
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
           mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) recordedBlobs.push(event.data);
           };
@@ -484,57 +437,48 @@
         }
       };
 
-     document.getElementById('uploadBtn').onclick = async () => {
-  if (recordedBlobs.length) {
-    const blob = new Blob(recordedBlobs, { type: 'video/webm' });
-    const formData = new FormData();
-    const videoId = crypto.randomUUID();
-    formData.append('video', blob, `recording_${videoId}.mp4`);
-    updateResult('Uploading and translating...', 'processing');
-    try {
-      const response = await fetch(PREDICT_ENDPOINT, {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
-      const result = await response.json();
-      const translation = result.translation || result.error || 'Unknown result';
-      updateResult(`Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
+      document.getElementById('uploadBtn').onclick = async () => {
+        if (recordedBlobs.length) {
+          const blob = new Blob(recordedBlobs, { type: 'video/webm' });
+          const formData = new FormData();
+          const videoId = crypto.randomUUID();
+          formData.append('video', blob, `recording_${videoId}.mp4`);
+          updateResult('Uploading and translating...', 'processing');
+          try {
+            const response = await fetch(PREDICT_ENDPOINT, {
+              method: 'POST',
+              body: formData,
+              mode: 'cors'
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, ${await response.text()}`);
+            const result = await response.json();
+            const translation = result.translation || result.error || 'Unknown result';
+            updateResult(`Translation Result: ${translation}, Video ID: ${videoId}`, 'success');
 
-      const saveResponse = await Promise.race([
-        fetch(SAVE_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          },
-          body: JSON.stringify({
-            user: 'anonymous',
-            text: translation,
-            gesture: result.gesture || 0,
-            timestamp: new Date().toISOString(),
-            video_id: videoId
-          })
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 30000))
-      ]);
-      if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
-      const saveResult = await saveResponse.json();
-      console.log('History saved:', saveResult);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      updateResult(`Upload failed: ${error.message}`, 'error');
-    } finally {
-      recordedBlobs = [];
-    }
-  } else {
-    updateResult('Please record a video first!', 'error');
-  }
-};
+            const saveResponse = await fetch(SAVE_ENDPOINT, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user: 'anonymous',
+                text: translation,
+                gesture: result.gesture || 0,
+                timestamp: new Date().toISOString(),
+                video_id: videoId
+              })
+            });
+            if (!saveResponse.ok) throw new Error(`Save failed: ${await saveResponse.text()}`);
+            const saveResult = await saveResponse.json();
+            console.log('History saved:', saveResult);
+          } catch (error) {
+            console.error('Upload failed:', error);
+            updateResult(`Upload failed: ${error.message}`, 'error');
+          } finally {
+            recordedBlobs = [];
+          }
+        } else {
+          updateResult('Please record a video first!', 'error');
+        }
+      };
 
       window.addEventListener('beforeunload', () => {
         if (stream) stream.getTracks().forEach(track => track.stop());
