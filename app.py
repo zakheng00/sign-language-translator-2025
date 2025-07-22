@@ -242,6 +242,10 @@ def history():
 def settings():
     return send_from_directory('templates', 'settings.html')
 
+@app.route('/admin')
+def admin():
+    return send_from_directory('templates', 'admin.html')
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
