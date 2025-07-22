@@ -1,5 +1,4 @@
 import os
-import tempfile Pict
 import tempfile
 import logging
 import time
