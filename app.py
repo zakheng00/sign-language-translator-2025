@@ -59,13 +59,16 @@ shutdown_event = threading.Event()
 
 # 預設翻譯內容和計數器
 fixed_translations = [
-    {"text": "Hello", "gesture": 1, "confidence": 0.95},
-    {"text": "Thank you", "gesture": 2, "confidence": 0.95},
-    {"text": "Goodbye", "gesture": 3, "confidence": 0.95},
-    {"text": "I love you", "gesture": 4, "confidence": 0.95}
+    {"text": "How are you", "gesture": 18, "confidence": 0.95},
+    {"text": "How are you", "gesture": 18, "confidence": 0.95},
+    {"text": "I am fine thank you", "gesture": 7, "confidence": 0.95}，
+    {"text": "Today is Monday", "gesture": 17, "confidence": 0.95},
+    {"text": "What is your name", "gesture": 4, "confidence": 0.95}.
+    {"text": "Can you help me.", "gesture": 3, "confidence": 0.95}
+    
 ]
 predict_count = 0  # 全域計數器，追蹤 /predict 請求次數
-FIXED_TRANSLATION_LIMIT = 4  # 前 4 次使用預設內容
+FIXED_TRANSLATION_LIMIT = 6  # 前 4 次使用預設內容
 
 # 動態獲取 Colab API 端點
 def get_colab_base_url():
