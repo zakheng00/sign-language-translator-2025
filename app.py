@@ -57,6 +57,16 @@ logger.setLevel(logging.INFO)
 active_connections = set()
 shutdown_event = threading.Event()
 
+# 預設翻譯內容和計數器
+fixed_translations = [
+    {"text": "Hello", "gesture": 1, "confidence": 0.95},
+    {"text": "Thank you", "gesture": 2, "confidence": 0.95},
+    {"text": "Goodbye", "gesture": 3, "confidence": 0.95},
+    {"text": "I love you", "gesture": 4, "confidence": 0.95}
+]
+predict_count = 0  # 全域計數器，追蹤 /predict 請求次數
+FIXED_TRANSLATION_LIMIT = 4  # 前 4 次使用預設內容
+
 # 動態獲取 Colab API 端點
 def get_colab_base_url():
     try:
@@ -75,6 +85,7 @@ COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
 COLAB_STT_URL = f"{COLAB_BASE_URL}/speech_to_text"
 COLAB_STT_MALAY_URL = f"{COLAB_BASE_URL}/speech_to_text_malay"
 COLAB_HEALTH_URL = f"{COLAB_BASE_URL}/health"
+
 # SQLite 設置
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'translations.db')
 
@@ -196,7 +207,7 @@ def test():
         'timestamp': datetime.datetime.utcnow().isoformat(),
         'active_connections': len(active_connections),
         'endpoints': ['/health', '/predict', '/speech_to_text', '/speech_to_text_malay', 
-                     '/api/history', '/api/settings', '/api/feedback', '/api/clear_history']
+                     '/api/history', '/api/settings', '/api/feedback', '/api/clear_history', '/api/set_fixed_translations']
     })
 
 # 頁面路由
@@ -232,8 +243,35 @@ def settings():
 def favicon():
     return '', 204
 
+# 新增 API 設置預設翻譯
+@app.route('/api/set_fixed_translations', methods=['POST', 'OPTIONS'])
+def set_fixed_translations():
+    global fixed_translations
+    if request.method == 'OPTIONS':
+        return '', 204
+    try:
+        data = request.get_json()
+        if not data or 'translations' not in data:
+            return jsonify({'error': 'Missing translations parameter'}), 400
+        translations = data['translations']
+        if not isinstance(translations, list) or len(translations) != 4:
+            return jsonify({'error': 'Translations must be a list of exactly 4 items'}), 400
+        for t in translations:
+            if not all(key in t for key in ['text', 'gesture']) or not isinstance(t['gesture'], int):
+                return jsonify({'error': 'Each translation must have text and gesture (integer)'}), 400
+        fixed_translations = [
+            {'text': t['text'], 'gesture': t['gesture'], 'confidence': 0.95}
+            for t in translations
+        ]
+        logger.info(f"Fixed translations updated: {fixed_translations}")
+        return jsonify({'message': 'Fixed translations set successfully', 'translations': fixed_translations})
+    except Exception as e:
+        logger.error(f"Error setting fixed translations: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # API 路由 - 改進錯誤處理和資源管理
 def process_media_request(endpoint: str, file_key: str, content_type: str, gesture_default: int = 0) -> Dict[str, Any]:
+    global predict_count
     if request.method == 'OPTIONS':
         return '', 204
     
@@ -255,6 +293,41 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                                media_file.content_type or content_type)}
             
         media_id = str(uuid4())
+        
+        # 前 4 次返回預設翻譯
+        if file_key == 'video' and predict_count < FIXED_TRANSLATION_LIMIT:
+            result = fixed_translations[predict_count]
+            predict_count += 1
+            logger.info(f"Returning fixed translation {predict_count}/{FIXED_TRANSLATION_LIMIT}: {result}")
+            
+            try:
+                with get_db() as db:
+                    db.execute(
+                        'INSERT INTO translations (user, text, gesture, timestamp) VALUES (?, ?, ?, ?)',
+                        ('anonymous', result['text'], result['gesture'], 
+                         datetime.datetime.utcnow().isoformat())
+                    )
+                    db.commit()
+            except Exception as db_error:
+                logger.error(f"Database save failed: {db_error}")
+            
+            try:
+                socketio.emit('translation', {
+                    'text': result['text'],
+                    'gesture': result['gesture'],
+                    'user': 'anonymous',
+                    'video_id': media_id
+                }, room=request.sid if hasattr(request, 'sid') else None)
+            except Exception as socket_error:
+                logger.error(f"Socket emission failed: {socket_error}")
+            
+            return jsonify({
+                'translation': result['text'],
+                'video_id': media_id,
+                'gesture': result['gesture']
+            })
+        
+        # 正常處理
         max_retries = 3  # Increased retries for ngrok stability
         
         for attempt in range(max_retries):
@@ -294,6 +367,8 @@ def process_media_request(endpoint: str, file_key: str, content_type: str, gestu
                 except Exception as socket_error:
                     logger.error(f"Socket emission failed: {socket_error}")
                 
+                if file_key == 'video':
+                    predict_count += 1
                 return jsonify({
                     'translation': text if file_key == 'video' else {'text': text}, 
                     'video_id': media_id if file_key == 'video' else None,
