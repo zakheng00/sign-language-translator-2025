@@ -7,328 +7,253 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
   <style>
+    /* 假設與 index.html 相同的樣式 */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
     * {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
-    
     body {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       overflow-x: hidden;
     }
-    
     .glass-card {
       background: rgba(255, 255, 255, 0.1);
       backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
     }
-    
-    .floating-shapes {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      pointer-events: none;
-      z-index: 0;
+    .button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
     }
-    
-    .shape {
-      position: absolute;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 50%;
-      animation: float 6s ease-in-out infinite;
+    .button:disabled {
+      background: gray;
+      cursor: not-allowed;
     }
-    
-    .shape:nth-child(1) {
-      width: 80px;
-      height: 80px;
-      top: 10%;
-      left: 10%;
-      animation-delay: 0s;
+    .button:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }
-    
-    .shape:nth-child(2) {
-      width: 120px;
-      height: 120px;
-      top: 20%;
-      right: 10%;
-      animation-delay: 2s;
-    }
-    
-    .shape:nth-child(3) {
-      width: 60px;
-      height: 60px;
-      bottom: 20%;
-      left: 20%;
-      animation-delay: 4s;
-    }
-    
-    .shape:nth-child(4) {
-      width: 100px;
-      height: 100px;
-      bottom: 10%;
-      right: 20%;
-      animation-delay: 1s;
-    }
-    
-    @keyframes float {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(-20px) rotate(180deg); }
-    }
-    
-    .gradient-text {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    
-    .pulse {
-      animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
-    }
-    
-    .slide-in {
-      animation: slideIn 0.8s ease-out forwards;
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    
-    @keyframes slideIn {
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    .result-area {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 16px;
     }
   </style>
 </head>
 <body class="relative">
-  <div class="floating-shapes">
-    <div class="shape"></div>
-    <div class="shape"></div>
-    <div class="shape"></div>
-    <div class="shape"></div>
-  </div>
-  
   <div class="relative z-10 max-w-6xl mx-auto p-8 space-y-12">
-    <header class="text-center slide-in">
-      <div class="glass-card rounded-3xl p-8 mb-8 pulse">
-        <h1 class="text-5xl font-bold text-white mb-4" id="mainTitle">Live Sign Language Translation</h1>
-        <p class="text-xl text-white/80 max-w-2xl mx-auto leading-relaxed" id="mainSubtitle">
-          即時將手語翻譯為文字，使用您的攝像頭進行高精度識別
+    <header class="text-center">
+      <div class="glass-card rounded-3xl p-8 mb-8">
+        <h1 class="text-4xl font-bold text-white mb-4">Live Sign Language Translation</h1>
+        <p class="text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
+          Translate sign language in real-time using your webcam
         </p>
       </div>
     </header>
-    
-    <div class="glass-card rounded-3xl p-8">
-      <div class="flex flex-col items-center space-y-6">
-        <video id="video" autoplay class="w-full max-w-2xl rounded-2xl shadow-lg" style="background: black;"></video>
-        <div class="flex space-x-4">
-          <button id="startCameraBtn" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-full hover:from-blue-600 hover:to-purple-700 transition-all">
-            開啟攝像頭
-          </button>
-          <button id="recordBtn" class="bg-gradient-to-r from-green-500 to-teal-600 text-white px-6 py-3 rounded-full hover:from-green-600 hover:to-teal-700 transition-all" disabled>
-            開始錄製
-          </button>
-          <button id="stopBtn" class="bg-gradient-to-r from-red-500 to-pink-600 text-white px-6 py-3 rounded-full hover:from-red-600 hover:to-pink-700 transition-all" disabled>
-            停止錄製
-          </button>
-        </div>
-        <div id="resultArea" class="text-xl text-white font-semibold mt-4"></div>
+    <div class="flex flex-col items-center space-y-8">
+      <video id="webcam" autoplay playsinline class="w-full max-w-md rounded-lg shadow-lg"></video>
+      <div class="flex space-x-4">
+        <button id="recordBtn" class="button">Record</button>
+        <button id="stopBtn" class="button" disabled>Stop</button>
+      </div>
+      <div id="resultArea" class="result-area text-center text-lg font-medium text-gray-800">
+        Translation result will appear here
       </div>
     </div>
   </div>
 
   <script type="module">
-    const video = document.getElementById('video');
-    const startCameraBtn = document.getElementById('startCameraBtn');
-    const recordBtn = document.getElementById('recordBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const resultArea = document.getElementById('resultArea');
-    let stream = null;
-    let mediaRecorder = null;
-    let recordedChunks = [];
-
-    // 動態檢測伺服器 URL
-    function detectServerUrl() {
-      const currentHost = window.location.hostname;
-      const currentProtocol = window.location.protocol;
-      const port = window.location.port ? `:${window.location.port}` : '';
-      return `${currentProtocol}//${currentHost}${port}`;
-    }
-
-    const FLASK_URL = detectServerUrl();
-    const socket = io(FLASK_URL, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 3,
-      reconnectionDelay: 1000
-    });
-
-    // 語言翻譯
+    // Inline translations object
     const TRANSLATIONS = {
-      en: {
-        mainTitle: "Live Sign Language Translation",
-        mainSubtitle: "Real-time translation of sign language to text using your webcam",
-        startCamera: "Start Camera",
-        record: "Start Recording",
-        stop: "Stop Recording",
-        resultPrefix: "Translation Result: "
-      },
-      ms: {
-        mainTitle: "Terjemahan Bahasa Isyarat Langsung",
-        mainSubtitle: "Penterjemahan masa nyata bahasa isyarat kepada teks menggunakan kamera web anda",
-        startCamera: "Mulakan Kamera",
-        record: "Mula Rakam",
-        stop: "Hentikan Rakaman",
-        resultPrefix: "Hasil Terjemahan: "
+      live_translation: {
+        en: {
+          title: "Live Sign Language Translation",
+          subtitle: "Translate sign language in real-time using your webcam",
+          recordBtn: "Record",
+          stopBtn: "Stop",
+          resultPlaceholder: "Translation result will appear here",
+          errorNoWebcam: "No webcam access. Please grant permission or check your device.",
+          errorRecording: "Recording failed. Please try again.",
+          errorUpload: "Upload failed. Please try again."
+        },
+        ms: {
+          title: "Terjemahan Bahasa Isyarat Langsung",
+          subtitle: "Terjemahkan bahasa isyarat secara masa nyata menggunakan kamera web anda",
+          recordBtn: "Rakam",
+          stopBtn: "Berhenti",
+          resultPlaceholder: "Keputusan terjemahan akan muncul di sini",
+          errorNoWebcam: "Tiada akses kamera web. Sila benarkan kebenaran atau semak peranti anda.",
+          errorRecording: "Rakaman gagal. Sila cuba lagi.",
+          errorUpload: "Muat naik gagal. Sila cuba lagi."
+        }
       }
     };
 
+    // Language handling
     function applyLanguage(lang) {
       localStorage.setItem('language', lang);
-      const translations = TRANSLATIONS[lang];
-      document.getElementById('mainTitle').textContent = translations.mainTitle;
-      document.getElementById('mainSubtitle').textContent = translations.mainSubtitle;
-      startCameraBtn.textContent = translations.startCamera;
-      recordBtn.textContent = translations.record;
-      stopBtn.textContent = translations.stop;
-      console.log(`語言切換至: ${lang}`);
+      const translations = TRANSLATIONS.live_translation[lang];
+      document.querySelector('h1').textContent = translations.title;
+      document.querySelector('p').textContent = translations.subtitle;
+      document.getElementById('recordBtn').textContent = translations.recordBtn;
+      document.getElementById('stopBtn').textContent = translations.stopBtn;
+      document.getElementById('resultArea').textContent = translations.resultPlaceholder;
+      console.log(`Language changed to: ${lang}`);
     }
 
-    // 初始化語言
-    let currentLang = localStorage.getItem('language') || 'en';
-    applyLanguage(currentLang);
+    document.addEventListener('DOMContentLoaded', async () => {
+      let currentLang = localStorage.getItem('language') || 'en';
+      applyLanguage(currentLang);
 
-    // Socket.IO 事件
-    socket.on('connect', () => {
-      console.log('已連接到伺服器');
-    });
+      // Server URL detection
+      const FLASK_URL = `${window.location.protocol}//${window.location.hostname}${window.location.port ? ':' + window.location.port : ''}`;
 
-    socket.on('translation', (data) => {
-      console.log('收到翻譯:', data);
-      const prefix = TRANSLATIONS[currentLang].resultPrefix;
-      resultArea.textContent = `${prefix}${data.text}`;
-    });
-
-    socket.on('language_changed', (data) => {
-      console.log('收到語言變更事件:', data);
-      applyLanguage(data.language);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket 連線錯誤:', error);
-      resultArea.textContent = '伺服器連線錯誤，請稍後重試';
-    });
-
-    // 攝像頭初始化
-    async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, frameRate: 30 },
-          audio: false
-        });
-        video.srcObject = stream;
-        video.play();
-        recordBtn.disabled = false;
-        startCameraBtn.disabled = true;
-        console.log('攝像頭已開啟');
-      } catch (error) {
-        console.error('開啟攝像頭失敗:', error);
-        resultArea.textContent = '無法開啟攝像頭，請檢查許可權或設備';
-        if (error.name === 'NotAllowedError') {
-          alert('請授予攝像頭許可權');
-        } else if (error.name === 'NotFoundError') {
-          alert('未找到攝像頭設備');
-        } else {
-          alert('開啟攝像頭時發生錯誤: ' + error.message);
-        }
-      }
-    }
-
-    // 錄製邏輯
-    function startRecording() {
-      if (!stream) {
-        alert('請先開啟攝像頭');
-        return;
-      }
-      recordedChunks = [];
-      mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 2500000
+      // Initialize Socket.IO
+      const socket = io(FLASK_URL, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling']
       });
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          recordedChunks.push(event.data);
-        }
-      };
+      socket.on('connect', () => {
+        console.log('Socket connected to server');
+      });
 
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const formData = new FormData();
-        formData.append('video', blob, 'recording.webm');
+      socket.on('disconnect', () => {
+        console.log('Socket disconnected from server');
+      });
 
+      socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+      });
+
+      socket.on('language_changed', (data) => {
+        console.log('Received language change event:', data);
+        applyLanguage(data.language);
+      });
+
+      socket.on('translation', (data) => {
+        console.log('Received translation:', data);
+        const resultArea = document.getElementById('resultArea');
+        const translations = TRANSLATIONS.live_translation[currentLang];
+        resultArea.textContent = data.text || translations.resultPlaceholder;
+      });
+
+      // Webcam and recording setup
+      const video = document.getElementById('webcam');
+      const recordBtn = document.getElementById('recordBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const resultArea = document.getElementById('resultArea');
+      let mediaRecorder;
+      let recordedChunks = [];
+
+      // Initialize webcam
+      async function initWebcam() {
         try {
-          console.log('發送請求到:', `${FLASK_URL}/predict`, '方法: POST');
-          const response = await fetch(`${FLASK_URL}/predict`, {
-            method: 'POST',
-            body: formData,
-            headers: { 'ngrok-skip-browser-warning': 'true' }
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: 'user' },
+            audio: false
           });
-          const resultData = await response.json();
-          console.log('翻譯結果:', resultData);
-          if (resultData.error) {
-            resultArea.textContent = '錯誤: ' + resultData.error;
-            return;
-          }
-          const prefix = TRANSLATIONS[currentLang].resultPrefix;
-          resultArea.textContent = `${prefix}${resultData.translation}`;
-          socket.emit('translation', {
-            text: resultData.translation,
-            gesture: resultData.gesture,
-            user: 'anonymous',
-            sid: socket.id
-          });
+          video.srcObject = stream;
+          video.play();
+          console.log('Webcam initialized successfully');
         } catch (error) {
-          console.error('上傳失敗:', error);
-          resultArea.textContent = '上傳失敗，請重試';
+          console.error('Webcam initialization failed:', error);
+          const translations = TRANSLATIONS.live_translation[currentLang];
+          resultArea.textContent = translations.errorNoWebcam;
         }
-      };
-
-      mediaRecorder.start();
-      recordBtn.disabled = true;
-      stopBtn.disabled = false;
-      console.log('開始錄製');
-    }
-
-    function stopRecording() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        recordBtn.disabled = false;
-        stopBtn.disabled = true;
-        console.log('停止錄製');
       }
-    }
 
-    // 事件綁定
-    startCameraBtn.addEventListener('click', startCamera);
-    recordBtn.addEventListener('click', startRecording);
-    stopBtn.addEventListener('click', stopRecording);
+      // Start recording
+      function startRecording() {
+        recordedChunks = [];
+        const stream = video.srcObject;
+        if (!stream) {
+          console.error('No stream available for recording');
+          const translations = TRANSLATIONS.live_translation[currentLang];
+          resultArea.textContent = translations.errorRecording;
+          return;
+        }
 
-    // 頁面卸載時清理
-    window.addEventListener('beforeunload', () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp9'
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const formData = new FormData();
+          formData.append('video', blob, 'recording.webm');
+
+          try {
+            console.log('Sending request to:', `${FLASK_URL}/predict`, 'Method: POST');
+            const response = await fetch(`${FLASK_URL}/predict`, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'ngrok-skip-browser-warning': 'true'
+              }
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const resultData = await response.json();
+            console.log('Data respons:', resultData);
+
+            if (resultData.error) {
+              const translations = TRANSLATIONS.live_translation[currentLang];
+              resultArea.textContent = `${translations.errorUpload}: ${resultData.error}`;
+              return;
+            }
+
+            resultArea.textContent = resultData.translation || TRANSLATIONS.live_translation[currentLang].resultPlaceholder;
+            socket.emit('translation', {
+              text: resultData.translation,
+              gesture: resultData.gesture,
+              user: 'anonymous',
+              sid: socket.id
+            });
+          } catch (error) {
+            console.error('Upload failed:', error);
+            const translations = TRANSLATIONS.live_translation[currentLang];
+            resultArea.textContent = `${translations.errorUpload}: ${error.message}`;
+          }
+        };
+
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        console.log('Recording started');
       }
+
+      // Stop recording
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+          recordBtn.disabled = false;
+          stopBtn.disabled = true;
+          console.log('Recording stopped');
+        }
+      }
+
+      // Event listeners
+      recordBtn.addEventListener('click', startRecording);
+      stopBtn.addEventListener('click', stopRecording);
+
+      // Initialize webcam on page load
+      await initWebcam();
     });
   </script>
 </body>
