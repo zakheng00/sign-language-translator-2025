@@ -61,14 +61,14 @@ shutdown_event = threading.Event()
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://a31f7f32c3b5.ngrok-free.app/health", 
+        response = requests.get("https://fccf8ab02869.ngrok-free.app", 
                               headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get('colab_url', "https://a31f7f32c3b5.ngrok-free.app")
+        return data.get('colab_url', "https://fccf8ab02869.ngrok-free.app")
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        return "https://a31f7f32c3b5.ngrok-free.app"
+        return "https://fccf8ab02869.ngrok-free.app"
 
 COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
