@@ -313,20 +313,6 @@
         return timestamp;
       }
     }
-
-    function getGestureMapping(gesture) {
-      const mapping = {
-        18: "Hello",
-        11: "Thank You", 
-        7: "I Love You",
-        8: "Yes",
-        19: "Good Bye",
-        16: "Sorry",
-        0: "Unknown"
-      };
-      return mapping[gesture] || `Gesture ${gesture}`;
-    }
-
     function renderHistory(data) {
       const translations = TRANSLATIONS.history[currentLang];
       const historyList = document.getElementById('historyList');
