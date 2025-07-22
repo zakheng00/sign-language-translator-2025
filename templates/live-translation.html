@@ -319,7 +319,7 @@
 
     function updateResult(message, type = 'default') {
       const resultEl = document.getElementById('result');
-      const currentLang = 'ms'; // Default to Malay
+      const currentLang = 'en'; // Default to Malay
       const translations = TRANSLATIONS.liveTranslation[currentLang];
       let translatedMessage = message;
       
@@ -371,7 +371,7 @@
       }
 
       const FLASK_URL = detectServerUrl();
-      const COLAB_URL = "https://9b2523a90fde.ngrok-free.app";
+      const COLAB_URL = "https://2f44d7665b20.ngrok-free.app";
       const PREDICT_ENDPOINT = `${FLASK_URL}/predict`;
       const SAVE_ENDPOINT = `${COLAB_URL}/api/save_history`;
 
