@@ -61,9 +61,9 @@ shutdown_event = threading.Event()
 fixed_translations = [
     {"text": "How are you", "gesture": 18, "confidence": 0.95},
     {"text": "How are you", "gesture": 18, "confidence": 0.95},
-    {"text": "I am fine thank you", "gesture": 7, "confidence": 0.95}，
+    {"text": "I am fine thank you", "gesture": 7, "confidence": 0.95},
     {"text": "Today is Monday", "gesture": 17, "confidence": 0.95},
-    {"text": "What is your name", "gesture": 4, "confidence": 0.95}.
+    {"text": "What is your name", "gesture": 4, "confidence": 0.95},
     {"text": "Can you help me.", "gesture": 3, "confidence": 0.95}
     
 ]
