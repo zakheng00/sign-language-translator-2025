@@ -74,14 +74,14 @@ FIXED_TRANSLATION_LIMIT = 6  # 前 4 次使用預設內容
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://2f44d7665b20.ngrok-free.app", 
+        response = requests.get("https://88ce383837d0.ngrok-free.app", 
                               headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get('colab_url', "https://2f44d7665b20.ngrok-free.app")
+        return data.get('colab_url', "https://88ce383837d0.ngrok-free.app")
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        return "https://2f44d7665b20.ngrok-free.app"
+        return "https://88ce383837d0.ngrok-free.app"
 
 COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
