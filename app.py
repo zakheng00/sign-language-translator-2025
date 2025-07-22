@@ -71,14 +71,14 @@ FIXED_TRANSLATION_LIMIT = 4  # 前 4 次使用預設內容
 def get_colab_base_url():
     try:
         headers = {'ngrok-skip-browser-warning': 'true'}
-        response = requests.get("https://63a89fdf118f.ngrok-free.app", 
+        response = requests.get("https://fccf8ab02869.ngrok-free.app", 
                               headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return data.get('colab_url', "https://63a89fdf118f.ngrok-free.app")
+        return data.get('colab_url', "https://fccf8ab02869.ngrok-free.app")
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch COLAB_BASE_URL, using default: {e}")
-        return "https://63a89fdf118f.ngrok-free.app"
+        return "https://fccf8ab02869.ngrok-free.app"
 
 COLAB_BASE_URL = os.environ.get('COLAB_BASE_URL', get_colab_base_url())
 COLAB_PREDICT_URL = f"{COLAB_BASE_URL}/predict_colab"
@@ -423,8 +423,8 @@ def get_history():
         logger.info(f"Returning {len(history)} history records")
         return jsonify(history)
     except Exception as e:
-        logger.error(f"Error fetching history: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error fetching history: {str(e)}")
+        return jsonify({'error': f'Failed to fetch history: {str(e)}'}), 500
 
 @app.route('/api/settings', methods=['POST', 'OPTIONS'])
 def save_settings():
@@ -515,6 +515,11 @@ def check_database_status() -> str:
 def not_found(error):
     logger.warning(f"404 error: {request.url}")
     return jsonify({'error': 'Not found', 'url': request.url}), 404
+
+@app.errorhandler(405)
+def not_allowed(error):
+    logger.error(f"405 Method Not Allowed: {request.method} {request.url}")
+    return jsonify({'error': f'Method {request.method} not allowed for {request.url}. Use GET for /api/history.' if request.path == '/api/history' else f'Method {request.method} not allowed for {request.url}'}), 405
 
 @app.errorhandler(500)
 def internal_error(error):
