@@ -341,8 +341,7 @@
         const parts = message.match(/Translation Result: (.*)/);
         if (parts) {
           translatedMessage = translations.translationResult
-            .replace('{translation}', parts[1])
-            .replace('{videoId}', parts[2]);
+            .replace('{translation}', parts[1]);
         }
       }
       
