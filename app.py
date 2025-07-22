@@ -512,7 +512,206 @@ def check_database_status() -> str:
     except sqlite3.Error as e:
         logger.error(f"Database status check failed: {e}")
         return 'offline'
+@app.route('/api/admin/translations', methods=['GET', 'OPTIONS'])
+def get_all_translations():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 50))
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * limit
+        
+        with get_db() as db:
+            # 构建查询条件
+            where_clause = ""
+            params = []
+            
+            if search:
+                where_clause = "WHERE text LIKE ? OR user LIKE ?"
+                params = [f'%{search}%', f'%{search}%']
+            
+            # 获取总数
+            count_query = f'SELECT COUNT(*) FROM translations {where_clause}'
+            cursor = db.execute(count_query, params)
+            total_count = cursor.fetchone()[0]
+            
+            # 获取分页数据
+            query = f'''SELECT id, user, text, gesture, timestamp 
+                       FROM translations {where_clause}
+                       ORDER BY timestamp DESC 
+                       LIMIT ? OFFSET ?'''
+            cursor = db.execute(query, params + [limit, offset])
+            translations = [dict(row) for row in cursor.fetchall()]
+        
+        logger.info(f"Admin: Returning {len(translations)} translation records (page {page})")
+        
+        return jsonify({
+            'translations': translations,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total_count,
+                'pages': (total_count + limit - 1) // limit
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching admin translations: {str(e)}")
+        return jsonify({'error': f'Failed to fetch translations: {str(e)}'}), 500
 
+# Admin API - 获取所有反馈记录
+@app.route('/api/admin/feedback', methods=['GET', 'OPTIONS'])
+def get_all_feedback():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        
+        offset = (page - 1) * limit
+        
+        with get_db() as db:
+            # 获取总数
+            cursor = db.execute('SELECT COUNT(*) FROM feedback')
+            total_count = cursor.fetchone()[0]
+            
+            # 获取分页数据
+            cursor = db.execute('''SELECT id, user, feedback, timestamp 
+                                 FROM feedback 
+                                 ORDER BY timestamp DESC 
+                                 LIMIT ? OFFSET ?''', (limit, offset))
+            feedback_list = [dict(row) for row in cursor.fetchall()]
+        
+        logger.info(f"Admin: Returning {len(feedback_list)} feedback records (page {page})")
+        
+        return jsonify({
+            'feedback': feedback_list,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total_count,
+                'pages': (total_count + limit - 1) // limit
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching admin feedback: {str(e)}")
+        return jsonify({'error': f'Failed to fetch feedback: {str(e)}'}), 500
+
+# Admin API - 获取统计信息
+@app.route('/api/admin/stats', methods=['GET', 'OPTIONS'])
+def get_admin_stats():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        with get_db() as db:
+            # 翻译统计
+            cursor = db.execute('SELECT COUNT(*) FROM translations')
+            total_translations = cursor.fetchone()[0]
+            
+            cursor = db.execute('''SELECT COUNT(*) FROM translations 
+                                 WHERE timestamp >= datetime('now', '-24 hours')''')
+            translations_24h = cursor.fetchone()[0]
+            
+            cursor = db.execute('''SELECT COUNT(*) FROM translations 
+                                 WHERE timestamp >= datetime('now', '-7 days')''')
+            translations_7d = cursor.fetchone()[0]
+            
+            # 反馈统计
+            cursor = db.execute('SELECT COUNT(*) FROM feedback')
+            total_feedback = cursor.fetchone()[0]
+            
+            cursor = db.execute('''SELECT COUNT(*) FROM feedback 
+                                 WHERE timestamp >= datetime('now', '-24 hours')''')
+            feedback_24h = cursor.fetchone()[0]
+            
+            # 最活跃用户
+            cursor = db.execute('''SELECT user, COUNT(*) as count 
+                                 FROM translations 
+                                 WHERE user != 'anonymous'
+                                 GROUP BY user 
+                                 ORDER BY count DESC 
+                                 LIMIT 10''')
+            top_users = [dict(row) for row in cursor.fetchall()]
+            
+            # 手势分布
+            cursor = db.execute('''SELECT gesture, COUNT(*) as count 
+                                 FROM translations 
+                                 GROUP BY gesture 
+                                 ORDER BY count DESC 
+                                 LIMIT 20''')
+            gesture_stats = [dict(row) for row in cursor.fetchall()]
+        
+        return jsonify({
+            'translations': {
+                'total': total_translations,
+                'last_24h': translations_24h,
+                'last_7d': translations_7d
+            },
+            'feedback': {
+                'total': total_feedback,
+                'last_24h': feedback_24h
+            },
+            'top_users': top_users,
+            'gesture_distribution': gesture_stats,
+            'system': {
+                'active_connections': len(active_connections),
+                'predict_count': predict_count
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching admin stats: {str(e)}")
+        return jsonify({'error': f'Failed to fetch stats: {str(e)}'}), 500
+
+# Admin API - 删除翻译记录
+@app.route('/api/admin/translations/<int:translation_id>', methods=['DELETE', 'OPTIONS'])
+def delete_translation(translation_id):
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM translations WHERE id = ?', (translation_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({'error': 'Translation not found'}), 404
+            
+            db.execute('DELETE FROM translations WHERE id = ?', (translation_id,))
+            db.commit()
+        
+        logger.info(f"Admin: Deleted translation ID {translation_id}")
+        return jsonify({'message': 'Translation deleted successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error deleting translation {translation_id}: {str(e)}")
+        return jsonify({'error': f'Failed to delete translation: {str(e)}'}), 500
+
+# Admin API - 删除反馈记录
+@app.route('/api/admin/feedback/<int:feedback_id>', methods=['DELETE', 'OPTIONS'])
+def delete_feedback_admin(feedback_id):
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        with get_db() as db:
+            cursor = db.execute('SELECT COUNT(*) FROM feedback WHERE id = ?', (feedback_id,))
+            if cursor.fetchone()[0] == 0:
+                return jsonify({'error': 'Feedback not found'}), 404
+            
+            db.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
+            db.commit()
+        
+        logger.info(f"Admin: Deleted feedback ID {feedback_id}")
+        return jsonify({'message': 'Feedback deleted successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error deleting feedback {feedback_id}: {str(e)}")
+        return jsonify({'error': f'Failed to delete feedback: {str(e)}'}), 500
 # 錯誤處理
 @app.errorhandler(404)
 def not_found(error):
